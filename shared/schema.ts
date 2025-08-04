@@ -67,13 +67,32 @@ export const users = mysqlTable("users", {
 export const clients = mysqlTable("clients", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
   userId: varchar("user_id", { length: 36 }).references(() => users.id),
+  // Dados básicos
+  fullName: varchar("full_name", { length: 255 }), // Nome Completo/Razão Social
   companyName: varchar("company_name", { length: 255 }),
-  phone: varchar("phone", { length: 20 }),
-  address: text("address"),
+  cpfCnpj: varchar("cpf_cnpj", { length: 20 }), // CPF/CNPJ
+  taxId: varchar("tax_id", { length: 50 }),
+  
+  // Endereço completo
+  street: varchar("street", { length: 255 }), // Rua
+  number: varchar("number", { length: 20 }), // Número
+  neighborhood: varchar("neighborhood", { length: 100 }), // Bairro
   city: varchar("city", { length: 100 }),
   state: varchar("state", { length: 50 }),
   zipCode: varchar("zip_code", { length: 10 }),
-  taxId: varchar("tax_id", { length: 50 }),
+  address: text("address"), // Endereço completo (legacy)
+  
+  // Contato principal
+  primaryContactName: varchar("primary_contact_name", { length: 255 }),
+  primaryContactPhone: varchar("primary_contact_phone", { length: 20 }),
+  primaryContactEmail: varchar("primary_contact_email", { length: 255 }),
+  phone: varchar("phone", { length: 20 }), // Legacy
+  
+  // Informações adicionais
+  businessSector: varchar("business_sector", { length: 100 }), // Setor de Atuação
+  generalNotes: text("general_notes"), // Observações Gerais
+  status: varchar("status", { length: 20 }).notNull().default("active"), // Status (Ativo, Inativo, Potencial)
+  
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
 });
@@ -130,6 +149,95 @@ export const invoices = mysqlTable("invoices", {
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
 });
 
+// Contatos adicionais dos clientes
+export const clientContacts = mysqlTable("client_contacts", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  clientId: varchar("client_id", { length: 36 }).references(() => clients.id),
+  name: varchar("name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }),
+  email: varchar("email", { length: 255 }),
+  department: varchar("department", { length: 100 }), // Departamento ou área
+  position: varchar("position", { length: 100 }), // Cargo
+  isPrimary: boolean("is_primary").notNull().default(false),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
+// Planos contratados pelos clientes
+export const clientPlans = mysqlTable("client_plans", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  clientId: varchar("client_id", { length: 36 }).references(() => clients.id),
+  planName: varchar("plan_name", { length: 255 }).notNull(),
+  description: text("description"),
+  value: decimal("value", { precision: 10, scale: 2 }),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  status: varchar("status", { length: 20 }).notNull().default("active"), // active, inactive, expired
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
+// Histórico de comunicações (CRM)
+export const clientCommunications = mysqlTable("client_communications", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  clientId: varchar("client_id", { length: 36 }).references(() => clients.id),
+  userId: varchar("user_id", { length: 36 }).references(() => users.id), // Quem fez a comunicação
+  type: varchar("type", { length: 50 }).notNull(), // email, phone, meeting, whatsapp, etc
+  subject: varchar("subject", { length: 255 }),
+  content: text("content"),
+  direction: varchar("direction", { length: 20 }).notNull(), // inbound, outbound
+  status: varchar("status", { length: 20 }).notNull().default("completed"), // completed, pending, scheduled
+  scheduledFor: timestamp("scheduled_for"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
+// Acessos ao portal do cliente
+export const clientPortalAccess = mysqlTable("client_portal_access", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  clientId: varchar("client_id", { length: 36 }).references(() => clients.id),
+  userId: varchar("user_id", { length: 36 }).references(() => users.id),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  sessionDuration: int("session_duration"), // em minutos
+  pagesVisited: json("pages_visited").default("[]"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+// Objetivos mensais dos clientes
+export const clientMonthlyGoals = mysqlTable("client_monthly_goals", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  clientId: varchar("client_id", { length: 36 }).references(() => clients.id),
+  month: int("month").notNull(), // 1-12
+  year: int("year").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  targetValue: decimal("target_value", { precision: 10, scale: 2 }),
+  currentValue: decimal("current_value", { precision: 10, scale: 2 }).default("0"),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, in_progress, completed, cancelled
+  priority: varchar("priority", { length: 20 }).notNull().default("medium"), // low, medium, high
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
+// Anotações de reuniões
+export const meetingNotes = mysqlTable("meeting_notes", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  clientId: varchar("client_id", { length: 36 }).references(() => clients.id),
+  userId: varchar("user_id", { length: 36 }).references(() => users.id), // Quem fez a anotação
+  projectId: varchar("project_id", { length: 36 }).references(() => projects.id), // Opcional
+  title: varchar("title", { length: 255 }).notNull(),
+  content: text("content"),
+  meetingDate: timestamp("meeting_date").notNull(),
+  participants: json("participants").default("[]"), // Lista de participantes
+  actionItems: json("action_items").default("[]"), // Itens de ação
+  nextMeetingDate: timestamp("next_meeting_date"),
+  tags: json("tags").default("[]"), // Tags para categorização
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ one }) => ({
   client: one(clients, { fields: [users.id], references: [clients.userId] }),
@@ -140,6 +248,40 @@ export const clientsRelations = relations(clients, ({ one, many }) => ({
   user: one(users, { fields: [clients.userId], references: [users.id] }),
   invoices: many(invoices),
   projects: many(projects),
+  contacts: many(clientContacts),
+  plans: many(clientPlans),
+  communications: many(clientCommunications),
+  portalAccess: many(clientPortalAccess),
+  monthlyGoals: many(clientMonthlyGoals),
+  meetingNotes: many(meetingNotes),
+}));
+
+export const clientContactsRelations = relations(clientContacts, ({ one }) => ({
+  client: one(clients, { fields: [clientContacts.clientId], references: [clients.id] }),
+}));
+
+export const clientPlansRelations = relations(clientPlans, ({ one }) => ({
+  client: one(clients, { fields: [clientPlans.clientId], references: [clients.id] }),
+}));
+
+export const clientCommunicationsRelations = relations(clientCommunications, ({ one }) => ({
+  client: one(clients, { fields: [clientCommunications.clientId], references: [clients.id] }),
+  user: one(users, { fields: [clientCommunications.userId], references: [users.id] }),
+}));
+
+export const clientPortalAccessRelations = relations(clientPortalAccess, ({ one }) => ({
+  client: one(clients, { fields: [clientPortalAccess.clientId], references: [clients.id] }),
+  user: one(users, { fields: [clientPortalAccess.userId], references: [users.id] }),
+}));
+
+export const clientMonthlyGoalsRelations = relations(clientMonthlyGoals, ({ one }) => ({
+  client: one(clients, { fields: [clientMonthlyGoals.clientId], references: [clients.id] }),
+}));
+
+export const meetingNotesRelations = relations(meetingNotes, ({ one }) => ({
+  client: one(clients, { fields: [meetingNotes.clientId], references: [clients.id] }),
+  user: one(users, { fields: [meetingNotes.userId], references: [users.id] }),
+  project: one(projects, { fields: [meetingNotes.projectId], references: [projects.id] }),
 }));
 
 export const teamMembersRelations = relations(teamMembers, ({ one, many }) => ({
@@ -201,6 +343,41 @@ export const insertSystemSettingSchema = createInsertSchema(systemSettings).omit
 });
 
 export const insertUserRoleSchema = createInsertSchema(userRoles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertClientContactSchema = createInsertSchema(clientContacts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertClientPlanSchema = createInsertSchema(clientPlans).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertClientCommunicationSchema = createInsertSchema(clientCommunications).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertClientPortalAccessSchema = createInsertSchema(clientPortalAccess).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertClientMonthlyGoalSchema = createInsertSchema(clientMonthlyGoals).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertMeetingNoteSchema = createInsertSchema(meetingNotes).omit({
   id: true,
   createdAt: true,
   updatedAt: true,

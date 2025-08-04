@@ -238,6 +238,46 @@ export const meetingNotes = mysqlTable("meeting_notes", {
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
 });
 
+// Configurações de IA
+export const aiConfigurations = mysqlTable("ai_configurations", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  name: varchar("name", { length: 100 }).unique().notNull(),
+  displayName: varchar("display_name", { length: 200 }).notNull(),
+  description: text("description"),
+  apiKey: varchar("api_key", { length: 500 }),
+  model: varchar("model", { length: 50 }).notNull().default("gpt-3.5-turbo"),
+  temperature: decimal("temperature", { precision: 3, scale: 2 }).notNull().default("0.7"),
+  maxTokens: int("max_tokens").notNull().default(1000),
+  systemPrompt: text("system_prompt").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_ai_config_active").on(table.isActive),
+  index("idx_ai_config_default").on(table.isDefault),
+]);
+
+// Uso da API de IA
+export const aiUsage = mysqlTable("ai_usage", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  userId: varchar("user_id", { length: 36 }).references(() => users.id),
+  model: varchar("model", { length: 50 }).notNull(),
+  promptTokens: int("prompt_tokens").notNull().default(0),
+  completionTokens: int("completion_tokens").notNull().default(0),
+  totalTokens: int("total_tokens").notNull().default(0),
+  cost: decimal("cost", { precision: 10, scale: 6 }).notNull().default("0"),
+  requestType: varchar("request_type", { length: 50 }).notNull().default("chat"),
+  success: boolean("success").notNull().default(true),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_ai_usage_user").on(table.userId),
+  index("idx_ai_usage_date").on(table.createdAt),
+  index("idx_ai_usage_model").on(table.model),
+]);
+
 // Relations
 export const usersRelations = relations(users, ({ one }) => ({
   client: one(clients, { fields: [users.id], references: [clients.userId] }),
@@ -303,6 +343,14 @@ export const projectAssignmentsRelations = relations(projectAssignments, ({ one 
 export const invoicesRelations = relations(invoices, ({ one }) => ({
   client: one(clients, { fields: [invoices.clientId], references: [clients.id] }),
   project: one(projects, { fields: [invoices.projectId], references: [projects.id] }),
+}));
+
+export const aiConfigurationsRelations = relations(aiConfigurations, ({ one }) => ({
+  createdByUser: one(users, { fields: [aiConfigurations.createdBy], references: [users.id] }),
+}));
+
+export const aiUsageRelations = relations(aiUsage, ({ one }) => ({
+  user: one(users, { fields: [aiUsage.userId], references: [users.id] }),
 }));
 
 // Insert schemas
@@ -383,6 +431,17 @@ export const insertMeetingNoteSchema = createInsertSchema(meetingNotes).omit({
   updatedAt: true,
 });
 
+export const insertAIConfigurationSchema = createInsertSchema(aiConfigurations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAIUsageSchema = createInsertSchema(aiUsage).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Schema for creating/updating roles
 export const createRoleSchema = z.object({
   name: z.string().min(1, "Nome da role é obrigatório").regex(/^[a-z_]+$/, "Nome deve conter apenas letras minúsculas e underscore"),
@@ -390,6 +449,15 @@ export const createRoleSchema = z.object({
   description: z.string().optional(),
   permissions: z.array(z.string()).default([]),
   active: z.boolean().default(true),
+});
+
+// Schema for AI settings
+export const aiSettingsSchema = z.object({
+  chatGptApiKey: z.string().min(1, "Chave da API do ChatGPT é obrigatória"),
+  temperature: z.number().min(0).max(2).default(0.7),
+  maxTokens: z.number().min(1).max(4000).default(1000),
+  model: z.enum(["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4o"]).default("gpt-3.5-turbo"),
+  systemPrompt: z.string().min(1, "Prompt do sistema é obrigatório").default("Você é um assistente útil e prestativo."),
 });
 
 // Types
@@ -436,3 +504,8 @@ export type CreateTeamMember = z.infer<typeof createTeamMemberSchema>;
 export type UserRole = typeof userRoles.$inferSelect;
 export type InsertUserRole = z.infer<typeof insertUserRoleSchema>;
 export type CreateRole = z.infer<typeof createRoleSchema>;
+export type AISettings = z.infer<typeof aiSettingsSchema>;
+export type AIConfiguration = typeof aiConfigurations.$inferSelect;
+export type InsertAIConfiguration = z.infer<typeof insertAIConfigurationSchema>;
+export type AIUsage = typeof aiUsage.$inferSelect;
+export type InsertAIUsage = z.infer<typeof insertAIUsageSchema>;

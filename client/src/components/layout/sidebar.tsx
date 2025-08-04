@@ -16,6 +16,7 @@ import {
   ChevronRight,
   FolderOpen,
   User,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -63,6 +64,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         { title: "Listar Equipe", href: "/admin/team" },
         { title: "Novo Membro", href: "/admin/team/new" },
       ],
+    },
+    {
+      title: "IA",
+      href: "/admin/ai",
+      icon: Bot,
     },
     {
       title: "Relatórios",

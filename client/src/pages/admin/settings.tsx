@@ -23,12 +23,14 @@ export default function AdminSettings() {
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<any>(null);
+  const [previewColor, setPreviewColor] = useState<string>("");
 
   // Fetch current settings
   const { data: settings, isLoading } = useQuery({
     queryKey: ["/api/admin/settings"],
     onSuccess: (data) => {
       console.log("Settings loaded:", data);
+      setPreviewColor(data?.primary_color || data?.systemColor || "#3b82f6");
     },
   });
 
@@ -67,6 +69,7 @@ export default function AdminSettings() {
         description: "Configurações salvas com sucesso!",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/system/settings"] });
     },
     onError: (error: any) => {
       toast({
@@ -410,6 +413,10 @@ export default function AdminSettings() {
                       type="color"
                       defaultValue={settings?.primary_color || settings?.systemColor || "#3b82f6"}
                       className="w-20 h-12 p-1 border rounded"
+                      onChange={(e) => {
+                        const hexInput = document.querySelector('input[name="systemColorHex"]') as HTMLInputElement;
+                        if (hexInput) hexInput.value = e.target.value;
+                      }}
                     />
                     <Input
                       name="systemColorHex"
@@ -417,6 +424,12 @@ export default function AdminSettings() {
                       placeholder="#3b82f6"
                       defaultValue={settings?.primary_color || settings?.systemColor || "#3b82f6"}
                       className="flex-1"
+                      onChange={(e) => {
+                        const colorInput = document.querySelector('input[name="systemColor"]') as HTMLInputElement;
+                        if (colorInput && /^#[0-9A-F]{6}$/i.test(e.target.value)) {
+                          colorInput.value = e.target.value;
+                        }
+                      }}
                     />
                   </div>
                   <p className="text-xs text-gray-500">

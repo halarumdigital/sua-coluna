@@ -7,6 +7,8 @@ import {
   projectAssignments,
   systemSettings,
   userRoles,
+  aiConfigurations,
+  aiUsage,
   type User,
   type UpsertUser,
   type Client,
@@ -21,6 +23,11 @@ import {
   type SystemSetting,
   type InsertSystemSetting,
   type UserRole,
+  type AISettings,
+  type AIConfiguration,
+  type InsertAIConfiguration,
+  type AIUsage,
+  type InsertAIUsage,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, count, sum, sql } from "drizzle-orm";
@@ -94,6 +101,31 @@ export interface IStorage {
   createRole(data: any): Promise<UserRole>;
   updateRole(id: string, data: any): Promise<UserRole>;
   deleteRole(id: string): Promise<void>;
+
+  // AI Settings operations
+  getAISettings(): Promise<AISettings>;
+  saveAISettings(settings: AISettings): Promise<void>;
+
+  // AI Configurations operations (advanced)
+  getAIConfigurations(): Promise<AIConfiguration[]>;
+  getAIConfiguration(id: string): Promise<AIConfiguration | undefined>;
+  getDefaultAIConfiguration(): Promise<AIConfiguration | undefined>;
+  createAIConfiguration(config: InsertAIConfiguration): Promise<AIConfiguration>;
+  updateAIConfiguration(id: string, config: Partial<InsertAIConfiguration>): Promise<AIConfiguration>;
+  deleteAIConfiguration(id: string): Promise<void>;
+  setDefaultAIConfiguration(id: string): Promise<void>;
+
+  // AI Usage operations
+  recordAIUsage(usage: InsertAIUsage): Promise<AIUsage>;
+  getAIUsageStats(): Promise<{
+    totalTokens: number;
+    totalCost: number;
+    requestsToday: number;
+    requestsThisMonth: number;
+    lastUsed: string | null;
+  }>;
+  getAIUsageByUser(userId: string): Promise<AIUsage[]>;
+  getAIUsageByDateRange(startDate: Date, endDate: Date): Promise<AIUsage[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -557,6 +589,192 @@ export class DatabaseStorage implements IStorage {
     }
     
     await db.delete(userRoles).where(eq(userRoles.id, id));
+  }
+
+  // AI Settings operations
+  async getAISettings(): Promise<AISettings> {
+    const settings = await db.select().from(systemSettings);
+    
+    // Default AI settings
+    const defaultSettings: AISettings = {
+      chatGptApiKey: "",
+      temperature: 0.7,
+      maxTokens: 1000,
+      model: "gpt-3.5-turbo",
+      systemPrompt: "Você é um assistente útil e prestativo.",
+    };
+
+    // Parse existing settings
+    const result: Partial<AISettings> = {};
+    
+    settings.forEach(setting => {
+      switch (setting.settingKey) {
+        case 'ai_chatgpt_api_key':
+          result.chatGptApiKey = setting.settingValue || "";
+          break;
+        case 'ai_temperature':
+          result.temperature = parseFloat(setting.settingValue || "0.7");
+          break;
+        case 'ai_max_tokens':
+          result.maxTokens = parseInt(setting.settingValue || "1000");
+          break;
+        case 'ai_model':
+          result.model = setting.settingValue as AISettings['model'] || "gpt-3.5-turbo";
+          break;
+        case 'ai_system_prompt':
+          result.systemPrompt = setting.settingValue || "Você é um assistente útil e prestativo.";
+          break;
+      }
+    });
+
+    // Merge with defaults
+    return { ...defaultSettings, ...result };
+  }
+
+  async saveAISettings(settings: AISettings): Promise<void> {
+    // Save each setting individually
+    await Promise.all([
+      this.setSystemSetting('ai_chatgpt_api_key', settings.chatGptApiKey, 'string'),
+      this.setSystemSetting('ai_temperature', settings.temperature.toString(), 'number'),
+      this.setSystemSetting('ai_max_tokens', settings.maxTokens.toString(), 'number'),
+      this.setSystemSetting('ai_model', settings.model, 'string'),
+      this.setSystemSetting('ai_system_prompt', settings.systemPrompt, 'string'),
+    ]);
+  }
+
+  // AI Configurations operations (advanced)
+  async getAIConfigurations(): Promise<AIConfiguration[]> {
+    return await db.select().from(aiConfigurations).orderBy(desc(aiConfigurations.createdAt));
+  }
+
+  async getAIConfiguration(id: string): Promise<AIConfiguration | undefined> {
+    const [config] = await db.select().from(aiConfigurations).where(eq(aiConfigurations.id, id));
+    return config;
+  }
+
+  async getDefaultAIConfiguration(): Promise<AIConfiguration | undefined> {
+    const [config] = await db
+      .select()
+      .from(aiConfigurations)
+      .where(and(eq(aiConfigurations.isDefault, true), eq(aiConfigurations.isActive, true)))
+      .limit(1);
+    return config;
+  }
+
+  async createAIConfiguration(config: InsertAIConfiguration): Promise<AIConfiguration> {
+    const [newConfig] = await db.insert(aiConfigurations).values(config).returning();
+    return newConfig;
+  }
+
+  async updateAIConfiguration(id: string, config: Partial<InsertAIConfiguration>): Promise<AIConfiguration> {
+    const [updatedConfig] = await db
+      .update(aiConfigurations)
+      .set({ ...config, updatedAt: new Date() })
+      .where(eq(aiConfigurations.id, id))
+      .returning();
+    return updatedConfig;
+  }
+
+  async deleteAIConfiguration(id: string): Promise<void> {
+    // Check if it's the default configuration
+    const config = await this.getAIConfiguration(id);
+    if (config?.isDefault) {
+      throw new Error("Cannot delete default AI configuration");
+    }
+    
+    await db.delete(aiConfigurations).where(eq(aiConfigurations.id, id));
+  }
+
+  async setDefaultAIConfiguration(id: string): Promise<void> {
+    // First, remove default flag from all configurations
+    await db
+      .update(aiConfigurations)
+      .set({ isDefault: false, updatedAt: new Date() });
+
+    // Then set the specified configuration as default
+    await db
+      .update(aiConfigurations)
+      .set({ isDefault: true, updatedAt: new Date() })
+      .where(eq(aiConfigurations.id, id));
+  }
+
+  // AI Usage operations
+  async recordAIUsage(usage: InsertAIUsage): Promise<AIUsage> {
+    const [newUsage] = await db.insert(aiUsage).values(usage).returning();
+    return newUsage;
+  }
+
+  async getAIUsageStats(): Promise<{
+    totalTokens: number;
+    totalCost: number;
+    requestsToday: number;
+    requestsThisMonth: number;
+    lastUsed: string | null;
+  }> {
+    // Get total tokens and cost
+    const [totals] = await db
+      .select({
+        totalTokens: sum(aiUsage.totalTokens),
+        totalCost: sum(aiUsage.cost),
+      })
+      .from(aiUsage)
+      .where(eq(aiUsage.success, true));
+
+    // Get requests today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const [todayStats] = await db
+      .select({ count: count() })
+      .from(aiUsage)
+      .where(and(
+        eq(aiUsage.success, true),
+        sql`DATE(${aiUsage.createdAt}) = DATE(${today})`
+      ));
+
+    // Get requests this month
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const [monthStats] = await db
+      .select({ count: count() })
+      .from(aiUsage)
+      .where(and(
+        eq(aiUsage.success, true),
+        sql`${aiUsage.createdAt} >= ${startOfMonth}`
+      ));
+
+    // Get last used
+    const [lastUsed] = await db
+      .select({ createdAt: aiUsage.createdAt })
+      .from(aiUsage)
+      .where(eq(aiUsage.success, true))
+      .orderBy(desc(aiUsage.createdAt))
+      .limit(1);
+
+    return {
+      totalTokens: Number(totals.totalTokens || 0),
+      totalCost: Number(totals.totalCost || 0),
+      requestsToday: todayStats.count,
+      requestsThisMonth: monthStats.count,
+      lastUsed: lastUsed?.createdAt?.toISOString() || null,
+    };
+  }
+
+  async getAIUsageByUser(userId: string): Promise<AIUsage[]> {
+    return await db
+      .select()
+      .from(aiUsage)
+      .where(eq(aiUsage.userId, userId))
+      .orderBy(desc(aiUsage.createdAt));
+  }
+
+  async getAIUsageByDateRange(startDate: Date, endDate: Date): Promise<AIUsage[]> {
+    return await db
+      .select()
+      .from(aiUsage)
+      .where(and(
+        sql`${aiUsage.createdAt} >= ${startDate}`,
+        sql`${aiUsage.createdAt} <= ${endDate}`
+      ))
+      .orderBy(desc(aiUsage.createdAt));
   }
 }
 

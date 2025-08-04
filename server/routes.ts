@@ -2,7 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertClientSchema, insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema } from "@shared/schema";
+import { insertClientSchema, insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema, aiSettingsSchema } from "@shared/schema";
+import { openaiService } from "./openai";
 import { z } from "zod";
 import multer from "multer";
 import path from "path";
@@ -707,6 +708,116 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting role:", error);
       res.status(500).json({ message: "Failed to delete role" });
+    }
+  });
+
+  // AI Settings routes
+  app.get("/api/admin/ai-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const aiSettings = await storage.getAISettings();
+      res.json(aiSettings);
+    } catch (error) {
+      console.error("Error fetching AI settings:", error);
+      res.status(500).json({ message: "Failed to fetch AI settings" });
+    }
+  });
+
+  app.post("/api/admin/ai-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const validatedData = aiSettingsSchema.parse(req.body);
+      await storage.saveAISettings(validatedData);
+      
+      res.json({ 
+        message: "Configurações de IA salvas com sucesso",
+        settings: validatedData
+      });
+    } catch (error) {
+      console.error("Error saving AI settings:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to save AI settings" });
+    }
+  });
+
+  // OpenAI Integration routes
+  app.get("/api/admin/ai-models", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const models = await openaiService.getAvailableModels();
+      res.json(models);
+    } catch (error) {
+      console.error("Error fetching AI models:", error);
+      res.status(500).json({ message: "Failed to fetch AI models" });
+    }
+  });
+
+  app.get("/api/admin/ai-usage", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const usageStats = await storage.getAIUsageStats();
+      res.json(usageStats);
+    } catch (error) {
+      console.error("Error fetching AI usage stats:", error);
+      res.status(500).json({ message: "Failed to fetch AI usage stats" });
+    }
+  });
+
+  app.post("/api/admin/ai-test", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const testResult = await openaiService.testConnection();
+      res.json(testResult);
+    } catch (error) {
+      console.error("Error testing AI connection:", error);
+      res.status(500).json({ message: "Failed to test AI connection" });
     }
   });
 

@@ -628,11 +628,61 @@ export default function ClientWhatsAppPage() {
     }
   };
 
-  const handleConfigureAI = () => {
-    toast({
-      title: "Em desenvolvimento",
-      description: "Configuração de IA será implementada em breve",
-    });
+  // Configure AI webhook mutation
+  const configureAIWebhookMutation = useMutation({
+    mutationFn: async (instanceKey: string) => {
+      const response = await fetch(`/api/client/whatsapp-instances/${instanceKey}/webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Falha ao configurar webhook da IA");
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "IA Configurada",
+        description: "Webhook da IA configurado com sucesso!",
+      });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao configurar webhook da IA",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleConfigureAI = async (instance?: WhatsAppInstance) => {
+    if (!instance) {
+      toast({
+        title: "Erro",
+        description: "Instância não encontrada",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setConfiguringInstances(prev => new Set(prev.add(instance.id)));
+    
+    try {
+      await configureAIWebhookMutation.mutateAsync(instance.instanceKey);
+    } finally {
+      setConfiguringInstances(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(instance.id);
+        return newSet;
+      });
+    }
   };
 
   const handleConfigureWhatsApp = (instance: WhatsAppInstance) => {
@@ -1122,11 +1172,16 @@ export default function ClientWhatsAppPage() {
 
                 <div className="flex gap-2">
                   <Button
-                    onClick={handleConfigureAI}
+                    onClick={() => handleConfigureAI(createdInstance)}
                     variant="outline"
                     className="flex-1"
+                    disabled={createdInstance ? configuringInstances.has(createdInstance.id) : false}
                   >
-                    <Bot className="h-4 w-4 mr-2" />
+                    {createdInstance && configuringInstances.has(createdInstance.id) ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Bot className="h-4 w-4 mr-2" />
+                    )}
                     Configurar IA
                   </Button>
                   <Button
@@ -1348,9 +1403,14 @@ export default function ClientWhatsAppPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={handleConfigureAI}
+                        onClick={() => handleConfigureAI(instance)}
+                        disabled={configuringInstances.has(instance.id)}
                       >
-                        <Bot className="h-4 w-4 mr-1" />
+                        {configuringInstances.has(instance.id) ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Bot className="h-4 w-4 mr-1" />
+                        )}
                         Configurar IA
                       </Button>
                       <Button

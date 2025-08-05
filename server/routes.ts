@@ -1406,6 +1406,127 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Configure Evolution API webhook for WhatsApp instance
+  app.post("/api/client/whatsapp-instances/:instanceKey/webhook", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { instanceKey } = req.params;
+      
+      // Get admin WhatsApp settings
+      const adminSettings = await storage.getWhatsappApiSettings();
+      if (!adminSettings) {
+        return res.status(400).json({ message: "Configurações da API WhatsApp não encontradas" });
+      }
+
+      // Get client ID for the current user
+      const client = await storage.getClientByUserId(userId);
+      if (!client) {
+        return res.status(400).json({ message: "Cliente não encontrado para este usuário" });
+      }
+      
+      // Find instance to verify ownership
+      const instances = await storage.getWhatsappInstancesByClient(client.id);
+      const instance = instances.find(inst => inst.instanceKey === instanceKey);
+      if (!instance) {
+        return res.status(404).json({ message: "Instância não encontrada ou não pertence ao cliente" });
+      }
+
+      // Generate webhook URL for this instance
+      const baseUrl = req.protocol + '://' + req.get('host');
+      const webhookUrl = `${baseUrl}/api/client/whatsapp-webhook/${instanceKey}`;
+
+      // Prepare webhook configuration for Evolution API
+      const webhookConfig = {
+        webhook: {
+          enabled: true,
+          url: webhookUrl,
+          headers: {
+            authorization: `Bearer ${adminSettings.globalToken}`,
+            "Content-Type": "application/json"
+          },
+          byEvents: false,
+          base64: true,
+          events: [
+            "MESSAGES_UPSERT"
+          ]
+        }
+      };
+
+      console.log('Configuring webhook for instance:', instanceKey);
+      console.log('Webhook URL:', webhookUrl);
+      console.log('Webhook config:', webhookConfig);
+
+      // Call Evolution API to set webhook
+      const evolutionResponse = await fetch(`${adminSettings.evolutionApiUrl}/webhook/set/${instanceKey}`, {
+        method: 'POST',
+        headers: {
+          'apikey': adminSettings.globalToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(webhookConfig)
+      });
+      
+      if (!evolutionResponse.ok) {
+        let errorData;
+        try {
+          errorData = await evolutionResponse.json();
+        } catch (jsonError) {
+          const errorText = await evolutionResponse.text();
+          console.error('Evolution API webhook error:', {
+            status: evolutionResponse.status,
+            statusText: evolutionResponse.statusText,
+            responseText: errorText
+          });
+          return res.status(400).json({ 
+            message: "Falha ao configurar webhook na Evolution API",
+            details: {
+              status: evolutionResponse.status,
+              statusText: evolutionResponse.statusText,
+              response: errorText
+            }
+          });
+        }
+        
+        console.error('Evolution API webhook error:', errorData);
+        return res.status(400).json({ 
+          message: "Falha ao configurar webhook na Evolution API",
+          details: errorData
+        });
+      }
+      
+      let evolutionData;
+      try {
+        evolutionData = await evolutionResponse.json();
+      } catch (jsonError) {
+        const responseText = await evolutionResponse.text();
+        console.log('Evolution API webhook success response (non-JSON):', responseText);
+        evolutionData = { message: "Webhook configurado com sucesso", response: responseText };
+      }
+
+      // Update instance webhook URL in database
+      await storage.updateWhatsappInstance(instance.id, { webhook: webhookUrl });
+      
+      res.json({
+        message: "Webhook configurado com sucesso",
+        webhookUrl: webhookUrl,
+        config: webhookConfig,
+        response: evolutionData
+      });
+    } catch (error) {
+      console.error("Error configuring Evolution API webhook:", error);
+      res.status(500).json({ message: "Erro ao configurar webhook da Evolution API" });
+    }
+  });
+
   // WhatsApp webhook endpoint with instance key (no authentication required)
   app.post("/api/client/whatsapp-webhook/:instanceKey", async (req: any, res) => {
     try {

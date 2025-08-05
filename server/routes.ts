@@ -1538,50 +1538,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { instanceKey } = req.params;
       const { event, instance, data } = req.body;
       
-      console.log(`WhatsApp webhook for ${instanceKey}:`, { event, instance, data });
+      console.log(`🔔 WhatsApp webhook for ${instanceKey}:`, { event, instance, data });
       
-      // Handle connection updates
-      if (event === 'connection.update' && data && data.state) {
-        try {
-          // Find instance by instanceKey
-          const instances = await storage.getWhatsappInstances();
-          const matchingInstance = instances.find(inst => inst.instanceKey === instanceKey);
+      // Handle different webhook events
+      switch (event) {
+        case 'connection.update':
+          console.log('🔄 Connection update:', data);
           
-          if (matchingInstance) {
-            let newStatus = 'disconnected';
-            
-            // Map Evolution API states to our status
-            switch (data.state) {
-              case 'open':
-                newStatus = 'connected';
-                break;
-              case 'close':
-              case 'closed':
-                newStatus = 'disconnected';
-                break;
-              case 'connecting':
-                newStatus = 'connecting';
-                break;
-              default:
-                newStatus = data.state;
+          if (data && data.state) {
+            try {
+              // Find instance by instanceKey
+              const instances = await storage.getWhatsappInstances();
+              const matchingInstance = instances.find(inst => inst.instanceKey === instanceKey);
+              
+              if (matchingInstance) {
+                let newStatus = 'disconnected';
+                
+                // Map Evolution API states to our status
+                switch (data.state) {
+                  case 'open':
+                    newStatus = 'connected';
+                    break;
+                  case 'close':
+                  case 'closed':
+                    newStatus = 'disconnected';
+                    break;
+                  case 'connecting':
+                    newStatus = 'connecting';
+                    break;
+                  default:
+                    newStatus = data.state;
+                }
+                
+                // Update status in database
+                await storage.updateWhatsappInstance(matchingInstance.id, { 
+                  status: newStatus,
+                  lastConnection: newStatus === 'connected' ? new Date() : matchingInstance.lastConnection
+                });
+                
+                console.log(`✅ Instance ${instanceKey} status updated to: ${newStatus}`);
+              }
+            } catch (error) {
+              console.error('❌ Error updating instance status from webhook:', error);
             }
-            
-            // Update status in database
-            await storage.updateWhatsappInstance(matchingInstance.id, { 
-              status: newStatus,
-              lastConnection: newStatus === 'connected' ? new Date() : matchingInstance.lastConnection
-            });
-            
-            console.log(`✅ Instance ${instanceKey} status updated to: ${newStatus}`);
           }
-        } catch (error) {
-          console.error('Error updating instance status from webhook:', error);
-        }
+          break;
+
+        case 'messages.upsert':
+          console.log('📱 New message received:', data);
+          
+          // Processar resposta automática com AI
+          try {
+            const isAutoReplyEnabled = await whatsappAIHandler.isAutoReplyEnabled(instanceKey);
+            if (isAutoReplyEnabled) {
+              console.log('🤖 Auto-reply habilitado, processando mensagem...');
+              // Executar em background para não bloquear o webhook
+              whatsappAIHandler.handleIncomingMessage(instanceKey, data).catch(error => {
+                console.error('❌ Erro ao processar resposta automática:', error);
+              });
+            } else {
+              console.log('⚠️ Auto-reply desabilitado para esta instância');
+            }
+          } catch (error) {
+            console.error('❌ Erro ao verificar auto-reply:', error);
+          }
+          break;
+
+        case 'messages.update':
+          console.log('📝 Message updated:', data);
+          break;
+
+        case 'messages.delete':
+          console.log('🗑️ Message deleted:', data);
+          break;
+
+        case 'contacts.update':
+          console.log('👤 Contacts updated:', data);
+          break;
+
+        default:
+          console.log('❓ Unhandled event:', event);
       }
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error processing WhatsApp webhook:", error);
+      console.error("❌ Error processing WhatsApp webhook:", error);
       res.status(500).json({ success: false, error: "Internal server error" });
     }
   });

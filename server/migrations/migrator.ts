@@ -61,7 +61,11 @@ export class Migrator {
 
       for (const file of migrationFiles) {
         const filePath = join(this.migrationsPath, file);
-        const migration = await import(filePath);
+        // Convert Windows path to file:// URL for ESM import
+        const fileUrl = process.platform === 'win32' 
+          ? `file:///${filePath.replace(/\\/g, '/')}`
+          : filePath;
+        const migration = await import(fileUrl);
         
         if (!migration.default || !migration.default.id || !migration.default.up) {
           console.warn(`⚠️  Migration ${file} não possui estrutura válida`);
@@ -87,11 +91,8 @@ export class Migrator {
 
   // Calcula checksum SHA-256 de uma string
   private async calculateChecksum(content: string): Promise<string> {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(content);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    const crypto = await import('crypto');
+    return crypto.createHash('sha256').update(content).digest('hex');
   }
 
   // Obtém migrations já executadas
@@ -100,6 +101,10 @@ export class Migrator {
       const result = await db.execute(sql`SELECT id FROM migrations WHERE success = TRUE ORDER BY executed_at`);
       return result.map((row: any) => row.id);
     } catch (error) {
+      // Se a tabela não existir, retorna array vazio
+      if (error.code === 'ER_NO_SUCH_TABLE') {
+        return [];
+      }
       console.error('❌ Erro ao buscar migrations executadas:', error);
       throw error;
     }
@@ -138,12 +143,22 @@ export class Migrator {
     console.log(`⏳ Executando migration: ${migration.name}`);
     
     try {
+      // Verifica se a migration já foi executada com sucesso
+      const existing = await db.execute(sql`
+        SELECT id FROM migrations WHERE id = ${migration.id} AND success = TRUE
+      `);
+      
+      if (existing.length > 0) {
+        console.log(`⚠️  Migration ${migration.name} já foi executada, pulando...`);
+        return;
+      }
+      
       // Executa a migration
       await migration.up();
       
-      // Registra como executada com sucesso
+      // Registra como executada com sucesso usando INSERT IGNORE para evitar duplicatas
       await db.execute(sql`
-        INSERT INTO migrations (id, name, checksum, success) 
+        INSERT IGNORE INTO migrations (id, name, checksum, success) 
         VALUES (${migration.id}, ${migration.name}, ${migration.checksum}, TRUE)
       `);
       
@@ -151,11 +166,15 @@ export class Migrator {
     } catch (error) {
       console.error(`❌ Erro ao executar migration ${migration.name}:`, error);
       
-      // Registra o erro
-      await db.execute(sql`
-        INSERT INTO migrations (id, name, checksum, success, error_message) 
-        VALUES (${migration.id}, ${migration.name}, ${migration.checksum}, FALSE, ${String(error)})
-      `);
+      try {
+        // Registra o erro usando INSERT IGNORE para evitar duplicatas
+        await db.execute(sql`
+          INSERT IGNORE INTO migrations (id, name, checksum, success, error_message) 
+          VALUES (${migration.id}, ${migration.name}, ${migration.checksum}, FALSE, ${String(error)})
+        `);
+      } catch (insertError) {
+        console.error(`❌ Erro ao registrar falha da migration:`, insertError);
+      }
       
       throw error;
     }
@@ -237,7 +256,7 @@ export class Migrator {
     const filePath = join(this.migrationsPath, fileName);
 
     const template = `import { sql } from 'drizzle-orm';
-import { db } from '../../db.js';
+import { db } from '../../db';
 
 export default {
   id: '${timestamp}_${name.toLowerCase().replace(/\s+/g, '_')}',

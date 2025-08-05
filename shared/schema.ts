@@ -67,22 +67,34 @@ export const users = mysqlTable("users", {
 export const clients = mysqlTable("clients", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
   userId: varchar("user_id", { length: 36 }).references(() => users.id),
-  // Dados básicos
-  fullName: varchar("full_name", { length: 255 }), // Nome Completo/Razão Social
-  companyName: varchar("company_name", { length: 255 }),
+  
+  // Dados básicos da empresa
+  companyName: varchar("company_name", { length: 255 }), // Nome Fantasia
+  legalName: varchar("legal_name", { length: 255 }), // Razão Social
   cpfCnpj: varchar("cpf_cnpj", { length: 20 }), // CPF/CNPJ
   taxId: varchar("tax_id", { length: 50 }),
   
   // Endereço completo
   street: varchar("street", { length: 255 }), // Rua
   number: varchar("number", { length: 20 }), // Número
+  complement: varchar("complement", { length: 100 }), // Complemento
   neighborhood: varchar("neighborhood", { length: 100 }), // Bairro
   city: varchar("city", { length: 100 }),
   state: varchar("state", { length: 50 }),
   zipCode: varchar("zip_code", { length: 10 }),
   address: text("address"), // Endereço completo (legacy)
   
-  // Contato principal
+  // Contatos
+  contactPhone: varchar("contact_phone", { length: 20 }), // Telefone de contato
+  whatsapp: varchar("whatsapp", { length: 20 }), // WhatsApp
+  email: varchar("email", { length: 255 }), // Email
+  website: varchar("website", { length: 255 }), // Site
+  
+  // Dados para acesso ao sistema
+  systemPassword: varchar("system_password", { length: 255 }), // Senha para entrar no sistema
+  
+  // Campos legados (manter compatibilidade)
+  fullName: varchar("full_name", { length: 255 }), // Nome Completo/Razão Social
   primaryContactName: varchar("primary_contact_name", { length: 255 }),
   primaryContactPhone: varchar("primary_contact_phone", { length: 20 }),
   primaryContactEmail: varchar("primary_contact_email", { length: 255 }),
@@ -500,6 +512,38 @@ export const createTeamMemberSchema = z.object({
 });
 
 export type CreateTeamMember = z.infer<typeof createTeamMemberSchema>;
+
+// Schema customizado para criação de cliente com usuário
+export const createClientSchema = z.object({
+  // Dados básicos da empresa
+  companyName: z.string().min(1, "Nome fantasia é obrigatório"),
+  legalName: z.string().min(1, "Razão social é obrigatória"),
+  
+  // Endereço completo
+  street: z.string().min(1, "Rua é obrigatória"),
+  number: z.string().min(1, "Número é obrigatório"),
+  complement: z.string().optional(),
+  neighborhood: z.string().min(1, "Bairro é obrigatório"),
+  city: z.string().min(1, "Cidade é obrigatória"),
+  state: z.string().min(1, "Estado é obrigatório"),
+  zipCode: z.string().min(1, "CEP é obrigatório"),
+  
+  // Contatos
+  contactPhone: z.string().min(1, "Telefone de contato é obrigatório"),
+  whatsapp: z.string().optional(),
+  email: z.string().email("Email inválido"),
+  website: z.string().url("URL inválida").optional().or(z.literal("")),
+  
+  // Senha para acesso ao sistema
+  systemPassword: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  
+  // Campos opcionais
+  cpfCnpj: z.string().optional(),
+  businessSector: z.string().optional(),
+  generalNotes: z.string().optional(),
+});
+
+export type CreateClient = z.infer<typeof createClientSchema>;
 
 export type UserRole = typeof userRoles.$inferSelect;
 export type InsertUserRole = z.infer<typeof insertUserRoleSchema>;

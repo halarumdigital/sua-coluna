@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertClientSchema, insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema, aiSettingsSchema } from "@shared/schema";
+import { insertClientSchema, insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema, aiSettingsSchema, createClientSchema } from "@shared/schema";
 import { openaiService } from "./openai";
 import { z } from "zod";
 import multer from "multer";
@@ -158,8 +158,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied" });
       }
       
-      const validatedData = insertClientSchema.parse(req.body);
-      const client = await storage.createClient(validatedData);
+      const validatedData = createClientSchema.parse(req.body);
+      
+      // Create client with user account
+      const client = await storage.createClientWithUser(validatedData);
       res.json(client);
     } catch (error) {
       console.error("Error creating client:", error);

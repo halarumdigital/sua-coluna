@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertClientSchema } from "@shared/schema";
+import { createClientSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Search } from "lucide-react";
@@ -50,15 +50,25 @@ export default function ClientsPage() {
   });
 
   const form = useForm({
-    resolver: zodResolver(insertClientSchema),
+    resolver: zodResolver(createClientSchema),
     defaultValues: {
       companyName: "",
-      phone: "",
-      address: "",
+      legalName: "",
+      street: "",
+      number: "",
+      complement: "",
+      neighborhood: "",
       city: "",
       state: "",
       zipCode: "",
-      taxId: "",
+      contactPhone: "",
+      whatsapp: "",
+      email: "",
+      website: "",
+      systemPassword: "",
+      cpfCnpj: "",
+      businessSector: "",
+      generalNotes: "",
     },
   });
 
@@ -73,22 +83,45 @@ export default function ClientsPage() {
       render: (value: string, row: any) => (
         <div className="flex items-center space-x-4">
           <Avatar className="w-10 h-10">
-            <AvatarFallback>{value?.[0] || "C"}</AvatarFallback>
+            <AvatarFallback>{value?.[0] || row.legalName?.[0] || "C"}</AvatarFallback>
           </Avatar>
           <div>
-            <div className="font-medium text-gray-900">{value || "Cliente"}</div>
-            <div className="text-sm text-gray-500">ID: #{row.id.slice(0, 8)}</div>
+            <div className="font-medium text-gray-900">{value || row.legalName || "Cliente"}</div>
+            <div className="text-sm text-gray-500">{row.legalName && value !== row.legalName ? row.legalName : `ID: #${row.id.slice(0, 8)}`}</div>
           </div>
         </div>
       ),
     },
     {
-      key: "phone",
-      header: "Telefone",
+      key: "email",
+      header: "Email",
+      render: (value: string) => (
+        <div className="text-sm">
+          {value || "-"}
+        </div>
+      ),
+    },
+    {
+      key: "contactPhone",
+      header: "Contato",
+      render: (value: string, row: any) => (
+        <div className="text-sm">
+          <div>{value || row.phone || "-"}</div>
+          {row.whatsapp && row.whatsapp !== value && (
+            <div className="text-xs text-gray-500">WhatsApp: {row.whatsapp}</div>
+          )}
+        </div>
+      ),
     },
     {
       key: "city",
-      header: "Cidade",
+      header: "Localização",
+      render: (value: string, row: any) => (
+        <div className="text-sm">
+          <div>{value || "-"}</div>
+          {row.state && <div className="text-xs text-gray-500">{row.state}</div>}
+        </div>
+      ),
     },
     {
       key: "createdAt",
@@ -101,9 +134,16 @@ export default function ClientsPage() {
     {
       key: "status",
       header: "Status",
-      render: () => (
-        <Badge variant="secondary" className="bg-green-100 text-green-800">
-          Ativo
+      render: (value: string) => (
+        <Badge 
+          variant="secondary" 
+          className={
+            value === "active" 
+              ? "bg-green-100 text-green-800" 
+              : "bg-gray-100 text-gray-800"
+          }
+        >
+          {value === "active" ? "Ativo" : "Inativo"}
         </Badge>
       ),
     },
@@ -137,80 +177,303 @@ export default function ClientsPage() {
                 Novo Cliente
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Novo Cliente</DialogTitle>
               </DialogHeader>
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="companyName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nome da Empresa</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Telefone</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <div className="grid grid-cols-2 gap-4">
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                  {/* Dados da Empresa */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                      Dados da Empresa
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="companyName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Nome Fantasia *</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="Nome comercial da empresa" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="legalName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Razão Social *</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="Razão social completa" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="cpfCnpj"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>CPF/CNPJ</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="00.000.000/0000-00" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="businessSector"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Setor de Atuação</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="Ex: Tecnologia, Varejo, etc." />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Endereço Completo */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                      Endereço Completo
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="md:col-span-2">
+                        <FormField
+                          control={form.control}
+                          name="street"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Rua/Avenida *</FormLabel>
+                              <FormControl>
+                                <Input {...field} placeholder="Nome da rua ou avenida" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      <FormField
+                        control={form.control}
+                        name="number"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Número *</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="123" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="complement"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Complemento</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="Sala, andar, etc." />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="neighborhood"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Bairro *</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="Nome do bairro" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="city"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Cidade *</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="Nome da cidade" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="state"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Estado *</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="SP, RJ, MG..." />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="zipCode"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>CEP *</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="00000-000" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Contatos */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                      Informações de Contato
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="contactPhone"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Telefone de Contato *</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="(11) 99999-9999" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="whatsapp"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>WhatsApp</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="(11) 99999-9999" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="email"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Email *</FormLabel>
+                            <FormControl>
+                              <Input {...field} type="email" placeholder="contato@empresa.com" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="website"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Site</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="https://www.empresa.com" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Acesso ao Sistema */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                      Acesso ao Sistema
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Usuário</Label>
+                        <Input 
+                          value={form.watch("email")} 
+                          disabled 
+                          placeholder="O email será usado como usuário"
+                          className="bg-gray-50"
+                        />
+                        <p className="text-xs text-gray-500">
+                          O email informado será usado como usuário para login
+                        </p>
+                      </div>
+                      <FormField
+                        control={form.control}
+                        name="systemPassword"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Senha *</FormLabel>
+                            <FormControl>
+                              <Input {...field} type="password" placeholder="Mínimo 6 caracteres" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Observações */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                      Observações
+                    </h3>
                     <FormField
                       control={form.control}
-                      name="city"
+                      name="generalNotes"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Cidade</FormLabel>
+                          <FormLabel>Observações Gerais</FormLabel>
                           <FormControl>
-                            <Input {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="state"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Estado</FormLabel>
-                          <FormControl>
-                            <Input {...field} />
+                            <textarea 
+                              {...field}
+                              className="w-full min-h-[100px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical"
+                              placeholder="Informações adicionais sobre o cliente..."
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
                   </div>
-                  <FormField
-                    control={form.control}
-                    name="address"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Endereço</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <div className="flex justify-end space-x-2">
+
+                  <div className="flex justify-end space-x-2 pt-4 border-t">
                     <Button
                       type="button"
                       variant="outline"
@@ -219,7 +482,7 @@ export default function ClientsPage() {
                       Cancelar
                     </Button>
                     <Button type="submit" disabled={createClientMutation.isPending}>
-                      {createClientMutation.isPending ? "Salvando..." : "Salvar"}
+                      {createClientMutation.isPending ? "Salvando..." : "Salvar Cliente"}
                     </Button>
                   </div>
                 </form>

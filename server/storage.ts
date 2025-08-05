@@ -95,6 +95,9 @@ export interface IStorage {
   // Team member with user creation
   createTeamMemberWithUser(data: any): Promise<TeamMember>;
 
+  // Client with user creation
+  createClientWithUser(data: any): Promise<Client>;
+
   // Roles operations
   getRoles(): Promise<UserRole[]>;
   getRole(id: string): Promise<UserRole | undefined>;
@@ -530,6 +533,101 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     return newTeamMember;
+  }
+
+  // Client with user creation
+  async createClientWithUser(data: any): Promise<Client> {
+    const bcrypt = await import('bcrypt');
+    
+    // Check if user with this email already exists
+    const existingUser = await this.getUserByEmail(data.email);
+    if (existingUser) {
+      throw new Error("Já existe um usuário cadastrado com este email");
+    }
+    
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(data.systemPassword, 10);
+    
+    // Create the user first
+    const userData = {
+      email: data.email,
+      firstName: data.companyName, // Use company name as first name for clients
+      lastName: "", // Empty last name for companies
+      phone: data.contactPhone,
+      password: hashedPassword,
+      role: "client",
+      active: true,
+    };
+
+    await db.insert(users).values(userData);
+    
+    // Get the created user
+    const [newUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, data.email))
+      .limit(1);
+
+    // Build complete address
+    const completeAddress = [
+      data.street,
+      data.number,
+      data.complement,
+      data.neighborhood,
+      data.city,
+      data.state,
+      data.zipCode
+    ].filter(Boolean).join(", ");
+
+    // Create the client linked to the user
+    const clientData = {
+      userId: newUser.id,
+      // Dados básicos da empresa
+      companyName: data.companyName,
+      legalName: data.legalName,
+      cpfCnpj: data.cpfCnpj,
+      
+      // Endereço completo
+      street: data.street,
+      number: data.number,
+      complement: data.complement,
+      neighborhood: data.neighborhood,
+      city: data.city,
+      state: data.state,
+      zipCode: data.zipCode,
+      address: completeAddress, // Legacy field
+      
+      // Contatos
+      contactPhone: data.contactPhone,
+      whatsapp: data.whatsapp,
+      email: data.email,
+      website: data.website,
+      
+      // Senha para sistema (já hashada e salva no user)
+      systemPassword: hashedPassword,
+      
+      // Campos legados para compatibilidade
+      fullName: data.legalName, // Use legal name as full name
+      primaryContactEmail: data.email,
+      primaryContactPhone: data.contactPhone,
+      phone: data.contactPhone, // Legacy
+      
+      // Informações adicionais
+      businessSector: data.businessSector,
+      generalNotes: data.generalNotes,
+      status: "active",
+    };
+
+    await db.insert(clients).values(clientData);
+    
+    // Get the created client
+    const [newClient] = await db
+      .select()
+      .from(clients)
+      .where(eq(clients.userId, newUser.id))
+      .limit(1);
+
+    return newClient;
   }
 
   // Roles operations

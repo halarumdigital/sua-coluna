@@ -1100,9 +1100,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied" });
       }
       
-      // For now, return empty array - this would be implemented based on business logic
-      // In the future, this would fetch instances from a database table
-      res.json([]);
+      // Get client ID for the current user
+      const client = await storage.getClientByUserId(userId);
+      if (!client) {
+        return res.status(400).json({ message: "Cliente não encontrado para este usuário" });
+      }
+      
+      // Fetch instances from database
+      const instances = await storage.getWhatsappInstancesByClient(client.id);
+      res.json(instances);
     } catch (error) {
       console.error("Error fetching WhatsApp instances:", error);
       res.status(500).json({ message: "Failed to fetch WhatsApp instances" });
@@ -1157,19 +1163,300 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const instanceData = await createInstanceResponse.json();
       
+      // Get client ID for the current user
+      const client = await storage.getClientByUserId(userId);
+      if (!client) {
+        return res.status(400).json({ message: "Cliente não encontrado para este usuário" });
+      }
+      
+      // Save instance to database
+      const newInstance = {
+        clientId: client.id,
+        instanceName: instanceName,
+        instanceKey: instanceData.instance.instanceName, // Using instanceName as key
+        webhook: null,
+        status: 'disconnected',
+        qrCode: null,
+        lastConnection: null,
+        phoneNumber: phoneNumber,
+        isActive: true
+      };
+      
+      const savedInstance = await storage.createWhatsappInstance(newInstance);
+      
       res.json({
         message: "Instância criada com sucesso",
         instance: {
-          id: instanceData.instance.instanceName,
-          instanceName,
-          phoneNumber,
-          status: 'created',
-          createdAt: new Date().toISOString()
+          id: savedInstance.id,
+          instanceName: savedInstance.instanceName,
+          instanceKey: savedInstance.instanceKey,
+          phoneNumber: savedInstance.phoneNumber,
+          status: savedInstance.status,
+          createdAt: savedInstance.createdAt
         }
       });
     } catch (error) {
       console.error("Error creating WhatsApp instance:", error);
       res.status(500).json({ message: "Erro ao criar instância do WhatsApp" });
+    }
+  });
+
+  // Update WhatsApp instance status
+  app.patch("/api/client/whatsapp-instances/:id/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { id } = req.params;
+      const { status } = req.body;
+      
+      if (!status) {
+        return res.status(400).json({ message: "Status é obrigatório" });
+      }
+      
+      // Get client ID for the current user
+      const client = await storage.getClientByUserId(userId);
+      if (!client) {
+        return res.status(400).json({ message: "Cliente não encontrado para este usuário" });
+      }
+      
+      // Verify instance belongs to client
+      const instance = await storage.getWhatsappInstance(id);
+      if (!instance || instance.clientId !== client.id) {
+        return res.status(404).json({ message: "Instância não encontrada" });
+      }
+      
+      // Update status
+      const updatedInstance = await storage.updateWhatsappInstance(id, { status });
+      
+      res.json({
+        message: "Status atualizado com sucesso",
+        instance: updatedInstance
+      });
+    } catch (error) {
+      console.error("Error updating WhatsApp instance status:", error);
+      res.status(500).json({ message: "Erro ao atualizar status da instância" });
+    }
+  });
+
+  // Delete WhatsApp instance
+  app.delete("/api/client/whatsapp-instances/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { id } = req.params;
+      
+      // Get client ID for the current user
+      const client = await storage.getClientByUserId(userId);
+      if (!client) {
+        return res.status(400).json({ message: "Cliente não encontrado para este usuário" });
+      }
+      
+      // Verify instance belongs to client
+      const instance = await storage.getWhatsappInstance(id);
+      if (!instance || instance.clientId !== client.id) {
+        return res.status(404).json({ message: "Instância não encontrada" });
+      }
+      
+      // Delete instance from database
+      await storage.deleteWhatsappInstance(id);
+      
+      res.json({
+        message: "Instância excluída com sucesso",
+        deletedInstance: instance
+      });
+    } catch (error) {
+      console.error("Error deleting WhatsApp instance:", error);
+      res.status(500).json({ message: "Erro ao excluir instância do WhatsApp" });
+    }
+  });
+
+  // Configure WhatsApp instance settings
+  app.post("/api/client/whatsapp-instances/:instanceKey/settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { instanceKey } = req.params;
+      const settings = req.body;
+      
+      // Get admin WhatsApp settings
+      const adminSettings = await storage.getWhatsappApiSettings();
+      if (!adminSettings) {
+        return res.status(400).json({ message: "Configurações da API WhatsApp não encontradas" });
+      }
+
+      console.log('Admin settings found:', {
+        evolutionApiUrl: adminSettings.evolutionApiUrl,
+        hasToken: !!adminSettings.globalToken,
+        isActive: adminSettings.isActive
+      });
+      
+      // Get client ID for the current user
+      const client = await storage.getClientByUserId(userId);
+      if (!client) {
+        return res.status(400).json({ message: "Cliente não encontrado para este usuário" });
+      }
+      
+      // Find instance to verify ownership
+      const instances = await storage.getWhatsappInstancesByClient(client.id);
+      const instance = instances.find(inst => inst.instanceKey === instanceKey);
+      if (!instance) {
+        return res.status(404).json({ message: "Instância não encontrada ou não pertence ao cliente" });
+      }
+
+      console.log('Instance found:', {
+        instanceKey,
+        instanceName: instance.instanceName,
+        status: instance.status
+      });
+      
+      // Evolution API expects camelCase, not snake_case
+      const evolutionSettings = {
+        rejectCall: settings.rejectCall,
+        msgCall: settings.msgCall,
+        groupsIgnore: settings.groupsIgnore,
+        alwaysOnline: settings.alwaysOnline,
+        readMessages: settings.readMessages,
+        readStatus: settings.readStatus,
+        syncFullHistory: settings.syncFullHistory
+      };
+
+      console.log('Sending settings to Evolution API:', evolutionSettings);
+      console.log('Evolution API URL:', `${adminSettings.evolutionApiUrl}/settings/set/${instanceKey}`);
+
+      // Call Evolution API to set settings
+      const evolutionResponse = await fetch(`${adminSettings.evolutionApiUrl}/settings/set/${instanceKey}`, {
+        method: 'POST',
+        headers: {
+          'apikey': adminSettings.globalToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(evolutionSettings)
+      });
+      
+      if (!evolutionResponse.ok) {
+        let errorData;
+        try {
+          errorData = await evolutionResponse.json();
+        } catch (jsonError) {
+          // Se não conseguir fazer parse do JSON, usar o texto da resposta
+          const errorText = await evolutionResponse.text();
+          console.error('Evolution API non-JSON error:', {
+            status: evolutionResponse.status,
+            statusText: evolutionResponse.statusText,
+            responseText: errorText
+          });
+          return res.status(400).json({ 
+            message: "Falha ao aplicar configurações na Evolution API",
+            details: {
+              status: evolutionResponse.status,
+              statusText: evolutionResponse.statusText,
+              response: errorText
+            }
+          });
+        }
+        
+        console.error('Evolution API error:', errorData);
+        return res.status(400).json({ 
+          message: "Falha ao aplicar configurações na Evolution API",
+          details: errorData
+        });
+      }
+      
+      let evolutionData;
+      try {
+        evolutionData = await evolutionResponse.json();
+      } catch (jsonError) {
+        // Se não conseguir fazer parse do JSON de resposta de sucesso
+        const responseText = await evolutionResponse.text();
+        console.log('Evolution API success response (non-JSON):', responseText);
+        evolutionData = { message: "Configurações aplicadas", response: responseText };
+      }
+      
+      res.json({
+        message: "Configurações aplicadas com sucesso",
+        settings: evolutionData
+      });
+    } catch (error) {
+      console.error("Error configuring WhatsApp instance:", error);
+      res.status(500).json({ message: "Erro ao configurar instância do WhatsApp" });
+    }
+  });
+
+  // WhatsApp webhook endpoint with instance key (no authentication required)
+  app.post("/api/client/whatsapp-webhook/:instanceKey", async (req: any, res) => {
+    try {
+      const { instanceKey } = req.params;
+      const { event, instance, data } = req.body;
+      
+      console.log(`WhatsApp webhook for ${instanceKey}:`, { event, instance, data });
+      
+      // Handle connection updates
+      if (event === 'connection.update' && data && data.state) {
+        try {
+          // Find instance by instanceKey
+          const instances = await storage.getWhatsappInstances();
+          const matchingInstance = instances.find(inst => inst.instanceKey === instanceKey);
+          
+          if (matchingInstance) {
+            let newStatus = 'disconnected';
+            
+            // Map Evolution API states to our status
+            switch (data.state) {
+              case 'open':
+                newStatus = 'connected';
+                break;
+              case 'close':
+              case 'closed':
+                newStatus = 'disconnected';
+                break;
+              case 'connecting':
+                newStatus = 'connecting';
+                break;
+              default:
+                newStatus = data.state;
+            }
+            
+            // Update status in database
+            await storage.updateWhatsappInstance(matchingInstance.id, { 
+              status: newStatus,
+              lastConnection: newStatus === 'connected' ? new Date() : matchingInstance.lastConnection
+            });
+            
+            console.log(`✅ Instance ${instanceKey} status updated to: ${newStatus}`);
+          }
+        } catch (error) {
+          console.error('Error updating instance status from webhook:', error);
+        }
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error processing WhatsApp webhook:", error);
+      res.status(500).json({ success: false, error: "Internal server error" });
     }
   });
 
@@ -1184,6 +1471,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       switch (event) {
         case 'connection.update':
           console.log('Connection update:', data);
+          
+          // Update instance status in database
+          if (instance && data && data.state) {
+            try {
+              // Find instance by instanceKey
+              const instances = await storage.getWhatsappInstances();
+              const matchingInstance = instances.find(inst => inst.instanceKey === instance);
+              
+              if (matchingInstance) {
+                let newStatus = 'disconnected';
+                
+                // Map Evolution API states to our status
+                switch (data.state) {
+                  case 'open':
+                    newStatus = 'connected';
+                    break;
+                  case 'close':
+                  case 'closed':
+                    newStatus = 'disconnected';
+                    break;
+                  case 'connecting':
+                    newStatus = 'connecting';
+                    break;
+                  default:
+                    newStatus = data.state;
+                }
+                
+                // Update status in database
+                await storage.updateWhatsappInstance(matchingInstance.id, { 
+                  status: newStatus,
+                  lastConnection: newStatus === 'connected' ? new Date() : matchingInstance.lastConnection
+                });
+                
+                console.log(`✅ Instance ${instance} status updated to: ${newStatus}`);
+              }
+            } catch (error) {
+              console.error('Error updating instance status from webhook:', error);
+            }
+          }
           break;
         case 'messages.upsert':
           console.log('New message received:', data);

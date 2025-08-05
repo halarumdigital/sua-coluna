@@ -1087,6 +1087,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // WhatsApp Instances routes
+  app.get("/api/client/whatsapp-instances", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // For now, return empty array - this would be implemented based on business logic
+      // In the future, this would fetch instances from a database table
+      res.json([]);
+    } catch (error) {
+      console.error("Error fetching WhatsApp instances:", error);
+      res.status(500).json({ message: "Failed to fetch WhatsApp instances" });
+    }
+  });
+
+  app.post("/api/client/whatsapp-instances", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { instanceName, phoneNumber } = req.body;
+      
+      if (!instanceName || !phoneNumber) {
+        return res.status(400).json({ message: "Nome da instância e número de telefone são obrigatórios" });
+      }
+      
+      // Get admin WhatsApp settings
+      const adminSettings = await storage.getWhatsappApiSettings();
+      if (!adminSettings) {
+        return res.status(400).json({ message: "Configurações da API WhatsApp não encontradas" });
+      }
+      
+      // Create instance using Evolution API
+      const createInstanceResponse = await fetch(`${adminSettings.evolutionApiUrl}/instance/create`, {
+        method: 'POST',
+        headers: {
+          'apikey': adminSettings.globalToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          instanceName,
+          qrcode: true,
+          integration: "WHATSAPP-BAILEYS"
+        })
+      });
+      
+      if (!createInstanceResponse.ok) {
+        const errorData = await createInstanceResponse.json();
+        return res.status(400).json({ 
+          message: "Falha ao criar instância na Evolution API",
+          details: errorData
+        });
+      }
+      
+      const instanceData = await createInstanceResponse.json();
+      
+      res.json({
+        message: "Instância criada com sucesso",
+        instance: {
+          id: instanceData.instance.instanceName,
+          instanceName,
+          phoneNumber,
+          status: 'created',
+          createdAt: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      console.error("Error creating WhatsApp instance:", error);
+      res.status(500).json({ message: "Erro ao criar instância do WhatsApp" });
+    }
+  });
+
+  // WhatsApp webhook endpoint (no authentication required)
+  app.post("/api/client/whatsapp-webhook", async (req: any, res) => {
+    try {
+      const { event, instance, data } = req.body;
+      
+      console.log('WhatsApp webhook received:', { event, instance, data });
+      
+      // Handle different webhook events
+      switch (event) {
+        case 'connection.update':
+          console.log('Connection update:', data);
+          break;
+        case 'messages.upsert':
+          console.log('New message received:', data);
+          break;
+        case 'messages.update':
+          console.log('Message updated:', data);
+          break;
+        case 'messages.delete':
+          console.log('Message deleted:', data);
+          break;
+        default:
+          console.log('Unhandled event:', event);
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error processing WhatsApp webhook:", error);
+      res.status(500).json({ success: false, error: "Internal server error" });
+    }
+  });
+
   app.get("/api/client/conversations", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);

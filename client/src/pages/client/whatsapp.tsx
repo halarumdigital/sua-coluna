@@ -5,70 +5,73 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { 
   MessageCircle, 
-  Save, 
   Loader2, 
-  CheckCircle, 
-  AlertCircle,
-  Settings,
-  Send,
-  Phone
+  Plus,
+  Smartphone
 } from "lucide-react";
 
-interface WhatsAppSettings {
+interface WhatsAppInstance {
   id: string;
+  instanceName: string;
+  phoneNumber: string;
+  status: string;
+  createdAt: string;
+}
+
+interface AdminWhatsAppSettings {
   evolutionApiUrl: string;
   globalToken: string;
   isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export default function ClientWhatsAppPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState({
-    evolutionApiUrl: "",
-    globalToken: "",
-    isActive: true,
+    instanceName: "",
+    phoneNumber: "",
   });
 
-  // Fetch current WhatsApp settings
-  const { data: settings, isLoading } = useQuery({
-    queryKey: ["client-whatsapp-settings"],
+  // Fetch admin WhatsApp settings to get URL and token
+  const { data: adminSettings, isLoading: settingsLoading } = useQuery({
+    queryKey: ["admin-whatsapp-settings"],
     queryFn: async () => {
       const response = await fetch("/api/client/whatsapp-settings", {
         credentials: "include",
       });
       
       if (!response.ok) {
-        throw new Error("Falha ao carregar configurações do WhatsApp");
+        throw new Error("Falha ao carregar configurações do administrador");
       }
       
-      return response.json();
+      return response.json() as Promise<AdminWhatsAppSettings>;
     },
   });
 
-  // Update form data when settings are loaded
-  React.useEffect(() => {
-    if (settings) {
-      setFormData({
-        evolutionApiUrl: settings.evolutionApiUrl || "",
-        globalToken: settings.globalToken || "",
-        isActive: settings.isActive ?? true,
+  // Fetch existing instances
+  const { data: instances, isLoading: instancesLoading } = useQuery({
+    queryKey: ["whatsapp-instances"],
+    queryFn: async () => {
+      const response = await fetch("/api/client/whatsapp-instances", {
+        credentials: "include",
       });
-    }
-  }, [settings]);
+      
+      if (!response.ok) {
+        throw new Error("Falha ao carregar instâncias");
+      }
+      
+      return response.json() as Promise<WhatsAppInstance[]>;
+    },
+  });
 
-  // Save WhatsApp settings mutation
-  const saveSettingsMutation = useMutation({
-    mutationFn: async (data: typeof formData) => {
-      const response = await fetch("/api/client/whatsapp-settings", {
+  // Create instance mutation
+  const createInstanceMutation = useMutation({
+    mutationFn: async (data: { instanceName: string; phoneNumber: string }) => {
+      const response = await fetch("/api/client/whatsapp-instances", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -78,22 +81,24 @@ export default function ClientWhatsAppPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Falha ao salvar configurações");
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Falha ao criar instância");
       }
 
       return response.json();
     },
     onSuccess: () => {
       toast({
-        title: "Configurações Salvas",
-        description: "Configurações do WhatsApp salvas com sucesso!",
+        title: "Instância Criada",
+        description: "Instância do WhatsApp criada com sucesso!",
       });
-      queryClient.invalidateQueries({ queryKey: ["client-whatsapp-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+      setFormData({ instanceName: "", phoneNumber: "" });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast({
         title: "Erro",
-        description: error.message || "Erro ao salvar configurações",
+        description: error.message || "Erro ao criar instância",
         variant: "destructive",
       });
     },
@@ -101,215 +106,189 @@ export default function ClientWhatsAppPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
     
+    if (!formData.instanceName.trim() || !formData.phoneNumber.trim()) {
+      toast({
+        title: "Erro",
+        description: "Preencha todos os campos obrigatórios",
+        variant: "destructive",
+      });
+      return;
+    }
+
+           if (!adminSettings?.evolutionApiUrl || !adminSettings?.globalToken) {
+         toast({
+           title: "Erro",
+           description: "Configurações da API não encontradas. Entre em contato com o administrador.",
+           variant: "destructive",
+         });
+         return;
+       }
+
+       // Verificar se as configurações estão ativas
+       if (!adminSettings?.isActive) {
+         toast({
+           title: "Erro",
+           description: "Configurações da API WhatsApp estão inativas. Entre em contato com o administrador.",
+           variant: "destructive",
+         });
+         return;
+       }
+
+    setIsCreating(true);
     try {
-      await saveSettingsMutation.mutateAsync(formData);
+      await createInstanceMutation.mutateAsync(formData);
     } finally {
-      setIsSubmitting(false);
+      setIsCreating(false);
     }
   };
 
-  const handleInputChange = (field: string, value: string | boolean) => {
+  const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
       ...prev,
       [field]: value,
     }));
   };
 
-  const testConnection = async () => {
-    setIsSubmitting(true);
-    try {
-      const response = await fetch("/api/client/whatsapp-test", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        toast({
-          title: "Conexão Testada",
-          description: "Conexão com a API do WhatsApp estabelecida com sucesso!",
-        });
-      } else {
-        throw new Error("Falha na conexão");
-      }
-    } catch (error) {
-      toast({
-        title: "Erro na Conexão",
-        description: "Não foi possível conectar com a API do WhatsApp",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  if (settingsLoading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">WhatsApp</h1>
-            <p className="text-muted-foreground">
-              Configure sua integração com a API do WhatsApp
-            </p>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Badge variant={settings?.isActive ? "default" : "secondary"}>
-              {settings?.isActive ? "Ativo" : "Inativo"}
-            </Badge>
-          </div>
-        </div>
-
-        {/* Status Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <MessageCircle className="mr-2 h-5 w-5" />
-              Status da Integração
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center space-x-4">
-              {settings?.isActive ? (
-                <div className="flex items-center text-green-600">
-                  <CheckCircle className="mr-2 h-5 w-5" />
-                  <span className="font-medium">Integração Ativa</span>
-                </div>
-              ) : (
-                <div className="flex items-center text-yellow-600">
-                  <AlertCircle className="mr-2 h-5 w-5" />
-                  <span className="font-medium">Integração Inativa</span>
-                </div>
-              )}
-              <div className="text-sm text-muted-foreground">
-                Última atualização: {settings?.updatedAt ? 
-                  new Date(settings.updatedAt).toLocaleString('pt-BR') : 
-                  'Nunca'
-                }
+      <div className="max-w-2xl mx-auto p-6">
+        {/* Main Card */}
+        <Card className="bg-white rounded-lg shadow-lg">
+          <CardContent className="p-8">
+            {/* Header */}
+            <div className="flex items-center mb-6">
+              <Smartphone className="mr-3 h-6 w-6 text-gray-600" />
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Instâncias do WhatsApp
+                </h1>
+                <p className="text-gray-600 text-sm">
+                  Gerencie suas instâncias de WhatsApp para envio de mensagens automáticas.
+                </p>
               </div>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Configuration Form */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Settings className="mr-2 h-5 w-5" />
-              Configurações da API
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+            {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Evolution API URL */}
+              {/* Instance Name */}
               <div className="space-y-2">
-                <Label htmlFor="evolutionApiUrl">URL da Evolution API</Label>
+                <Label htmlFor="instanceName" className="text-sm font-medium text-gray-700">
+                  Nome da Instância
+                </Label>
                 <Input
-                  id="evolutionApiUrl"
-                  type="url"
-                  placeholder="https://sua-evolution-api.com"
-                  value={formData.evolutionApiUrl}
-                  onChange={(e) => handleInputChange("evolutionApiUrl", e.target.value)}
+                  id="instanceName"
+                  type="text"
+                  placeholder="Ex: principal"
+                  value={formData.instanceName}
+                  onChange={(e) => handleInputChange("instanceName", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
                   required
                 />
-                <p className="text-sm text-muted-foreground">
-                  URL da sua instância da Evolution API
-                </p>
               </div>
 
-              {/* Global Token */}
+              {/* Phone Number */}
               <div className="space-y-2">
-                <Label htmlFor="globalToken">Token Global</Label>
+                <Label htmlFor="phoneNumber" className="text-sm font-medium text-gray-700">
+                  Número de Telefone
+                </Label>
                 <Input
-                  id="globalToken"
-                  type="password"
-                  placeholder="Seu token global da Evolution API"
-                  value={formData.globalToken}
-                  onChange={(e) => handleInputChange("globalToken", e.target.value)}
+                  id="phoneNumber"
+                  type="tel"
+                  placeholder="Ex: 5511999999999"
+                  value={formData.phoneNumber}
+                  onChange={(e) => handleInputChange("phoneNumber", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
                   required
                 />
-                <p className="text-sm text-muted-foreground">
-                  Token de autenticação da sua Evolution API
-                </p>
               </div>
 
-              {/* Active Switch */}
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="isActive"
-                  checked={formData.isActive}
-                  onCheckedChange={(checked) => handleInputChange("isActive", checked)}
-                />
-                <Label htmlFor="isActive">Ativar integração</Label>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center space-x-4">
-                <Button 
-                  type="submit" 
-                  disabled={isSubmitting || isLoading}
-                  className="flex items-center"
-                >
-                  {isSubmitting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-2 h-4 w-4" />
-                  )}
-                  Salvar Configurações
-                </Button>
-
+              {/* Submit Button */}
+              <div className="flex justify-end">
                 <Button
-                  type="button"
-                  variant="outline"
-                  onClick={testConnection}
-                  disabled={isSubmitting || isLoading || !formData.evolutionApiUrl || !formData.globalToken}
-                  className="flex items-center"
+                  type="submit"
+                  disabled={isCreating || !adminSettings?.evolutionApiUrl || !adminSettings?.globalToken || !adminSettings?.isActive}
+                  className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-md flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Send className="mr-2 h-4 w-4" />
-                  Testar Conexão
+                  {isCreating ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                  <span>+ Criar Instância</span>
                 </Button>
               </div>
             </form>
           </CardContent>
         </Card>
 
-        {/* Information Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Phone className="mr-2 h-5 w-5" />
-              Informações Importantes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4 text-sm">
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-900 mb-2">Como configurar:</h4>
-                <ol className="list-decimal list-inside space-y-1 text-blue-800">
-                  <li>Certifique-se de que sua Evolution API está rodando</li>
-                  <li>Obtenha o token global da sua instância</li>
-                  <li>Configure a URL correta da sua API</li>
-                  <li>Teste a conexão antes de ativar</li>
-                </ol>
+        {/* Instances List */}
+        {instances && instances.length > 0 && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <MessageCircle className="mr-2 h-5 w-5" />
+                Instâncias Existentes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {instances.map((instance) => (
+                  <div
+                    key={instance.id}
+                    className="flex items-center justify-between p-3 border border-gray-200 rounded-lg"
+                  >
+                    <div>
+                      <h3 className="font-medium text-gray-900">{instance.instanceName}</h3>
+                      <p className="text-sm text-gray-600">{instance.phoneNumber}</p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        instance.status === 'connected' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {instance.status === 'connected' ? 'Conectado' : 'Desconectado'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
-              
-              <div className="p-4 bg-yellow-50 rounded-lg">
-                <h4 className="font-semibold text-yellow-900 mb-2">Atenção:</h4>
-                <ul className="list-disc list-inside space-y-1 text-yellow-800">
-                  <li>Mantenha seu token seguro e não o compartilhe</li>
-                  <li>A URL deve ser acessível a partir do servidor</li>
-                  <li>Teste sempre a conexão antes de usar em produção</li>
-                </ul>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Error Message if no admin settings */}
+        {!adminSettings?.evolutionApiUrl || !adminSettings?.globalToken || !adminSettings?.isActive ? (
+          <Card className="mt-6 border-yellow-200 bg-yellow-50">
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <MessageCircle className="mr-2 h-5 w-5 text-yellow-600" />
+                <div>
+                  <h3 className="font-medium text-yellow-800">
+                    Configurações não encontradas
+                  </h3>
+                  <p className="text-sm text-yellow-700">
+                    {!adminSettings?.evolutionApiUrl || !adminSettings?.globalToken 
+                      ? "As configurações da API WhatsApp não foram configuradas pelo administrador."
+                      : "As configurações da API WhatsApp estão inativas. Entre em contato com o administrador."
+                    }
+                  </p>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
     </Layout>
   );

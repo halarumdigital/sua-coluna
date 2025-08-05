@@ -303,6 +303,26 @@ export const whatsappApiSettings = mysqlTable("whatsapp_api_settings", {
   index("idx_whatsapp_api_active").on(table.isActive),
 ]);
 
+// Instâncias WhatsApp dos clientes
+export const whatsappInstances = mysqlTable("whatsapp_instances", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  clientId: varchar("client_id", { length: 36 }).references(() => clients.id).notNull(),
+  instanceName: varchar("instance_name", { length: 100 }).notNull(),
+  instanceKey: varchar("instance_key", { length: 100 }).unique().notNull(),
+  webhook: varchar("webhook", { length: 500 }),
+  status: varchar("status", { length: 20 }).notNull().default("disconnected"), // connected, disconnected, connecting, error
+  qrCode: text("qr_code"),
+  lastConnection: timestamp("last_connection"),
+  phoneNumber: varchar("phone_number", { length: 20 }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_whatsapp_instances_client").on(table.clientId),
+  index("idx_whatsapp_instances_status").on(table.status),
+  index("idx_whatsapp_instances_active").on(table.isActive),
+]);
+
 // Relations
 export const usersRelations = relations(users, ({ one }) => ({
   client: one(clients, { fields: [users.id], references: [clients.userId] }),
@@ -319,6 +339,7 @@ export const clientsRelations = relations(clients, ({ one, many }) => ({
   portalAccess: many(clientPortalAccess),
   monthlyGoals: many(clientMonthlyGoals),
   meetingNotes: many(meetingNotes),
+  whatsappInstances: many(whatsappInstances),
 }));
 
 export const clientContactsRelations = relations(clientContacts, ({ one }) => ({
@@ -376,6 +397,10 @@ export const aiConfigurationsRelations = relations(aiConfigurations, ({ one }) =
 
 export const aiUsageRelations = relations(aiUsage, ({ one }) => ({
   user: one(users, { fields: [aiUsage.userId], references: [users.id] }),
+}));
+
+export const whatsappInstancesRelations = relations(whatsappInstances, ({ one }) => ({
+  client: one(clients, { fields: [whatsappInstances.clientId], references: [clients.id] }),
 }));
 
 // Insert schemas
@@ -468,6 +493,12 @@ export const insertAIUsageSchema = createInsertSchema(aiUsage).omit({
 });
 
 export const insertWhatsappApiSettingsSchema = createInsertSchema(whatsappApiSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertWhatsappInstanceSchema = createInsertSchema(whatsappInstances).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -606,3 +637,14 @@ export const whatsappApiSettingsSchema = z.object({
 export type WhatsappApiSettings = typeof whatsappApiSettings.$inferSelect;
 export type InsertWhatsappApiSettings = z.infer<typeof insertWhatsappApiSettingsSchema>;
 export type WhatsappApiSettingsForm = z.infer<typeof whatsappApiSettingsSchema>;
+
+// Schema para criação de instância WhatsApp
+export const createWhatsappInstanceSchema = z.object({
+  instanceName: z.string().min(1, "Nome da instância é obrigatório"),
+  instanceKey: z.string().min(1, "Chave da instância é obrigatória"),
+  webhook: z.string().url("URL de webhook inválida").optional().or(z.literal("")),
+});
+
+export type WhatsappInstance = typeof whatsappInstances.$inferSelect;
+export type InsertWhatsappInstance = z.infer<typeof insertWhatsappInstanceSchema>;
+export type CreateWhatsappInstance = z.infer<typeof createWhatsappInstanceSchema>;

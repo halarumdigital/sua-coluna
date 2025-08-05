@@ -11,6 +11,8 @@ import {
   aiUsage,
   whatsappApiSettings,
   whatsappInstances,
+  whatsappConversations,
+  whatsappMessages,
   type User,
   type UpsertUser,
   type Client,
@@ -35,9 +37,13 @@ import {
   type WhatsappApiSettingsForm,
   type WhatsappInstance,
   type InsertWhatsappInstance,
+  type WhatsappConversation,
+  type InsertWhatsappConversation,
+  type WhatsappMessage,
+  type InsertWhatsappMessage,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, count, sum, sql } from "drizzle-orm";
+import { eq, desc, and, count, sum, sql, like, gte, lte, or, between, asc } from "drizzle-orm";
 import crypto from "crypto";
 
 export interface IStorage {
@@ -164,6 +170,22 @@ export interface IStorage {
   createWhatsappInstance(instance: InsertWhatsappInstance): Promise<WhatsappInstance>;
   updateWhatsappInstance(id: string, instance: Partial<InsertWhatsappInstance>): Promise<WhatsappInstance>;
   deleteWhatsappInstance(id: string): Promise<void>;
+
+  // WhatsApp Conversations operations
+  createWhatsappConversation(conversation: InsertWhatsappConversation): Promise<WhatsappConversation>;
+  updateWhatsappConversation(id: string, conversation: Partial<InsertWhatsappConversation>): Promise<WhatsappConversation>;
+  getWhatsappConversationById(id: string): Promise<WhatsappConversation | undefined>;
+  getWhatsappConversationByChatId(instanceId: string, chatId: string): Promise<WhatsappConversation | undefined>;
+  getWhatsappConversationsByClient(clientId: string, filters?: {
+    search?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<WhatsappConversation[]>;
+  updateConversationStatus(id: string, status: string): Promise<WhatsappConversation>;
+  
+  // WhatsApp Messages operations
+  createWhatsappMessage(message: InsertWhatsappMessage): Promise<WhatsappMessage>;
+  getWhatsappMessagesByConversation(conversationId: string): Promise<WhatsappMessage[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1167,6 +1189,189 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWhatsappInstance(id: string): Promise<void> {
     await db.delete(whatsappInstances).where(eq(whatsappInstances.id, id));
+  }
+
+  // WhatsApp Conversations operations
+  async createWhatsappConversation(conversation: InsertWhatsappConversation): Promise<WhatsappConversation> {
+    try {
+      const [newConversation] = await db
+        .insert(whatsappConversations)
+        .values({
+          ...conversation,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+
+      return newConversation;
+    } catch (error: any) {
+      // If duplicate, update instead
+      if (error.code === 'ER_DUP_ENTRY') {
+        const updated = await this.updateWhatsappConversationByChatId(
+          conversation.instanceId!,
+          conversation.chatId!,
+          {
+            contactName: conversation.contactName,
+            lastMessage: conversation.lastMessage,
+            lastMessageAt: conversation.lastMessageAt,
+            status: conversation.status,
+            updatedAt: new Date()
+          }
+        );
+        return updated;
+      }
+      throw error;
+    }
+  }
+
+  async updateWhatsappConversation(id: string, conversation: Partial<InsertWhatsappConversation>): Promise<WhatsappConversation> {
+    await db
+      .update(whatsappConversations)
+      .set({ ...conversation, updatedAt: new Date() })
+      .where(eq(whatsappConversations.id, id));
+
+    const [updatedConversation] = await db
+      .select()
+      .from(whatsappConversations)
+      .where(eq(whatsappConversations.id, id));
+
+    return updatedConversation;
+  }
+
+  async updateWhatsappConversationByChatId(instanceId: string, chatId: string, conversation: Partial<InsertWhatsappConversation>): Promise<WhatsappConversation> {
+    await db
+      .update(whatsappConversations)
+      .set({ ...conversation, updatedAt: new Date() })
+      .where(
+        and(
+          eq(whatsappConversations.instanceId, instanceId),
+          eq(whatsappConversations.chatId, chatId)
+        )
+      );
+
+    const [updatedConversation] = await db
+      .select()
+      .from(whatsappConversations)
+      .where(
+        and(
+          eq(whatsappConversations.instanceId, instanceId),
+          eq(whatsappConversations.chatId, chatId)
+        )
+      );
+
+    return updatedConversation;
+  }
+
+  async getWhatsappConversationById(id: string): Promise<WhatsappConversation | undefined> {
+    const [conversation] = await db
+      .select()
+      .from(whatsappConversations)
+      .where(eq(whatsappConversations.id, id));
+    return conversation;
+  }
+
+  async getWhatsappConversationByChatId(instanceId: string, chatId: string): Promise<WhatsappConversation | undefined> {
+    const [conversation] = await db
+      .select()
+      .from(whatsappConversations)
+      .where(and(
+        eq(whatsappConversations.instanceId, instanceId),
+        eq(whatsappConversations.chatId, chatId)
+      ));
+
+    return conversation;
+  }
+
+  async getWhatsappConversationsByClient(clientId: string, filters?: {
+    search?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<WhatsappConversation[]> {
+    // Base query
+    let query = db
+      .select()
+      .from(whatsappConversations)
+      .innerJoin(whatsappInstances, eq(whatsappConversations.instanceId, whatsappInstances.id))
+      .where(eq(whatsappInstances.clientId, clientId));
+
+    // Build conditions array
+    const conditions = [eq(whatsappInstances.clientId, clientId)];
+
+    // Apply search filter (busca por nome do contato ou telefone)
+    if (filters?.search) {
+      const searchTerm = `%${filters.search}%`;
+      conditions.push(
+        or(
+          like(whatsappConversations.contactName, searchTerm),
+          like(whatsappConversations.phoneNumber, searchTerm)
+        )
+      );
+    }
+
+    // Apply date range filter
+    if (filters?.startDate && filters?.endDate) {
+      conditions.push(
+        between(whatsappConversations.lastMessageAt, filters.startDate, filters.endDate)
+      );
+    } else if (filters?.startDate) {
+      conditions.push(gte(whatsappConversations.lastMessageAt, filters.startDate));
+    } else if (filters?.endDate) {
+      conditions.push(lte(whatsappConversations.lastMessageAt, filters.endDate));
+    }
+
+    // Execute query with conditions
+    const results = await db
+      .select({
+        id: whatsappConversations.id,
+        instanceId: whatsappConversations.instanceId,
+        chatId: whatsappConversations.chatId,
+        phoneNumber: whatsappConversations.phoneNumber,
+        contactName: whatsappConversations.contactName,
+        lastMessage: whatsappConversations.lastMessage,
+        lastMessageAt: whatsappConversations.lastMessageAt,
+        unreadCount: whatsappConversations.unreadCount,
+        isGroup: whatsappConversations.isGroup,
+        groupName: whatsappConversations.groupName,
+        status: whatsappConversations.status,
+        createdAt: whatsappConversations.createdAt,
+        updatedAt: whatsappConversations.updatedAt,
+      })
+      .from(whatsappConversations)
+      .innerJoin(whatsappInstances, eq(whatsappConversations.instanceId, whatsappInstances.id))
+      .where(and(...conditions))
+      .orderBy(desc(whatsappConversations.lastMessageAt));
+
+    return results;
+  }
+
+  async createWhatsappMessage(message: InsertWhatsappMessage): Promise<WhatsappMessage> {
+    const [newMessage] = await db
+      .insert(whatsappMessages)
+      .values(message);
+
+    return newMessage;
+  }
+
+  async getWhatsappMessagesByConversation(conversationId: string): Promise<WhatsappMessage[]> {
+    return await db
+      .select()
+      .from(whatsappMessages)
+      .where(eq(whatsappMessages.conversationId, conversationId))
+      .orderBy(asc(whatsappMessages.timestamp));
+  }
+
+  async updateConversationStatus(id: string, status: string): Promise<WhatsappConversation> {
+    await db
+      .update(whatsappConversations)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(whatsappConversations.id, id));
+
+    // Get the updated conversation
+    const [updatedConversation] = await db
+      .select()
+      .from(whatsappConversations)
+      .where(eq(whatsappConversations.id, id));
+
+    return updatedConversation;
   }
 }
 

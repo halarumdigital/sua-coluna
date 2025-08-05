@@ -26,6 +26,9 @@ export class WhatsAppAIHandler {
         return;
       }
 
+      // Salvar conversa e mensagem no banco de dados
+      await this.saveConversationAndMessage(instanceKey, phoneNumber, messageText, messageObj);
+
       console.log(`📱 Mensagem de ${phoneNumber}: ${messageText.substring(0, 100)}${messageText.length > 100 ? '...' : ''}`);
 
       // Verificar se a instância pertence a um cliente
@@ -122,6 +125,67 @@ Responda de forma natural e útil, como um assistente virtual. Mantenha a respos
     } catch (error) {
       console.error('❌ Erro ao verificar se auto-reply está habilitado:', error);
       return false;
+    }
+  }
+
+  private async saveConversationAndMessage(instanceKey: string, phoneNumber: string, messageText: string, messageObj: any): Promise<void> {
+    try {
+      // Encontrar a instância
+      const instances = await storage.getWhatsappInstances();
+      const instance = instances.find(inst => inst.instanceKey === instanceKey);
+      
+      if (!instance) {
+        console.log(`❌ Instância ${instanceKey} não encontrada`);
+        return;
+      }
+
+      const chatId = messageObj.key?.remoteJid || `${phoneNumber}@s.whatsapp.net`;
+      const messageId = messageObj.key?.id || `msg_${Date.now()}`;
+      const timestamp = new Date(messageObj.messageTimestamp ? messageObj.messageTimestamp * 1000 : Date.now());
+
+      // Verificar se a conversa já existe
+      let conversation = await storage.getWhatsappConversationByChatId(instance.id, chatId);
+
+      if (!conversation) {
+        // Criar nova conversa
+        conversation = await storage.createWhatsappConversation({
+          instanceId: instance.id,
+          chatId: chatId,
+          phoneNumber: phoneNumber,
+          contactName: phoneNumber, // Pode ser atualizado depois com o nome real
+          lastMessage: messageText,
+          lastMessageAt: timestamp,
+          unreadCount: 1,
+          isGroup: chatId.includes('@g.us'),
+          status: 'active'
+        });
+        console.log(`✅ Nova conversa criada: ${conversation.id}`);
+      } else {
+        // Atualizar conversa existente
+        conversation = await storage.updateWhatsappConversation(conversation.id, {
+          lastMessage: messageText,
+          lastMessageAt: timestamp,
+          unreadCount: (conversation.unreadCount || 0) + 1
+        });
+        console.log(`✅ Conversa atualizada: ${conversation.id}`);
+      }
+
+      // Salvar a mensagem
+      await storage.createWhatsappMessage({
+        conversationId: conversation.id,
+        messageId: messageId,
+        senderPhone: phoneNumber,
+        messageText: messageText,
+        messageType: 'text',
+        direction: 'inbound',
+        status: 'delivered',
+        timestamp: timestamp,
+        isAiResponse: false
+      });
+
+      console.log(`✅ Mensagem salva no banco de dados`);
+    } catch (error) {
+      console.error('❌ Erro ao salvar conversa/mensagem:', error);
     }
   }
 }

@@ -202,7 +202,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Validation errors:", error.errors);
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
-      res.status(500).json({ message: "Failed to update client", error: error instanceof Error ? error.message : 'Unknown error' });
+      res.status(500).json({ message: "Failed to update client", error: error.message });
     }
   });
 
@@ -597,12 +597,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Configurações salvas com sucesso",
         settings: updatedSettings
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error saving system settings:", error);
       console.error("Error stack:", error.stack);
       res.status(500).json({ 
         message: "Failed to save system settings",
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error.message 
       });
     }
   });
@@ -1822,111 +1822,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error syncing conversations:", error);
       res.status(500).json({ 
         message: "Failed to sync conversations",
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
-
-  // Novo endpoint para buscar conversas diretamente da Evolution API
-  app.get("/api/client/conversations-evolution", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = getCurrentUserId(req);
-      if (!userId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      
-      const user = await storage.getUser(userId);
-      if (user?.role !== 'client') {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      
-      // Parâmetros de filtro
-      const { search, startDate, endDate } = req.query;
-      console.log('🔍 Buscando conversas diretamente da Evolution API...', {
-        search: search || 'sem filtro',
-        startDate: startDate || 'sem data início',
-        endDate: endDate || 'sem data fim'
-      });
-      
-      // Get active WhatsApp instances
-      const instances = await storage.getWhatsappInstances();
-      if (instances.length === 0) {
-        console.log('❌ Nenhuma instância encontrada');
-        return res.json([]);
-      }
-      
-      const { whatsappService } = await import('./whatsapp');
-      let allChats: any[] = [];
-      
-      // Buscar chats de todas as instâncias
-      for (const instance of instances) {
-        console.log(`🔍 Buscando chats da instância: ${instance.instanceKey}`);
-        
-        const chatsResult = await whatsappService.findChats(instance.instanceKey);
-        if (chatsResult.success && chatsResult.data) {
-          const chats = Array.isArray(chatsResult.data) ? chatsResult.data : [];
-          console.log(`✅ ${chats.length} chats encontrados na instância ${instance.instanceKey}`);
-          
-          // Formatar chats para o frontend
-          const formattedChats = chats
-            .filter(chat => chat && chat.id) // Filtrar chats válidos
-            .map((chat: any) => ({
-              id: chat.id, // remoteJid direto
-              contactName: chat.name || chat.pushName || (chat.id ? chat.id.replace('@s.whatsapp.net', '') : 'Contato'),
-              contactPhone: chat.id ? chat.id.replace('@s.whatsapp.net', '') : '',
-              lastMessage: chat.lastMessage?.message?.conversation || 
-                          chat.lastMessage?.message?.extendedTextMessage?.text || 
-                          '[Mídia]',
-              lastMessageTime: chat.lastMessage?.messageTimestamp 
-                ? new Date(chat.lastMessage.messageTimestamp * 1000).toISOString()
-                : new Date().toISOString(),
-              status: "active",
-              unreadCount: chat.unreadCount || 0,
-              instanceKey: instance.instanceKey
-            }));
-          
-          allChats.push(...formattedChats);
-        } else {
-          console.log(`❌ Falha ao buscar chats da instância ${instance.instanceKey}: ${chatsResult.error}`);
-        }
-      }
-      
-      // Aplicar filtros
-      let filteredChats = allChats;
-      
-      // Filtro de busca por nome ou telefone
-      if (search && typeof search === 'string' && search.trim()) {
-        const searchTerm = search.toLowerCase().trim();
-        filteredChats = filteredChats.filter(chat => 
-          chat.contactName.toLowerCase().includes(searchTerm) ||
-          chat.contactPhone.includes(searchTerm) ||
-          chat.lastMessage.toLowerCase().includes(searchTerm)
-        );
-        console.log(`🔍 Filtro de busca "${search}" aplicado: ${filteredChats.length}/${allChats.length} conversas`);
-      }
-      
-      // Filtro por data (se implementado)
-      if (startDate || endDate) {
-        const start = startDate ? new Date(startDate as string) : null;
-        const end = endDate ? new Date(endDate as string) : null;
-        
-        filteredChats = filteredChats.filter(chat => {
-          const chatDate = new Date(chat.lastMessageTime);
-          if (start && chatDate < start) return false;
-          if (end && chatDate > end) return false;
-          return true;
-        });
-        console.log(`📅 Filtro de data aplicado: ${filteredChats.length}/${allChats.length} conversas`);
-      }
-      
-      console.log(`📬 Total de conversas filtradas: ${filteredChats.length}/${allChats.length}`);
-      res.json(filteredChats);
-      
-    } catch (error) {
-      console.error("Error fetching conversations from Evolution API:", error);
-      res.status(500).json({ 
-        message: "Internal server error",
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error.message 
       });
     }
   });
@@ -2016,20 +1912,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Debug route temporária - REMOVER EM PRODUÇÃO
-  app.get("/api/debug/whatsapp-settings", async (req: any, res) => {
-    try {
-      const apiSettings = await storage.getWhatsappApiSettings();
-      res.json({
-        evolutionApiUrl: apiSettings?.evolutionApiUrl || 'Not configured',
-        globalToken: apiSettings?.globalToken || 'Not configured',
-        hasSettings: !!apiSettings
-      });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to get settings' });
-    }
-  });
-
   app.get("/api/client/conversations/:id/messages", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
@@ -2044,161 +1926,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const { id } = req.params;
       
-      // O ID agora é o remoteJid diretamente (ex: 552299717515@s.whatsapp.net)
-      const remoteJid = decodeURIComponent(id); // Decodificar URL
-      console.log(`🔍 Buscando mensagens para remoteJid: ${remoteJid}`);
+      // Get conversation details to find the instance and chatId
+      console.log(`🔍 Buscando conversa com ID: ${id}`);
+      const conversation = await storage.getWhatsappConversationById(id);
+      if (!conversation) {
+        console.log(`❌ Conversa não encontrada: ${id}`);
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      console.log(`✅ Conversa encontrada: ${conversation.contactName} (${conversation.chatId})`);
+      console.log(`📋 Dados da conversa:`, {
+        id: conversation.id,
+        instanceId: conversation.instanceId,
+        chatId: conversation.chatId,
+        contactName: conversation.contactName,
+        phoneNumber: conversation.phoneNumber
+      });
       
-      let formattedMessages: any[] = [];
-      
-      // Get WhatsApp instance details - usar primeira instância ativa
-      console.log(`🔍 Buscando instâncias disponíveis...`);
+      // Get WhatsApp instance details
+      console.log(`🔍 Buscando instância: ${conversation.instanceId}`);
       const instances = await storage.getWhatsappInstances();
-      if (instances.length === 0) {
-        console.log(`❌ Nenhuma instância encontrada`);
-        return res.json([]);
+      const instance = instances.find(inst => inst.id === conversation.instanceId);
+      if (!instance) {
+        console.log(`❌ Instância não encontrada: ${conversation.instanceId}`);
+        return res.status(404).json({ message: "WhatsApp instance not found" });
       }
+      console.log(`✅ Instância encontrada: ${instance.instanceName} (${instance.instanceKey})`);
       
-      const instance = instances[0]; // Usar primeira instância disponível
-      console.log(`✅ Usando instância: ${instance.instanceName} (${instance.instanceKey})`);
+      // Try to get messages from Evolution API first
+      const { whatsappService } = await import('./whatsapp');
+      console.log(`🔍 Chamando findMessages para: ${conversation.chatId} na instância ${instance.instanceKey}`);
+      const evolutionResult = await whatsappService.findMessages(
+        instance.instanceKey, 
+        conversation.chatId,
+        1, // page
+        20 // offset
+      );
+      console.log(`📡 Resultado Evolution API:`, {
+        success: evolutionResult.success,
+        dataType: typeof evolutionResult.data,
+        error: evolutionResult.error
+      });
       
-      // PRIORIZAR Evolution API - buscar mensagens diretamente da API
-      console.log('🔍 Buscando mensagens da Evolution API...');
-      try {
-        const { whatsappService } = await import('./whatsapp');
+      let formattedMessages = [];
+      
+      if (evolutionResult.success && evolutionResult.data) {
+        let messages = [];
         
-        // Testar diferentes formatos de remoteJid baseados no ID passado
-        const remoteJidVariants = [
-          remoteJid, // ID exato decodificado
-          remoteJid.includes('@') ? remoteJid : remoteJid + '@s.whatsapp.net', // Garantir formato WhatsApp
-          remoteJid.replace('@s.whatsapp.net', ''), // Só o número
-          remoteJid.replace('@s.whatsapp.net', '') + '@s.whatsapp.net', // Recriar formato
-        ].filter(Boolean).filter((item, pos, arr) => arr.indexOf(item) === pos); // Remove duplicatas
-        
-        console.log(`🔍 Testando variantes de remoteJid:`, remoteJidVariants);
-        
-        let evolutionResult = null;
-        let usedRemoteJid = null;
-        
-        // Tentar cada variante até encontrar mensagens
-        for (const remoteJid of remoteJidVariants) {
-          console.log(`🔍 Tentando buscar mensagens para: ${remoteJid}`);
-          
-          evolutionResult = await whatsappService.findMessages(instance.instanceKey, remoteJid, 1, 100);
-          console.log(`📋 Resultado para ${remoteJid}:`, {
-            success: evolutionResult.success,
-            hasData: !!evolutionResult.data,
-            dataType: typeof evolutionResult.data,
-            error: evolutionResult.error
-          });
-          
-          if (evolutionResult.success && evolutionResult.data) {
-            const testMessages = Array.isArray(evolutionResult.data) 
-              ? evolutionResult.data 
-              : (evolutionResult.data.messages || []);
-            
-            if (Array.isArray(testMessages) && testMessages.length > 0) {
-              usedRemoteJid = remoteJid;
-              console.log(`✅ Mensagens encontradas com remoteJid: ${remoteJid}`);
-              break;
-            }
-          }
+        // Handle different response formats from Evolution API
+        if (Array.isArray(evolutionResult.data)) {
+          messages = evolutionResult.data;
+        } else if (evolutionResult.data && typeof evolutionResult.data === 'object' && evolutionResult.data.messages) {
+          messages = evolutionResult.data.messages;
+        } else if (evolutionResult.data && typeof evolutionResult.data === 'object') {
+          // Sometimes the API returns the messages directly in the object
+          messages = [];
         }
         
-        if (evolutionResult && evolutionResult.success && evolutionResult.data && usedRemoteJid) {
-          let messages: any[] = [];
+        if (Array.isArray(messages) && messages.length > 0) {
+          // Format messages from Evolution API
+          formattedMessages = messages.map((msg: any) => ({
+          id: msg.key?.id || msg.id || `msg_${Date.now()}_${Math.random()}`,
+          content: msg.message?.conversation || 
+                   msg.message?.extendedTextMessage?.text ||
+                   msg.message?.imageMessage?.caption ||
+                   msg.message?.videoMessage?.caption ||
+                   msg.message?.audioMessage?.caption ||
+                   '[Mídia]' || '',
+          timestamp: new Date(msg.messageTimestamp * 1000).toISOString(),
+          isFromUser: msg.key?.fromMe === true,
+          status: msg.status || 'sent'
+          }));
           
-          // Handle different response formats from Evolution API
-          if (Array.isArray(evolutionResult.data)) {
-            messages = evolutionResult.data;
-          } else if (evolutionResult.data && typeof evolutionResult.data === 'object' && evolutionResult.data.messages) {
-            messages = evolutionResult.data.messages;
-          } else if (evolutionResult.data && typeof evolutionResult.data === 'object') {
-            // Try to find messages in other possible structures
-            const possibleArrays = Object.values(evolutionResult.data).filter(val => Array.isArray(val));
-            messages = possibleArrays.length > 0 ? possibleArrays[0] : [];
-          }
-          
-          console.log(`📬 Raw messages array length: ${Array.isArray(messages) ? messages.length : 'not array'}`);
-          console.log(`📬 Raw data structure:`, JSON.stringify(evolutionResult.data, null, 2).substring(0, 500));
-          
-          if (Array.isArray(messages) && messages.length > 0) {
-            // Format messages from Evolution API
-            formattedMessages = messages
-              .filter(msg => msg && (msg.message || msg.messageText)) // Filtrar mensagens válidas
-              .map((msg: any) => {
-                const timestamp = msg.messageTimestamp 
-                  ? new Date(msg.messageTimestamp * 1000).toISOString()
-                  : new Date().toISOString();
-                
-                const content = msg.message?.conversation || 
-                               msg.message?.extendedTextMessage?.text ||
-                               msg.message?.imageMessage?.caption ||
-                               msg.message?.videoMessage?.caption ||
-                               msg.message?.audioMessage?.caption ||
-                               msg.messageText ||
-                               '[Mídia]';
-                
-                return {
-                  id: msg.key?.id || msg.id || `msg_${Date.now()}_${Math.random()}`,
-                  content: content,
-                  timestamp: timestamp,
-                  isFromUser: msg.key?.fromMe === true || msg.direction === 'outbound',
-                  status: msg.status || 'sent'
-                };
-              });
-            
-            console.log(`✅ ${formattedMessages.length} mensagens formatadas da Evolution API`);
-          } else {
-            console.log(`⚠️ Nenhuma mensagem válida encontrada na Evolution API`);
-          }
-        } else {
-          console.log(`⚠️ Falha ao buscar da Evolution API para todas as variantes`);
+          console.log(`✅ ${formattedMessages.length} mensagens recuperadas da Evolution API`);
         }
+      } else {
+        console.log(`⚠️ Falha ao buscar da Evolution API: ${evolutionResult.error}`);
+        console.log('🔄 Tentando buscar do banco de dados local...');
         
-      } catch (apiError) {
-        console.error('❌ Erro ao buscar da Evolution API:', apiError);
+        // Fallback to local database
+        const messages = await storage.getWhatsappMessagesByConversation(id);
+        formattedMessages = messages.map(msg => ({
+          id: msg.id,
+          content: msg.messageText || '',
+          timestamp: msg.timestamp.toISOString(),
+          isFromUser: msg.direction === 'outbound',
+          status: msg.status
+        }));
+        
+        console.log(`✅ ${formattedMessages.length} mensagens recuperadas do banco local`);
       }
       
-      // FALLBACK: Se Evolution API falhou, tentar banco local
-      if (formattedMessages.length === 0) {
-        console.log('🔄 Evolution API não retornou mensagens, tentando banco local...');
-        
-        try {
-          const localMessages = await storage.getWhatsappMessagesByConversation(id);
-          console.log(`📬 ${localMessages.length} mensagens encontradas no banco local`);
-          
-          if (localMessages.length > 0) {
-            formattedMessages = localMessages.map(msg => ({
-              id: msg.id,
-              content: msg.messageText || '',
-              timestamp: msg.timestamp.toISOString(),
-              isFromUser: msg.direction === 'outbound',
-              status: msg.status || 'sent'
-            }));
-            console.log(`✅ ${formattedMessages.length} mensagens formatadas do banco local`);
-          }
-        } catch (dbError) {
-          console.error('❌ Erro ao buscar no banco local:', dbError);
-        }
-      }
-      
-      // Ordenar mensagens por timestamp (mais antigas primeiro)
-      formattedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      
-      console.log(`📤 Retornando ${formattedMessages.length} mensagens para o frontend`);
-      
-      // Garantir que sempre retorna um array válido
-      res.json(Array.isArray(formattedMessages) ? formattedMessages : []);
-      
+      res.json(formattedMessages);
     } catch (error) {
       console.error("Error fetching conversation messages:", error);
+      console.error("Error details:", {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
       res.status(500).json({ 
-        message: "Internal server error",
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: "Failed to fetch messages",
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        debug: {
+          errorOccurred: true,
+          errorName: error.name,
+          errorMessage: error.message,
+          conversationId: req.params.id
+        }
       });
     }
   });
 
+  // Client profile routes
   app.get("/api/client/profile", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);

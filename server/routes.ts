@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertClientSchema, insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema, aiSettingsSchema, createClientSchema, editClientSchema } from "@shared/schema";
 import { openaiService } from "./openai";
+import { whatsappAIHandler } from "./whatsapp-ai-handler";
 import { z } from "zod";
 import multer from "multer";
 import path from "path";
@@ -1441,7 +1442,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Generate webhook URL for this instance
-      const baseUrl = req.protocol + '://' + req.get('host');
+      // Use public URL for webhook to avoid localhost issues with Evolution API
+      let baseUrl;
+      if (process.env.NODE_ENV === 'production' || process.env.REPL_ID) {
+        // Use Replit URL in production or when running on Replit
+        baseUrl = `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
+      } else {
+        // Use localhost for development
+        baseUrl = req.protocol + '://' + req.get('host');
+      }
       const webhookUrl = `${baseUrl}/api/client/whatsapp-webhook/${instanceKey}`;
 
       // Prepare webhook configuration for Evolution API
@@ -1634,6 +1643,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           break;
         case 'messages.upsert':
           console.log('New message received:', data);
+          
+          // Processar resposta automática com AI
+          try {
+            const isAutoReplyEnabled = await whatsappAIHandler.isAutoReplyEnabled(instance);
+            if (isAutoReplyEnabled) {
+              // Executar em background para não bloquear o webhook
+              whatsappAIHandler.handleIncomingMessage(instance, data).catch(error => {
+                console.error('❌ Erro ao processar resposta automática:', error);
+              });
+            }
+          } catch (error) {
+            console.error('❌ Erro ao verificar auto-reply:', error);
+          }
           break;
         case 'messages.update':
           console.log('Message updated:', data);

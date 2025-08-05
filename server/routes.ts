@@ -851,7 +851,116 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log("Testing AI chat with:", { 
         message: message.substring(0, 50) + "...", 
-        model: settings.model,
+        model: settings.model
+      });
+
+      const response = await openaiService.chat(message, settings, userId);
+      res.json(response);
+    } catch (error) {
+      console.error("Error in AI chat:", error);
+      res.status(500).json({ message: "Failed to process AI chat" });
+    }
+  });
+
+  // WhatsApp API Settings routes
+  app.get("/api/admin/whatsapp-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const settings = await storage.getWhatsappApiSettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching WhatsApp API settings:", error);
+      res.status(500).json({ message: "Failed to fetch WhatsApp API settings" });
+    }
+  });
+
+  app.post("/api/admin/whatsapp-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { whatsappApiSettingsSchema } = await import("@shared/schema");
+      const validatedData = whatsappApiSettingsSchema.parse(req.body);
+      
+      const settings = await storage.saveWhatsappApiSettings(validatedData, userId);
+      res.json({ 
+        message: "Configurações da API WhatsApp salvas com sucesso",
+        settings
+      });
+    } catch (error) {
+      console.error("Error saving WhatsApp API settings:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to save WhatsApp API settings" });
+    }
+  });
+
+  app.put("/api/admin/whatsapp-settings/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { id } = req.params;
+      const { whatsappApiSettingsSchema } = await import("@shared/schema");
+      const validatedData = whatsappApiSettingsSchema.partial().parse(req.body);
+      
+      const settings = await storage.updateWhatsappApiSettings(id, validatedData);
+      res.json({ 
+        message: "Configurações da API WhatsApp atualizadas com sucesso",
+        settings
+      });
+    } catch (error) {
+      console.error("Error updating WhatsApp API settings:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update WhatsApp API settings" });
+    }
+  });
+
+  app.delete("/api/admin/whatsapp-settings/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { id } = req.params;
+      await storage.deleteWhatsappApiSettings(id);
+      res.json({ message: "Configurações da API WhatsApp removidas com sucesso" });
+    } catch (error) {
+      console.error("Error deleting WhatsApp API settings:", error);
+      res.status(500).json({ message: "Failed to delete WhatsApp API settings" });
+    }del,
         hasApiKey: !!settings.chatGptApiKey 
       });
 

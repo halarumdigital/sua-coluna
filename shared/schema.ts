@@ -290,6 +290,19 @@ export const aiUsage = mysqlTable("ai_usage", {
   index("idx_ai_usage_model").on(table.model),
 ]);
 
+// Configurações da API WhatsApp
+export const whatsappApiSettings = mysqlTable("whatsapp_api_settings", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  evolutionApiUrl: varchar("evolution_api_url", { length: 500 }).notNull(),
+  globalToken: varchar("global_token", { length: 500 }).notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_whatsapp_api_active").on(table.isActive),
+]);
+
 // Relations
 export const usersRelations = relations(users, ({ one }) => ({
   client: one(clients, { fields: [users.id], references: [clients.userId] }),
@@ -454,6 +467,12 @@ export const insertAIUsageSchema = createInsertSchema(aiUsage).omit({
   createdAt: true,
 });
 
+export const insertWhatsappApiSettingsSchema = createInsertSchema(whatsappApiSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Schema for creating/updating roles
 export const createRoleSchema = z.object({
   name: z.string().min(1, "Nome da role é obrigatório").regex(/^[a-z_]+$/, "Nome deve conter apenas letras minúsculas e underscore"),
@@ -576,3 +595,14 @@ export type AIConfiguration = typeof aiConfigurations.$inferSelect;
 export type InsertAIConfiguration = z.infer<typeof insertAIConfigurationSchema>;
 export type AIUsage = typeof aiUsage.$inferSelect;
 export type InsertAIUsage = z.infer<typeof insertAIUsageSchema>;
+
+// Schema para configurações da API WhatsApp
+export const whatsappApiSettingsSchema = z.object({
+  evolutionApiUrl: z.string().url("URL da Evolution API é obrigatória e deve ser válida"),
+  globalToken: z.string().min(1, "Token Global é obrigatório"),
+  isActive: z.boolean().default(true),
+});
+
+export type WhatsappApiSettings = typeof whatsappApiSettings.$inferSelect;
+export type InsertWhatsappApiSettings = z.infer<typeof insertWhatsappApiSettingsSchema>;
+export type WhatsappApiSettingsForm = z.infer<typeof whatsappApiSettingsSchema>;

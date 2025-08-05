@@ -9,6 +9,7 @@ import {
   userRoles,
   aiConfigurations,
   aiUsage,
+  whatsappApiSettings,
   type User,
   type UpsertUser,
   type Client,
@@ -28,6 +29,9 @@ import {
   type InsertAIConfiguration,
   type AIUsage,
   type InsertAIUsage,
+  type WhatsappApiSettings,
+  type InsertWhatsappApiSettings,
+  type WhatsappApiSettingsForm,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, count, sum, sql } from "drizzle-orm";
@@ -129,6 +133,12 @@ export interface IStorage {
   }>;
   getAIUsageByUser(userId: string): Promise<AIUsage[]>;
   getAIUsageByDateRange(startDate: Date, endDate: Date): Promise<AIUsage[]>;
+
+  // WhatsApp API Settings operations
+  getWhatsappApiSettings(): Promise<WhatsappApiSettings | undefined>;
+  saveWhatsappApiSettings(settings: WhatsappApiSettingsForm, userId: string): Promise<WhatsappApiSettings>;
+  updateWhatsappApiSettings(id: string, settings: Partial<WhatsappApiSettingsForm>): Promise<WhatsappApiSettings>;
+  deleteWhatsappApiSettings(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -913,6 +923,50 @@ export class DatabaseStorage implements IStorage {
         sql`${aiUsage.createdAt} <= ${endDate}`
       ))
       .orderBy(desc(aiUsage.createdAt));
+  }
+
+  // WhatsApp API Settings operations
+  async getWhatsappApiSettings(): Promise<WhatsappApiSettings | undefined> {
+    const [settings] = await db
+      .select()
+      .from(whatsappApiSettings)
+      .where(eq(whatsappApiSettings.isActive, true))
+      .orderBy(desc(whatsappApiSettings.createdAt))
+      .limit(1);
+    return settings;
+  }
+
+  async saveWhatsappApiSettings(settings: WhatsappApiSettingsForm, userId: string): Promise<WhatsappApiSettings> {
+    // Deactivate all existing settings first
+    await db
+      .update(whatsappApiSettings)
+      .set({ isActive: false, updatedAt: new Date() });
+
+    // Insert new settings
+    const [newSettings] = await db
+      .insert(whatsappApiSettings)
+      .values({
+        evolutionApiUrl: settings.evolutionApiUrl,
+        globalToken: settings.globalToken,
+        isActive: settings.isActive,
+        createdBy: userId,
+      })
+      .returning();
+
+    return newSettings;
+  }
+
+  async updateWhatsappApiSettings(id: string, settings: Partial<WhatsappApiSettingsForm>): Promise<WhatsappApiSettings> {
+    const [updatedSettings] = await db
+      .update(whatsappApiSettings)
+      .set({ ...settings, updatedAt: new Date() })
+      .where(eq(whatsappApiSettings.id, id))
+      .returning();
+    return updatedSettings;
+  }
+
+  async deleteWhatsappApiSettings(id: string): Promise<void> {
+    await db.delete(whatsappApiSettings).where(eq(whatsappApiSettings.id, id));
   }
 }
 

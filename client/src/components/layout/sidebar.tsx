@@ -16,6 +16,7 @@ import {
   FolderOpen,
   User,
   Bot,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -60,6 +61,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       title: "IA",
       href: "/admin/ai",
       icon: Bot,
+    },
+    {
+      title: "API WhatsApp",
+      href: "/admin/whatsapp",
+      icon: MessageCircle,
     },
     {
       title: "Configurações",

@@ -1074,6 +1074,7 @@ export class DatabaseStorage implements IStorage {
       .values({
         evolutionApiUrl: settings.evolutionApiUrl,
         globalToken: settings.globalToken,
+        systemUrl: settings.systemUrl,
         isActive: settings.isActive,
         createdBy: userId,
       });

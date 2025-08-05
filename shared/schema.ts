@@ -545,6 +545,29 @@ export const createClientSchema = z.object({
 
 export type CreateClient = z.infer<typeof createClientSchema>;
 
+// Schema para edição de cliente - todos os campos opcionais
+export const editClientSchema = z.object({
+  companyName: z.string().optional(),
+  legalName: z.string().optional(),
+  street: z.string().optional(),
+  number: z.string().optional(),
+  complement: z.string().optional(),
+  neighborhood: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+  contactPhone: z.string().optional(),
+  whatsapp: z.string().optional(),
+  email: z.union([z.string().email("Email inválido"), z.literal("")]).optional(),
+  website: z.union([z.string().url("URL inválida"), z.literal("")]).optional(),
+  systemPassword: z.union([z.string().min(6, "Senha deve ter pelo menos 6 caracteres"), z.literal("")]).optional(),
+  cpfCnpj: z.string().optional(),
+  businessSector: z.string().optional(),
+  generalNotes: z.string().optional(),
+});
+
+export type EditClient = z.infer<typeof editClientSchema>;
+
 export type UserRole = typeof userRoles.$inferSelect;
 export type InsertUserRole = z.infer<typeof insertUserRoleSchema>;
 export type CreateRole = z.infer<typeof createRoleSchema>;

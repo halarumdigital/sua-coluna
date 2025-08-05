@@ -184,12 +184,52 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateClient(id: string, client: Partial<InsertClient>): Promise<Client> {
-    const [updatedClient] = await db
-      .update(clients)
-      .set({ ...client, updatedAt: new Date() })
-      .where(eq(clients.id, id))
-      .returning();
-    return updatedClient;
+    try {
+      console.log("updateClient - ID:", id);
+      console.log("updateClient - Original data:", client);
+      
+      // Verificar se o cliente existe
+      const existingClient = await this.getClient(id);
+      if (!existingClient) {
+        throw new Error(`Client with ID ${id} not found`);
+      }
+      
+      console.log("updateClient - Existing client found:", existingClient.companyName);
+      
+      // Filtrar campos undefined, null ou strings vazias
+      const filteredClient = Object.fromEntries(
+        Object.entries(client).filter(([_, value]) => 
+          value !== undefined && value !== null && value !== ""
+        )
+      );
+      
+      console.log("updateClient - Filtered data:", filteredClient);
+      
+      if (Object.keys(filteredClient).length === 0) {
+        console.log("updateClient - No data to update, returning existing client");
+        return existingClient;
+      }
+      
+      // Fazer o update sem returning
+      await db
+        .update(clients)
+        .set({ ...filteredClient, updatedAt: new Date() })
+        .where(eq(clients.id, id));
+        
+      console.log("updateClient - Update executed successfully");
+      
+      // Buscar o cliente atualizado
+      const updatedClient = await this.getClient(id);
+      if (!updatedClient) {
+        throw new Error("Failed to retrieve updated client");
+      }
+      
+      console.log("updateClient - Updated client retrieved:", updatedClient.companyName);
+      return updatedClient;
+    } catch (error) {
+      console.error("updateClient - Error:", error);
+      throw error;
+    }
   }
 
   async deleteClient(id: string): Promise<void> {

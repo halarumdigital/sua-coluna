@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertClientSchema, insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema, aiSettingsSchema, createClientSchema } from "@shared/schema";
+import { insertClientSchema, insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema, aiSettingsSchema, createClientSchema, editClientSchema } from "@shared/schema";
 import { openaiService } from "./openai";
 import { z } from "zod";
 import multer from "multer";
@@ -185,15 +185,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const { id } = req.params;
-      const validatedData = insertClientSchema.partial().parse(req.body);
+      console.log("Updating client with ID:", id);
+      console.log("Request body:", req.body);
+      
+      const validatedData = editClientSchema.parse(req.body);
+      console.log("Validated data:", validatedData);
+      
       const client = await storage.updateClient(id, validatedData);
+      console.log("Updated client:", client);
+      
       res.json(client);
     } catch (error) {
       console.error("Error updating client:", error);
       if (error instanceof z.ZodError) {
+        console.error("Validation errors:", error.errors);
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
-      res.status(500).json({ message: "Failed to update client" });
+      res.status(500).json({ message: "Failed to update client", error: error.message });
     }
   });
 

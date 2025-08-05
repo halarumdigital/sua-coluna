@@ -1,41 +1,45 @@
 const mysql = require('mysql2/promise');
-require('dotenv').config();
 
 async function testDatabase() {
   try {
+    // Conectar ao banco de dados
     const connection = await mysql.createConnection({
-      host: process.env.MYSQL_HOST,
-      port: parseInt(process.env.MYSQL_PORT || '3306'),
-      user: process.env.MYSQL_USER,
-      password: process.env.MYSQL_PASSWORD,
-      database: process.env.MYSQL_DATABASE,
+      host: 'localhost',
+      user: 'root',
+      password: '',
+      database: 'sua_coluna'
     });
 
-    console.log('Conectado ao banco MySQL com sucesso!');
+    console.log('Conectado ao banco de dados');
 
-    // Verificar se a tabela users existe
-    const [tables] = await connection.execute("SHOW TABLES LIKE 'users'");
-    console.log('Tabela users existe:', tables.length > 0);
+    // Verificar se a tabela clients existe
+    const [tables] = await connection.execute("SHOW TABLES LIKE 'clients'");
+    console.log('Tabela clients existe:', tables.length > 0);
 
     if (tables.length > 0) {
-      // Verificar estrutura da tabela users
-      const [columns] = await connection.execute("DESCRIBE users");
-      console.log('Colunas da tabela users:');
+      // Verificar estrutura da tabela
+      const [columns] = await connection.execute("DESCRIBE clients");
+      console.log('Colunas da tabela clients:');
       columns.forEach(col => {
-        console.log(`- ${col.Field} (${col.Type})`);
+        console.log(`- ${col.Field}: ${col.Type} (${col.Null === 'YES' ? 'NULL' : 'NOT NULL'})`);
       });
 
-      // Verificar usuários existentes
-      const [users] = await connection.execute("SELECT id, email, role FROM users LIMIT 5");
-      console.log('\nUsuários existentes:');
-      users.forEach(user => {
-        console.log(`- ID: ${user.id}, Email: ${user.email}, Role: ${user.role}`);
-      });
+      // Verificar se há clientes na tabela
+      const [clients] = await connection.execute("SELECT COUNT(*) as count FROM clients");
+      console.log('Número de clientes:', clients[0].count);
+
+      // Se há clientes, mostrar o primeiro
+      if (clients[0].count > 0) {
+        const [firstClient] = await connection.execute("SELECT * FROM clients LIMIT 1");
+        console.log('Primeiro cliente:', firstClient[0]);
+      }
     }
 
     await connection.end();
+    console.log('Teste concluído');
+
   } catch (error) {
-    console.error('Erro ao conectar com o banco:', error.message);
+    console.error('Erro no teste:', error.message);
   }
 }
 

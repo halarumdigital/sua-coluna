@@ -11,15 +11,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { createClientSchema } from "@shared/schema";
+import { createClientSchema, editClientSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Edit } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-
 export default function ClientsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState<any>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -39,6 +40,29 @@ export default function ClientsPage() {
       });
       setDialogOpen(false);
       form.reset();
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const editClientMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      await apiRequest("PUT", `/api/clients/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+      toast({
+        title: "Sucesso",
+        description: "Cliente atualizado com sucesso",
+      });
+      setEditDialogOpen(false);
+      editForm.reset();
+      setEditingClient(null);
     },
     onError: (error) => {
       toast({
@@ -72,8 +96,65 @@ export default function ClientsPage() {
     },
   });
 
+  const editForm = useForm({
+    resolver: zodResolver(editClientSchema),
+    defaultValues: {
+      companyName: "",
+      legalName: "",
+      street: "",
+      number: "",
+      complement: "",
+      neighborhood: "",
+      city: "",
+      state: "",
+      zipCode: "",
+      contactPhone: "",
+      whatsapp: "",
+      email: "",
+      website: "",
+      systemPassword: "",
+      cpfCnpj: "",
+      businessSector: "",
+      generalNotes: "",
+    },
+  });
+
   const onSubmit = (data: any) => {
     createClientMutation.mutate(data);
+  };
+
+  const onEditSubmit = (data: any) => {
+    if (editingClient) {
+      // Remove campos vazios para não sobrescrever com valores em branco
+      const filteredData = Object.fromEntries(
+        Object.entries(data).filter(([_, value]) => value !== "" && value !== null && value !== undefined)
+      );
+      editClientMutation.mutate({ id: editingClient.id, data: filteredData });
+    }
+  };
+
+  const handleEditClient = (client: any) => {
+    setEditingClient(client);
+    editForm.reset({
+      companyName: client.companyName || "",
+      legalName: client.legalName || "",
+      street: client.street || "",
+      number: client.number || "",
+      complement: client.complement || "",
+      neighborhood: client.neighborhood || "",
+      city: client.city || "",
+      state: client.state || "",
+      zipCode: client.zipCode || "",
+      contactPhone: client.contactPhone || "",
+      whatsapp: client.whatsapp || "",
+      email: client.email || "",
+      website: client.website || "",
+      systemPassword: "",
+      cpfCnpj: client.cpfCnpj || "",
+      businessSector: client.businessSector || "",
+      generalNotes: client.generalNotes || "",
+    });
+    setEditDialogOpen(true);
   };
 
   const columns = [
@@ -491,6 +572,324 @@ export default function ClientsPage() {
           </Dialog>
         </div>
 
+        {/* Edit Client Dialog */}
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Editar Cliente</DialogTitle>
+            </DialogHeader>
+            <Form {...editForm}>
+              <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-6">
+                {/* Dados da Empresa */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                    Dados da Empresa
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={editForm.control}
+                      name="companyName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Nome Fantasia</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Nome comercial da empresa" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="legalName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Razão Social</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Razão social completa" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={editForm.control}
+                      name="cpfCnpj"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>CPF/CNPJ</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="00.000.000/0000-00" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="businessSector"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Setor de Atuação</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Ex: Tecnologia, Varejo, etc." />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
+                {/* Endereço Completo */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                    Endereço Completo
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="md:col-span-2">
+                      <FormField
+                        control={editForm.control}
+                        name="street"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Rua/Avenida</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="Nome da rua ou avenida" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <FormField
+                      control={editForm.control}
+                      name="number"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Número</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="123" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={editForm.control}
+                      name="complement"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Complemento</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Sala, andar, etc." />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="neighborhood"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Bairro</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Nome do bairro" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <FormField
+                      control={editForm.control}
+                      name="city"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Cidade</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Nome da cidade" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="state"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Estado</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="SP, RJ, MG..." />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="zipCode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>CEP</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="00000-000" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
+                {/* Contatos */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                    Informações de Contato
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={editForm.control}
+                      name="contactPhone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Telefone de Contato</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="(11) 99999-9999" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="whatsapp"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>WhatsApp</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="(11) 99999-9999" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={editForm.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email</FormLabel>
+                          <FormControl>
+                            <Input {...field} type="email" placeholder="contato@empresa.com" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="website"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Site</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="https://www.empresa.com" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
+                {/* Acesso ao Sistema */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                    Acesso ao Sistema
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Usuário</Label>
+                      <Input 
+                        value={editForm.watch("email") || editingClient?.email || ""} 
+                        disabled 
+                        placeholder="O email será usado como usuário"
+                        className="bg-gray-50"
+                      />
+                      <p className="text-xs text-gray-500">
+                        O email informado será usado como usuário para login
+                      </p>
+                    </div>
+                    <FormField
+                      control={editForm.control}
+                      name="systemPassword"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Nova Senha</FormLabel>
+                          <FormControl>
+                            <Input {...field} type="password" placeholder="Deixe em branco para manter a atual" />
+                          </FormControl>
+                          <FormMessage />
+                          <p className="text-xs text-gray-500">
+                            Deixe em branco para manter a senha atual
+                          </p>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
+                {/* Observações */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+                    Observações
+                  </h3>
+                  <FormField
+                    control={editForm.control}
+                    name="generalNotes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Observações Gerais</FormLabel>
+                        <FormControl>
+                          <textarea 
+                            {...field}
+                            className="w-full min-h-[100px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical"
+                            placeholder="Informações adicionais sobre o cliente..."
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-2 pt-4 border-t">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setEditDialogOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={editClientMutation.isPending}>
+                    {editClientMutation.isPending ? "Salvando..." : "Salvar Alterações"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+
         {/* Filters */}
         <Card>
           <CardContent className="p-6">
@@ -528,7 +927,7 @@ export default function ClientsPage() {
           columns={columns}
           data={clients || []}
           onView={(client) => console.log("View", client)}
-          onEdit={(client) => console.log("Edit", client)}
+          onEdit={handleEditClient}
           onDelete={(client) => console.log("Delete", client)}
         />
       </div>

@@ -295,6 +295,7 @@ export const whatsappApiSettings = mysqlTable("whatsapp_api_settings", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
   evolutionApiUrl: varchar("evolution_api_url", { length: 500 }).notNull(),
   globalToken: varchar("global_token", { length: 500 }).notNull(),
+  systemUrl: varchar("system_url", { length: 255 }),
   isActive: boolean("is_active").notNull().default(true),
   createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
@@ -631,6 +632,7 @@ export type InsertAIUsage = z.infer<typeof insertAIUsageSchema>;
 export const whatsappApiSettingsSchema = z.object({
   evolutionApiUrl: z.string().url("URL da Evolution API é obrigatória e deve ser válida"),
   globalToken: z.string().min(1, "Token Global é obrigatório"),
+  systemUrl: z.string().url("URL do Sistema é obrigatória e deve ser válida").optional(),
   isActive: z.boolean().default(true),
 });
 

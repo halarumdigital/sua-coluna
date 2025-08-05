@@ -1441,16 +1441,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Instância não encontrada ou não pertence ao cliente" });
       }
 
-      // Generate webhook URL for this instance
-      // Use public URL for webhook to avoid localhost issues with Evolution API
-      let baseUrl;
-      if (process.env.NODE_ENV === 'production' || process.env.REPL_ID) {
-        // Use Replit URL in production or when running on Replit
-        baseUrl = `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
-      } else {
-        // Use localhost for development
-        baseUrl = req.protocol + '://' + req.get('host');
-      }
+      // Generate webhook URL for this instance using systemUrl from database
+      const baseUrl = adminSettings.systemUrl || 
+        (process.env.NODE_ENV === 'production' || process.env.REPL_ID) 
+          ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+          : req.protocol + '://' + req.get('host');
+      
       const webhookUrl = `${baseUrl}/api/client/whatsapp-webhook/${instanceKey}`;
 
       // Prepare webhook configuration for Evolution API

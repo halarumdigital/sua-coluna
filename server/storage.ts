@@ -943,25 +943,38 @@ export class DatabaseStorage implements IStorage {
       .set({ isActive: false, updatedAt: new Date() });
 
     // Insert new settings
-    const [newSettings] = await db
+    await db
       .insert(whatsappApiSettings)
       .values({
         evolutionApiUrl: settings.evolutionApiUrl,
         globalToken: settings.globalToken,
         isActive: settings.isActive,
         createdBy: userId,
-      })
-      .returning();
+      });
+
+    // Get the newly inserted settings
+    const [newSettings] = await db
+      .select()
+      .from(whatsappApiSettings)
+      .where(eq(whatsappApiSettings.isActive, true))
+      .orderBy(desc(whatsappApiSettings.createdAt))
+      .limit(1);
 
     return newSettings;
   }
 
   async updateWhatsappApiSettings(id: string, settings: Partial<WhatsappApiSettingsForm>): Promise<WhatsappApiSettings> {
-    const [updatedSettings] = await db
+    await db
       .update(whatsappApiSettings)
       .set({ ...settings, updatedAt: new Date() })
-      .where(eq(whatsappApiSettings.id, id))
-      .returning();
+      .where(eq(whatsappApiSettings.id, id));
+
+    // Get the updated settings
+    const [updatedSettings] = await db
+      .select()
+      .from(whatsappApiSettings)
+      .where(eq(whatsappApiSettings.id, id));
+
     return updatedSettings;
   }
 

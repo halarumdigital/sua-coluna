@@ -960,52 +960,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting WhatsApp API settings:", error);
       res.status(500).json({ message: "Failed to delete WhatsApp API settings" });
-    }del,
-        hasApiKey: !!settings.chatGptApiKey 
-      });
-
-      const chatResult = await openaiService.testChat(message, settings);
-      
-      console.log("Chat result:", { 
-        success: chatResult.success, 
-        hasResponse: !!chatResult.response,
-        error: chatResult.error 
-      });
-      
-      // Record usage if successful
-      if (chatResult.success && chatResult.usage) {
-        try {
-          await storage.recordAIUsage({
-            userId: userId,
-            model: settings.model,
-            promptTokens: chatResult.usage.promptTokens,
-            completionTokens: chatResult.usage.completionTokens,
-            totalTokens: chatResult.usage.totalTokens,
-            cost: chatResult.usage.cost,
-            requestType: 'test',
-            success: true
-          });
-          console.log("Usage recorded successfully");
-        } catch (usageError) {
-          console.error("Error recording usage:", usageError);
-          // Don't fail the request if usage recording fails
-        }
-      }
-      
-      if (!chatResult.success) {
-        return res.status(400).json({ 
-          message: chatResult.error || "Failed to test AI chat",
-          error: chatResult.error 
-        });
-      }
-      
-      res.json(chatResult);
-    } catch (error) {
-      console.error("Error testing AI chat:", error);
-      res.status(500).json({ 
-        message: "Failed to test AI chat",
-        error: error.message 
-      });
     }
   });
 

@@ -13,6 +13,7 @@ import ClientsPage from "@/pages/admin/clients";
 import TeamPage from "@/pages/admin/team";
 import AdminSettings from "@/pages/admin/settings";
 import AIPage from "@/pages/admin/ai";
+import WhatsAppPage from "@/pages/admin/whatsapp";
 
 // Client Pages
 import ClientDashboard from "@/pages/client/dashboard";
@@ -80,6 +81,7 @@ function Router() {
           <Route path="/admin/team" component={TeamPage} />
           <Route path="/admin/team/new" component={TeamPage} />
           <Route path="/admin/ai" component={AIPage} />
+          <Route path="/admin/whatsapp" component={WhatsAppPage} />
           <Route path="/admin/settings" component={AdminSettings} />
           <Route path="/admin/reports">
             {() => (

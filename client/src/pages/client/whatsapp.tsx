@@ -47,6 +47,7 @@ interface WhatsAppInstance {
 interface AdminWhatsAppSettings {
   evolutionApiUrl: string;
   globalToken: string;
+  systemUrl?: string;
   isActive: boolean;
 }
 
@@ -740,7 +741,8 @@ export default function ClientWhatsAppPage() {
   };
 
   const getWebhookUrl = (instanceKey: string) => {
-    const baseUrl = window.location.origin;
+    // Use systemUrl from admin settings if available, otherwise fallback to current origin
+    const baseUrl = adminSettings?.systemUrl || window.location.origin;
     return `${baseUrl}/api/client/whatsapp-webhook/${instanceKey}`;
   };
 

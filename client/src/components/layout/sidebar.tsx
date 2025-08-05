@@ -81,6 +81,21 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       icon: BarChart3,
     },
     {
+      title: "Clientes",
+      href: "/client/clients",
+      icon: Users,
+    },
+    {
+      title: "WhatsApp",
+      href: "/client/whatsapp",
+      icon: MessageCircle,
+    },
+    {
+      title: "Conversas",
+      href: "/client/conversations",
+      icon: MessageCircle,
+    },
+    {
       title: "Faturas",
       href: "/client/invoices",
       icon: FileText,

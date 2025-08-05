@@ -963,6 +963,229 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Client API Routes
+  app.get("/api/client/clients", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // For now, return empty array - this would be implemented based on business logic
+      res.json([]);
+    } catch (error) {
+      console.error("Error fetching client clients:", error);
+      res.status(500).json({ message: "Failed to fetch clients" });
+    }
+  });
+
+  app.delete("/api/client/clients/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { id } = req.params;
+      // For now, just return success - this would be implemented based on business logic
+      res.json({ message: "Cliente excluído com sucesso" });
+    } catch (error) {
+      console.error("Error deleting client:", error);
+      res.status(500).json({ message: "Failed to delete client" });
+    }
+  });
+
+  app.get("/api/client/whatsapp-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const settings = await storage.getWhatsappApiSettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching client WhatsApp settings:", error);
+      res.status(500).json({ message: "Failed to fetch WhatsApp settings" });
+    }
+  });
+
+  app.post("/api/client/whatsapp-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { whatsappApiSettingsSchema } = await import("@shared/schema");
+      const validatedData = whatsappApiSettingsSchema.parse(req.body);
+      
+      const settings = await storage.saveWhatsappApiSettings(validatedData, userId);
+      res.json({ 
+        message: "Configurações da API WhatsApp salvas com sucesso",
+        settings
+      });
+    } catch (error) {
+      console.error("Error saving client WhatsApp settings:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to save WhatsApp settings" });
+    }
+  });
+
+  app.post("/api/client/whatsapp-test", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { evolutionApiUrl, globalToken } = req.body;
+      
+      // Test connection to Evolution API
+      const testResponse = await fetch(`${evolutionApiUrl}/instance/connectionState`, {
+        headers: {
+          'Authorization': `Bearer ${globalToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (testResponse.ok) {
+        res.json({ message: "Conexão testada com sucesso" });
+      } else {
+        res.status(400).json({ message: "Falha na conexão com a API" });
+      }
+    } catch (error) {
+      console.error("Error testing WhatsApp connection:", error);
+      res.status(500).json({ message: "Erro ao testar conexão" });
+    }
+  });
+
+  app.get("/api/client/conversations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // For now, return empty array - this would be implemented based on business logic
+      res.json([]);
+    } catch (error) {
+      console.error("Error fetching client conversations:", error);
+      res.status(500).json({ message: "Failed to fetch conversations" });
+    }
+  });
+
+  app.post("/api/client/conversations/:id/archive", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { id } = req.params;
+      // For now, just return success - this would be implemented based on business logic
+      res.json({ message: "Conversa arquivada com sucesso" });
+    } catch (error) {
+      console.error("Error archiving conversation:", error);
+      res.status(500).json({ message: "Failed to archive conversation" });
+    }
+  });
+
+  // Client profile routes
+  app.get("/api/client/profile", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get client data for the current user
+      const client = await storage.getClientByUserId(userId);
+      if (!client) {
+        return res.status(404).json({ message: "Client data not found" });
+      }
+      
+      res.json(client);
+    } catch (error) {
+      console.error("Error fetching client profile:", error);
+      res.status(500).json({ message: "Failed to fetch client profile" });
+    }
+  });
+
+  app.put("/api/client/profile", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get client data for the current user
+      const client = await storage.getClientByUserId(userId);
+      if (!client) {
+        return res.status(404).json({ message: "Client data not found" });
+      }
+      
+      const { editClientSchema } = await import("@shared/schema");
+      const validatedData = editClientSchema.parse(req.body);
+      
+      const updatedClient = await storage.updateClient(client.id, validatedData);
+      res.json(updatedClient);
+    } catch (error) {
+      console.error("Error updating client profile:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update client profile" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

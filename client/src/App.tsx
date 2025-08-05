@@ -19,6 +19,9 @@ import WhatsAppPage from "@/pages/admin/whatsapp";
 import ClientDashboard from "@/pages/client/dashboard";
 import ClientInvoicesPage from "@/pages/client/invoices";
 import ClientProfilePage from "@/pages/client/profile";
+import ClientClientsPage from "@/pages/client/clients";
+import ClientWhatsAppPage from "@/pages/client/whatsapp";
+import ClientConversationsPage from "@/pages/client/conversations";
 
 // Team Pages
 import TeamDashboard from "@/pages/team/dashboard";
@@ -100,6 +103,9 @@ function Router() {
       {user?.role === "client" && (
         <>
           <Route path="/client" component={ClientDashboard} />
+          <Route path="/client/clients" component={ClientClientsPage} />
+          <Route path="/client/whatsapp" component={ClientWhatsAppPage} />
+          <Route path="/client/conversations" component={ClientConversationsPage} />
           <Route path="/client/invoices" component={ClientInvoicesPage} />
           <Route path="/client/profile" component={ClientProfilePage} />
         </>

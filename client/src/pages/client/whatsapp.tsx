@@ -111,8 +111,6 @@ export default function ClientWhatsAppPage() {
       
       return response.json() as Promise<WhatsAppInstance[]>;
     },
-    refetchInterval: 30000, // Atualizar a cada 30 segundos
-    refetchIntervalInBackground: true,
   });
 
   // Create instance mutation
@@ -269,21 +267,20 @@ export default function ClientWhatsAppPage() {
     // Verificar imediatamente
     checkAndUpdateStatus(instance);
 
-    // Configurar verificação mais frequente se conectando, normal se apenas monitorando
-    const intervalTime = isConnecting ? 10000 : 300000; // 10s se conectando, 5min normal
-    const interval = setInterval(async () => {
-      await checkAndUpdateStatus(instance);
-    }, intervalTime);
+    // Configurar verificação apenas se conectando
+    if (isConnecting) {
+      const interval = setInterval(async () => {
+        await checkAndUpdateStatus(instance);
+      }, 10000); // 10s se conectando
 
-    // Armazenar o interval
-    setStatusIntervals(prev => new Map(prev.set(instance.id, interval)));
+      // Armazenar o interval
+      setStatusIntervals(prev => new Map(prev.set(instance.id, interval)));
 
-    toast({
-      title: "Monitoramento Iniciado",
-      description: isConnecting 
-        ? `Verificando conexão de "${instance.instanceName}" a cada 10 segundos`
-        : `Verificando status de "${instance.instanceName}" a cada 5 minutos`,
-    });
+      toast({
+        title: "Monitoramento Iniciado",
+        description: `Verificando conexão de "${instance.instanceName}" a cada 10 segundos`,
+      });
+    }
   };
 
   // Função para verificar e atualizar status
@@ -315,11 +312,9 @@ export default function ClientWhatsAppPage() {
         variant: mappedStatus === 'connected' ? 'default' : 'destructive'
       });
       
-      // Se conectou com sucesso, mudar para monitoramento normal
+      // Se conectou com sucesso, parar monitoramento automático
       if (mappedStatus === 'connected') {
-        setTimeout(() => {
-          startStatusMonitoring(instance, false); // Mudar para verificação de 5 minutos
-        }, 2000);
+        stopStatusMonitoring(instance.id);
       }
     }
   };

@@ -8,7 +8,6 @@ import { useSystemSettings } from "@/hooks/useSystemSettings";
 import {
   BarChart3,
   Users,
-  Bus,
   FileText,
   Settings,
   LogOut,
@@ -58,22 +57,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       ],
     },
     {
-      title: "Equipe",
-      icon: Bus,
-      submenu: [
-        { title: "Listar Equipe", href: "/admin/team" },
-        { title: "Novo Membro", href: "/admin/team/new" },
-      ],
-    },
-    {
       title: "IA",
       href: "/admin/ai",
       icon: Bot,
-    },
-    {
-      title: "Relatórios",
-      href: "/admin/reports",
-      icon: FileText,
     },
     {
       title: "Configurações",

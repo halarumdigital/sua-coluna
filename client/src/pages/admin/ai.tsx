@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, Key, Thermometer, Hash, Brain, MessageSquare, DollarSign, Activity, Calendar, CheckCircle, AlertCircle, RefreshCw } from "lucide-react";
+import { Bot, Key, Thermometer, Hash, Brain, MessageSquare, DollarSign, Activity, Calendar, CheckCircle, RefreshCw, Send, Loader2 } from "lucide-react";
 import type { AISettings } from "@shared/schema";
 
 export default function AIPage() {
@@ -23,6 +23,10 @@ export default function AIPage() {
         model: "gpt-3.5-turbo",
         systemPrompt: "Você é um assistente útil e prestativo.",
     });
+
+    const [testMessage, setTestMessage] = useState("");
+    const [testResponse, setTestResponse] = useState("");
+    const [isTestingAgent, setIsTestingAgent] = useState(false);
 
     // Fetch current AI settings
     const { data: aiSettings, isLoading } = useQuery({
@@ -39,7 +43,7 @@ export default function AIPage() {
     });
 
     // Fetch available AI models
-    const { data: aiModels, isLoading: modelsLoading } = useQuery({
+    const { data: aiModels } = useQuery({
         queryKey: ["/api/admin/ai-models"],
         queryFn: async () => {
             const response = await fetch("/api/admin/ai-models", {
@@ -52,7 +56,7 @@ export default function AIPage() {
         },
     });
 
-    // Fetch AI usage statistics
+    // Fetch AI usage statistics with auto-refresh
     const { data: usageStats, isLoading: usageLoading } = useQuery({
         queryKey: ["/api/admin/ai-usage"],
         queryFn: async () => {
@@ -64,6 +68,7 @@ export default function AIPage() {
             }
             return response.json();
         },
+        refetchInterval: 30000, // Auto-refresh every 30 seconds
     });
 
     // Update form data when settings are loaded
@@ -158,6 +163,81 @@ export default function AIPage() {
         }));
     };
 
+    const handleTestAgent = async () => {
+        if (!testMessage.trim() || !formData.chatGptApiKey) return;
+
+        setIsTestingAgent(true);
+        setTestResponse("");
+
+        try {
+            console.log("Sending test request with:", {
+                message: testMessage.substring(0, 50) + "...",
+                model: formData.model,
+                hasApiKey: !!formData.chatGptApiKey
+            });
+
+            const response = await fetch("/api/admin/ai-chat", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                    message: testMessage,
+                    settings: formData
+                }),
+            });
+
+            console.log("Response status:", response.status);
+
+            const data = await response.json();
+            console.log("Response data:", data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || "Erro ao testar agente");
+            }
+
+            if (!data.success) {
+                throw new Error(data.error || "Falha ao processar resposta do agente");
+            }
+
+            if (!data.response) {
+                throw new Error("Nenhuma resposta foi gerada pelo agente");
+            }
+
+            setTestResponse(data.response);
+
+            toast({
+                title: "Teste Realizado",
+                description: "Agente testado com sucesso!",
+            });
+
+            // Refresh usage stats after successful test
+            queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage"] });
+
+        } catch (error: any) {
+            console.error("Test error:", error);
+            
+            let errorMessage = "Erro desconhecido ao testar agente";
+            
+            if (error.message) {
+                errorMessage = error.message;
+            } else if (typeof error === 'string') {
+                errorMessage = error;
+            }
+
+            setTestResponse(`Erro: ${errorMessage}`);
+
+            toast({
+                title: "Erro no Teste",
+                description: errorMessage,
+                variant: "destructive",
+            });
+        } finally {
+            setIsTestingAgent(false);
+        }
+    };
+
     if (isLoading) {
         return (
             <Layout title="Configurações de IA">
@@ -182,16 +262,25 @@ export default function AIPage() {
                     </p>
                 </div>
 
-                {/* Usage Statistics */}
+                {/* Usage Statistics - Real Time */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <Card>
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between">
-                                <div>
+                                <div className="flex-1">
                                     <p className="text-sm font-medium text-gray-600">Total de Tokens</p>
                                     <p className="text-2xl font-bold text-gray-900">
-                                        {usageLoading ? "..." : (usageStats?.totalTokens || 0).toLocaleString()}
+                                        {usageLoading ? (
+                                            <span className="animate-pulse">...</span>
+                                        ) : (
+                                            (usageStats?.totalTokens || 0).toLocaleString('pt-BR')
+                                        )}
                                     </p>
+                                    {!usageLoading && usageStats?.totalTokens > 0 && (
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Atualizado: {new Date().toLocaleTimeString('pt-BR')}
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                                     <Hash className="w-6 h-6 text-blue-600" />
@@ -203,11 +292,20 @@ export default function AIPage() {
                     <Card>
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between">
-                                <div>
+                                <div className="flex-1">
                                     <p className="text-sm font-medium text-gray-600">Custo Total</p>
                                     <p className="text-2xl font-bold text-gray-900">
-                                        {usageLoading ? "..." : `$${(usageStats?.totalCost || 0).toFixed(4)}`}
+                                        {usageLoading ? (
+                                            <span className="animate-pulse">...</span>
+                                        ) : (
+                                            `$${(usageStats?.totalCost || 0).toFixed(4)}`
+                                        )}
                                     </p>
+                                    {!usageLoading && usageStats?.totalCost > 0 && (
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            ≈ R$ {((usageStats?.totalCost || 0) * 5.5).toFixed(2)}
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                                     <DollarSign className="w-6 h-6 text-green-600" />
@@ -219,11 +317,24 @@ export default function AIPage() {
                     <Card>
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between">
-                                <div>
+                                <div className="flex-1">
                                     <p className="text-sm font-medium text-gray-600">Requests Hoje</p>
                                     <p className="text-2xl font-bold text-gray-900">
-                                        {usageLoading ? "..." : (usageStats?.requestsToday || 0)}
+                                        {usageLoading ? (
+                                            <span className="animate-pulse">...</span>
+                                        ) : (
+                                            usageStats?.requestsToday || 0
+                                        )}
                                     </p>
+                                    {!usageLoading && (
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            {new Date().toLocaleDateString('pt-BR', {
+                                                weekday: 'long',
+                                                day: 'numeric',
+                                                month: 'short'
+                                            })}
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
                                     <Activity className="w-6 h-6 text-purple-600" />
@@ -235,11 +346,23 @@ export default function AIPage() {
                     <Card>
                         <CardContent className="p-6">
                             <div className="flex items-center justify-between">
-                                <div>
+                                <div className="flex-1">
                                     <p className="text-sm font-medium text-gray-600">Requests Este Mês</p>
                                     <p className="text-2xl font-bold text-gray-900">
-                                        {usageLoading ? "..." : (usageStats?.requestsThisMonth || 0)}
+                                        {usageLoading ? (
+                                            <span className="animate-pulse">...</span>
+                                        ) : (
+                                            usageStats?.requestsThisMonth || 0
+                                        )}
                                     </p>
+                                    {!usageLoading && (
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            {new Date().toLocaleDateString('pt-BR', {
+                                                month: 'long',
+                                                year: 'numeric'
+                                            })}
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
                                     <Calendar className="w-6 h-6 text-orange-600" />
@@ -249,54 +372,31 @@ export default function AIPage() {
                     </Card>
                 </div>
 
-                {/* Available Models */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Brain className="w-5 h-5" />
-                            Modelos Disponíveis
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {modelsLoading ? (
-                            <div className="space-y-3">
-                                {[...Array(3)].map((_, i) => (
-                                    <div key={i} className="h-16 bg-gray-200 rounded-lg animate-pulse" />
-                                ))}
+                {/* Last Usage Info */}
+                {!usageLoading && usageStats?.lastUsed && (
+                    <Card>
+                        <CardContent className="p-4">
+                            <div className="flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                    <span className="text-gray-600">Último uso da API:</span>
+                                    <span className="font-medium text-gray-900">
+                                        {new Date(usageStats.lastUsed).toLocaleString('pt-BR')}
+                                    </span>
+                                </div>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage"] })}
+                                    className="text-xs"
+                                >
+                                    <RefreshCw className="w-3 h-3 mr-1" />
+                                    Atualizar
+                                </Button>
                             </div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {aiModels?.map((model: any) => (
-                                    <div
-                                        key={model.id}
-                                        className={`p-4 border rounded-lg transition-colors cursor-pointer ${
-                                            formData.model === model.id
-                                                ? 'border-blue-500 bg-blue-50'
-                                                : 'border-gray-200 hover:border-gray-300'
-                                        }`}
-                                        onClick={() => handleInputChange("model", model.id)}
-                                    >
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex-1">
-                                                <h4 className="font-medium text-gray-900">{model.name}</h4>
-                                                <p className="text-sm text-gray-600 mt-1">{model.description}</p>
-                                                {model.pricing && (
-                                                    <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                                                        <span>Input: ${model.pricing.input}/1K tokens</span>
-                                                        <span>Output: ${model.pricing.output}/1K tokens</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            {formData.model === model.id && (
-                                                <CheckCircle className="w-5 h-5 text-blue-500 flex-shrink-0 ml-2" />
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                        </CardContent>
+                    </Card>
+                )}
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                     {/* API Key */}
@@ -366,13 +466,13 @@ export default function AIPage() {
                                                 {model.name}
                                             </SelectItem>
                                         )) || (
-                                            <>
-                                                <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
-                                                <SelectItem value="gpt-4">GPT-4</SelectItem>
-                                                <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
-                                                <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                                            </>
-                                        )}
+                                                <>
+                                                    <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
+                                                    <SelectItem value="gpt-4">GPT-4</SelectItem>
+                                                    <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
+                                                    <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+                                                </>
+                                            )}
                                     </SelectContent>
                                 </Select>
                                 <p className="text-sm text-gray-500">
@@ -467,6 +567,79 @@ export default function AIPage() {
                                 <p className="text-sm text-gray-500">
                                     Define o comportamento e personalidade do agente de IA
                                 </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Agent Test */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Bot className="w-5 h-5" />
+                                Testar Agente
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="testMessage">Mensagem de Teste</Label>
+                                    <div className="flex gap-2">
+                                        <Textarea
+                                            id="testMessage"
+                                            rows={3}
+                                            placeholder="Digite uma mensagem para testar o agente..."
+                                            value={testMessage}
+                                            onChange={(e) => setTestMessage(e.target.value)}
+                                            disabled={isTestingAgent}
+                                        />
+                                        <Button
+                                            type="button"
+                                            onClick={handleTestAgent}
+                                            disabled={!testMessage.trim() || !formData.chatGptApiKey || isTestingAgent}
+                                            className="min-w-24"
+                                        >
+                                            {isTestingAgent ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                                <Send className="w-4 h-4" />
+                                            )}
+                                        </Button>
+                                    </div>
+                                    <p className="text-sm text-gray-500">
+                                        Teste o comportamento do agente com as configurações atuais
+                                    </p>
+                                </div>
+
+                                {testResponse && (
+                                    <div className="space-y-2">
+                                        <Label>Resposta do Agente</Label>
+                                        <div className="p-4 bg-gray-50 rounded-lg border">
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                                    <Bot className="w-4 h-4 text-blue-600" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                                                        {testResponse}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-end">
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => {
+                                                    setTestMessage("");
+                                                    setTestResponse("");
+                                                }}
+                                            >
+                                                Limpar Teste
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>

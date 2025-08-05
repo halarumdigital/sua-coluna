@@ -1,0 +1,2 @@
+# Esta pasta contém os arquivos de migration
+# Cada migration deve seguir o padrão: YYYYMMDDHHMMSS_nome_da_migration.ts

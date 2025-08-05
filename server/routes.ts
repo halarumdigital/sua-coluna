@@ -1751,6 +1751,116 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Client AI Settings routes
+  app.get("/api/client/ai-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get client's custom AI settings
+      const clientSettings = await storage.getClientAISettings(userId);
+      res.json(clientSettings || {});
+    } catch (error) {
+      console.error("Error fetching client AI settings:", error);
+      res.status(500).json({ message: "Failed to fetch client AI settings" });
+    }
+  });
+
+  app.post("/api/client/ai-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { systemPrompt, maxTokens, temperature } = req.body;
+      
+      // Validate the data
+      const clientAISettings = {
+        systemPrompt: systemPrompt || null,
+        maxTokens: maxTokens || null,
+        temperature: temperature !== undefined ? temperature : null,
+      };
+      
+      await storage.saveClientAISettings(userId, clientAISettings);
+      
+      res.json({ 
+        message: "Configurações de IA salvas com sucesso",
+        settings: clientAISettings
+      });
+    } catch (error) {
+      console.error("Error saving client AI settings:", error);
+      res.status(500).json({ message: "Failed to save client AI settings" });
+    }
+  });
+
+  app.post("/api/client/ai-chat", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { message, settings } = req.body;
+      
+      if (!message) {
+        return res.status(400).json({ message: "Message is required" });
+      }
+
+      // Get admin AI settings
+      const adminSettings = await storage.getAISettings();
+      if (!adminSettings.chatGptApiKey) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "API key não configurada pelo administrador" 
+        });
+      }
+
+      // Merge client settings with admin settings (client settings override admin settings)
+      const effectiveSettings = {
+        chatGptApiKey: adminSettings.chatGptApiKey,
+        model: adminSettings.model,
+        systemPrompt: settings?.systemPrompt || adminSettings.systemPrompt,
+        maxTokens: settings?.maxTokens || adminSettings.maxTokens,
+        temperature: settings?.temperature !== undefined ? settings.temperature : adminSettings.temperature,
+      };
+
+      console.log("Client AI chat with:", { 
+        message: message.substring(0, 50) + "...", 
+        model: effectiveSettings.model,
+        hasCustomPrompt: !!settings?.systemPrompt,
+        hasCustomTokens: !!settings?.maxTokens,
+        hasCustomTemperature: settings?.temperature !== undefined
+      });
+
+      const response = await openaiService.chat(message, effectiveSettings, userId);
+      res.json(response);
+    } catch (error) {
+      console.error("Error in client AI chat:", error);
+      res.status(500).json({ 
+        success: false, 
+        error: "Failed to process AI chat" 
+      });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

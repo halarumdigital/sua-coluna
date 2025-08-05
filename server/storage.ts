@@ -116,6 +116,18 @@ export interface IStorage {
   // AI Settings operations
   getAISettings(): Promise<AISettings>;
   saveAISettings(settings: AISettings): Promise<void>;
+  
+  // Client AI Settings operations
+  getClientAISettings(userId: string): Promise<{
+    systemPrompt?: string | null;
+    maxTokens?: number | null;
+    temperature?: number | null;
+  } | null>;
+  saveClientAISettings(userId: string, settings: {
+    systemPrompt?: string | null;
+    maxTokens?: number | null;
+    temperature?: number | null;
+  }): Promise<void>;
 
   // AI Configurations operations (advanced)
   getAIConfigurations(): Promise<AIConfiguration[]>;
@@ -805,6 +817,83 @@ export class DatabaseStorage implements IStorage {
       this.setSystemSetting('ai_model', settings.model, 'string'),
       this.setSystemSetting('ai_system_prompt', settings.systemPrompt, 'string'),
     ]);
+  }
+
+  // Client AI Settings operations
+  async getClientAISettings(userId: string): Promise<{
+    systemPrompt?: string | null;
+    maxTokens?: number | null;
+    temperature?: number | null;
+  } | null> {
+    try {
+      const settings = await db.select().from(systemSettings).where(
+        sql`${systemSettings.settingKey} LIKE CONCAT('client_ai_', ${userId}, '_%')`
+      );
+
+      if (settings.length === 0) {
+        return null;
+      }
+
+      const result: {
+        systemPrompt?: string | null;
+        maxTokens?: number | null;
+        temperature?: number | null;
+      } = {};
+
+      settings.forEach(setting => {
+        const key = setting.settingKey.replace(`client_ai_${userId}_`, '');
+        switch (key) {
+          case 'system_prompt':
+            result.systemPrompt = setting.settingValue;
+            break;
+          case 'max_tokens':
+            result.maxTokens = setting.settingValue ? parseInt(setting.settingValue) : null;
+            break;
+          case 'temperature':
+            result.temperature = setting.settingValue ? parseFloat(setting.settingValue) : null;
+            break;
+        }
+      });
+
+      return result;
+    } catch (error) {
+      console.error("Error getting client AI settings:", error);
+      return null;
+    }
+  }
+
+  async saveClientAISettings(userId: string, settings: {
+    systemPrompt?: string | null;
+    maxTokens?: number | null;
+    temperature?: number | null;
+  }): Promise<void> {
+    try {
+      // Save each setting individually
+      const promises: Promise<SystemSetting>[] = [];
+
+      if (settings.systemPrompt !== undefined) {
+        promises.push(
+          this.setSystemSetting(`client_ai_${userId}_system_prompt`, settings.systemPrompt || '', 'string')
+        );
+      }
+
+      if (settings.maxTokens !== undefined) {
+        promises.push(
+          this.setSystemSetting(`client_ai_${userId}_max_tokens`, settings.maxTokens?.toString() || '', 'number')
+        );
+      }
+
+      if (settings.temperature !== undefined) {
+        promises.push(
+          this.setSystemSetting(`client_ai_${userId}_temperature`, settings.temperature?.toString() || '', 'number')
+        );
+      }
+
+      await Promise.all(promises);
+    } catch (error) {
+      console.error("Error saving client AI settings:", error);
+      throw error;
+    }
   }
 
   // AI Configurations operations (advanced)

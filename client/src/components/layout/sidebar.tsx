@@ -86,6 +86,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       icon: Users,
     },
     {
+      title: "IA",
+      href: "/client/ai",
+      icon: Bot,
+    },
+    {
       title: "WhatsApp",
       href: "/client/whatsapp",
       icon: MessageCircle,

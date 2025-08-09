@@ -11,14 +11,17 @@ import {
   aiUsage,
   whatsappApiSettings,
   whatsappInstances,
-  whatsappConversations,
-  whatsappMessages,
+<<<<<<< HEAD
   plans,
   franchisors,
   franchises,
   franchisePhoneNumbers,
   franchiseAgents,
   franchisePrompts,
+=======
+  whatsappConversations,
+  whatsappMessages,
+>>>>>>> dcc1cdcc48580a4580f58c36e71af5cb753adecc
   type User,
   type UpsertUser,
   type Client,
@@ -43,10 +46,7 @@ import {
   type WhatsappApiSettingsForm,
   type WhatsappInstance,
   type InsertWhatsappInstance,
-  type WhatsappConversation,
-  type InsertWhatsappConversation,
-  type WhatsappMessage,
-  type InsertWhatsappMessage,
+<<<<<<< HEAD
   type Plan,
   type InsertPlan,
   type CreatePlan,
@@ -65,6 +65,12 @@ import {
   type FranchisePrompt,
   type InsertFranchisePrompt,
   type CreateFranchisePrompt,
+=======
+  type WhatsappConversation,
+  type InsertWhatsappConversation,
+  type WhatsappMessage,
+  type InsertWhatsappMessage,
+>>>>>>> dcc1cdcc48580a4580f58c36e71af5cb753adecc
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, count, sum, sql, like, gte, lte, or, between, asc } from "drizzle-orm";
@@ -645,81 +651,6 @@ export class DatabaseStorage implements IStorage {
       // Return the newly created setting
       const newSetting = await this.getSystemSetting(key);
       return newSetting!;
-    }
-  }
-
-  async updateSystemSettings(formData: any, files?: any): Promise<Record<string, any>> {
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    
-    try {
-      // Handle text settings
-      if (formData.systemName) {
-        await this.setSystemSetting('system_name', formData.systemName, 'string');
-        await this.setSystemSetting('systemName', formData.systemName, 'string');
-      }
-      
-      if (formData.systemSubtitle) {
-        await this.setSystemSetting('system_subtitle', formData.systemSubtitle, 'string');
-        await this.setSystemSetting('systemSubtitle', formData.systemSubtitle, 'string');
-      }
-      
-      if (formData.systemDescription) {
-        await this.setSystemSetting('system_description', formData.systemDescription, 'string');
-        await this.setSystemSetting('systemDescription', formData.systemDescription, 'string');
-      }
-      
-      if (formData.systemColor || formData.systemColorHex) {
-        const color = formData.systemColorHex || formData.systemColor;
-        await this.setSystemSetting('primary_color', color, 'string');
-        await this.setSystemSetting('systemColor', color, 'string');
-      }
-      
-      // Handle file uploads
-      if (files) {
-        const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-        
-        // Ensure uploads directory exists
-        try {
-          await fs.mkdir(uploadsDir, { recursive: true });
-        } catch (error) {
-          console.log('Uploads directory already exists or error creating:', error);
-        }
-        
-        // Handle logo upload
-        if (files.logo && files.logo[0]) {
-          const logoFile = files.logo[0];
-          const logoExtension = path.extname(logoFile.originalname);
-          const logoFilename = `logo_${Date.now()}${logoExtension}`;
-          const logoPath = path.join(uploadsDir, logoFilename);
-          
-          await fs.writeFile(logoPath, logoFile.buffer);
-          const logoUrl = `/uploads/${logoFilename}`;
-          
-          await this.setSystemSetting('system_logo', logoUrl, 'string');
-          await this.setSystemSetting('logo', logoUrl, 'string');
-        }
-        
-        // Handle favicon upload
-        if (files.favicon && files.favicon[0]) {
-          const faviconFile = files.favicon[0];
-          const faviconExtension = path.extname(faviconFile.originalname);
-          const faviconFilename = `favicon_${Date.now()}${faviconExtension}`;
-          const faviconPath = path.join(uploadsDir, faviconFilename);
-          
-          await fs.writeFile(faviconPath, faviconFile.buffer);
-          const faviconUrl = `/uploads/${faviconFilename}`;
-          
-          await this.setSystemSetting('system_favicon', faviconUrl, 'string');
-          await this.setSystemSetting('favicon', faviconUrl, 'string');
-        }
-      }
-      
-      // Return updated settings
-      return await this.getSystemSettings();
-    } catch (error) {
-      console.error('Error updating system settings:', error);
-      throw error;
     }
   }
 
@@ -1316,7 +1247,7 @@ export class DatabaseStorage implements IStorage {
   async deleteWhatsappInstance(id: string): Promise<void> {
     await db.delete(whatsappInstances).where(eq(whatsappInstances.id, id));
   }
-
+<<<<<<< HEAD
   // ========================================
   // FRANCHISE SYSTEM METHODS
   // ========================================
@@ -1568,7 +1499,7 @@ export class DatabaseStorage implements IStorage {
     }).returning();
 
     return newPrompt;
-  }
+=======
 
   // WhatsApp Conversations operations
   async createWhatsappConversation(conversation: InsertWhatsappConversation): Promise<WhatsappConversation> {
@@ -1751,6 +1682,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(whatsappConversations.id, id));
 
     return updatedConversation;
+>>>>>>> dcc1cdcc48580a4580f58c36e71af5cb753adecc
   }
 }
 

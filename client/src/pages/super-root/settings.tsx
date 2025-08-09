@@ -31,9 +31,26 @@ export default function SuperRootSettings() {
         credentials: "include",
       });
       if (!response.ok) {
-        throw new Error("Erro ao salvar configurações do sistema");
+        const errorData = await response.text();
+        console.error("Server response:", errorData);
+        try {
+          const errorJson = JSON.parse(errorData);
+          throw new Error(errorJson.message || "Erro ao salvar configurações do sistema");
+        } catch (parseError) {
+          throw new Error(`Erro do servidor: ${response.status} - ${errorData}`);
+        }
       }
-      return response.json();
+      
+      const responseText = await response.text();
+      console.log("Server response:", responseText);
+      
+      try {
+        return JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("JSON parse error:", parseError);
+        console.error("Response text:", responseText);
+        throw new Error("Erro ao processar resposta do servidor");
+      }
     },
     onSuccess: () => {
       toast({

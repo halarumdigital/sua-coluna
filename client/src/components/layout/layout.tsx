@@ -19,10 +19,14 @@ export default function Layout({ children, title }: LayoutProps) {
 
   const getRoleLabel = (role: string) => {
     switch (role) {
+      case "super_root":
+        return "Super Root";
+      case "franchisor":
       case "admin":
-        return "Administrador";
+        return "Franqueador";
+      case "franchise":
       case "client":
-        return "Cliente";
+        return "Franquia";
       case "team":
         return "Equipe";
       default:

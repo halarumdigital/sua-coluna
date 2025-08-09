@@ -17,6 +17,10 @@ import {
   User,
   Bot,
   MessageCircle,
+  Crown,
+  Building2,
+  Store,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +47,53 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const isMenuExpanded = (menu: string) => expandedMenus.includes(menu);
 
+  const superRootMenuItems = [
+    {
+      title: "Dashboard",
+      href: "/super-root",
+      icon: Crown,
+    },
+    {
+      title: "Planos",
+      icon: Building2,
+      submenu: [
+        { title: "Listar Planos", href: "/super-root/plans" },
+      ],
+    },
+    {
+      title: "Franqueadores",
+      icon: Store,
+      submenu: [
+        { title: "Listar Franqueadores", href: "/super-root/franchisors" },
+      ],
+    },
+    {
+      title: "IA",
+      href: "/super-root/ai",
+      icon: Bot,
+    },
+    {
+      title: "API WhatsApp",
+      href: "/super-root/whatsapp",
+      icon: MessageCircle,
+    },
+    {
+      title: "Relatórios",
+      href: "/super-root/reports",
+      icon: TrendingUp,
+    },
+    {
+      title: "Configurações",
+      href: "/super-root/settings",
+      icon: Settings,
+    },
+    {
+      title: "Perfil",
+      href: "/super-root/profile",
+      icon: User,
+    },
+  ];
+
   const adminMenuItems = [
     {
       title: "Dashboard",
@@ -50,27 +101,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       icon: BarChart3,
     },
     {
-      title: "Clientes",
-      icon: Users,
+      title: "Franquias",
+      icon: Store,
       submenu: [
-        { title: "Listar Clientes", href: "/admin/clients" },
-        { title: "Novo Cliente", href: "/admin/clients/new" },
+        { title: "Listar Franquias", href: "/admin/franchises" },
+        { title: "Nova Franquia", href: "/admin/franchises/new" },
       ],
-    },
-    {
-      title: "IA",
-      href: "/admin/ai",
-      icon: Bot,
-    },
-    {
-      title: "API WhatsApp",
-      href: "/admin/whatsapp",
-      icon: MessageCircle,
-    },
-    {
-      title: "Configurações",
-      href: "/admin/settings",
-      icon: Settings,
     },
   ];
 
@@ -86,6 +122,21 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       icon: Users,
     },
     {
+      title: "Números",
+      href: "/client/phone-numbers",
+      icon: MessageCircle,
+    },
+    {
+      title: "Agentes",
+      href: "/client/agents",
+      icon: Users,
+    },
+    {
+      title: "Prompts",
+      href: "/client/prompts",
+      icon: MessageCircle,
+    },
+    {
       title: "WhatsApp",
       href: "/client/whatsapp",
       icon: MessageCircle,
@@ -94,11 +145,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       title: "Conversas",
       href: "/client/conversations",
       icon: MessageCircle,
-    },
-    {
-      title: "Faturas",
-      href: "/client/invoices",
-      icon: FileText,
     },
     {
       title: "Perfil",
@@ -127,8 +173,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const getMenuItems = () => {
     switch (user?.role) {
+      case "super_root":
+        return superRootMenuItems;
+      case "franchisor":
       case "admin":
         return adminMenuItems;
+      case "franchise":
       case "client":
         return clientMenuItems;
       case "team":

@@ -57,54 +57,161 @@ export const users = mysqlTable("users", {
   phone: varchar("phone", { length: 20 }),
   profileImageUrl: varchar("profile_image_url", { length: 500 }),
   password: varchar("password", { length: 255 }),
-  role: varchar("role", { length: 10 }).notNull().default("client"),
+  role: varchar("role", { length: 15 }).notNull().default("client"),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
 });
 
-// Clients table
+// Planos disponíveis (criados pelo super root)
+export const plans = mysqlTable("plans", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  maxFranchises: int("max_franchises").notNull().default(1), // Máximo de franquias permitidas
+  maxPhoneNumbers: int("max_phone_numbers").notNull().default(1), // Máximo de números por franquia
+  maxAgents: int("max_agents").notNull().default(1), // Máximo de agentes por franquia
+  maxPrompts: int("max_prompts").notNull().default(5), // Máximo de prompts por franquia
+  monthlyPrice: decimal("monthly_price", { precision: 10, scale: 2 }).notNull(),
+  features: json("features").notNull().default("[]"), // Lista de recursos inclusos
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
+// Franqueadores (cadastrados pelo super root)
+export const franchisors = mysqlTable("franchisors", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  userId: varchar("user_id", { length: 36 }).references(() => users.id).notNull(),
+  planId: varchar("plan_id", { length: 36 }).references(() => plans.id).notNull(),
+
+  // Dados da empresa franqueadora
+  companyName: varchar("company_name", { length: 255 }).notNull(),
+  legalName: varchar("legal_name", { length: 255 }).notNull(),
+  cnpj: varchar("cnpj", { length: 20 }).unique().notNull(),
+
+  // Endereço
+  street: varchar("street", { length: 255 }).notNull(),
+  number: varchar("number", { length: 20 }).notNull(),
+  complement: varchar("complement", { length: 100 }),
+  neighborhood: varchar("neighborhood", { length: 100 }).notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  state: varchar("state", { length: 50 }).notNull(),
+  zipCode: varchar("zip_code", { length: 10 }).notNull(),
+
+  // Contatos
+  contactPhone: varchar("contact_phone", { length: 20 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  website: varchar("website", { length: 255 }),
+
+  // Status e datas
+  status: varchar("status", { length: 20 }).notNull().default("active"), // active, inactive, suspended
+  planStartDate: timestamp("plan_start_date").notNull(),
+  planEndDate: timestamp("plan_end_date"),
+
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
+// Franquias/Lojas (cadastradas pelo franqueador)
+export const franchises = mysqlTable("franchises", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  franchisorId: varchar("franchisor_id", { length: 36 }).references(() => franchisors.id).notNull(),
+  userId: varchar("user_id", { length: 36 }).references(() => users.id).notNull(),
+
+  // Dados da franquia
+  franchiseName: varchar("franchise_name", { length: 255 }).notNull(),
+  franchiseCode: varchar("franchise_code", { length: 50 }).unique().notNull(),
+
+  // Endereço da franquia
+  street: varchar("street", { length: 255 }).notNull(),
+  number: varchar("number", { length: 20 }).notNull(),
+  complement: varchar("complement", { length: 100 }),
+  neighborhood: varchar("neighborhood", { length: 100 }).notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  state: varchar("state", { length: 50 }).notNull(),
+  zipCode: varchar("zip_code", { length: 10 }).notNull(),
+
+  // Contatos da franquia
+  contactPhone: varchar("contact_phone", { length: 20 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+
+  // Responsável pela franquia
+  managerName: varchar("manager_name", { length: 255 }).notNull(),
+  managerPhone: varchar("manager_phone", { length: 20 }),
+  managerEmail: varchar("manager_email", { length: 255 }),
+
+  // Status
+  status: varchar("status", { length: 20 }).notNull().default("active"), // active, inactive, suspended
+
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
+// Números de telefone das franquias
+export const franchisePhoneNumbers = mysqlTable("franchise_phone_numbers", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  franchiseId: varchar("franchise_id", { length: 36 }).references(() => franchises.id).notNull(),
+  phoneNumber: varchar("phone_number", { length: 20 }).notNull(),
+  whatsappInstanceId: varchar("whatsapp_instance_id", { length: 36 }).references(() => whatsappInstances.id),
+  isActive: boolean("is_active").notNull().default(true),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
+// Agentes das franquias
+export const franchiseAgents = mysqlTable("franchise_agents", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  franchiseId: varchar("franchise_id", { length: 36 }).references(() => franchises.id).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 20 }),
+  department: varchar("department", { length: 100 }), // Vendas, Suporte, etc.
+  specialties: json("specialties").default("[]"), // Especialidades do agente
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
+// Prompts de atendimento das franquias
+export const franchisePrompts = mysqlTable("franchise_prompts", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  franchiseId: varchar("franchise_id", { length: 36 }).references(() => franchises.id).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  prompt: text("prompt").notNull(),
+  category: varchar("category", { length: 100 }), // Vendas, Suporte, Geral, etc.
+  isDefault: boolean("is_default").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
+// Clients table - Agora são clientes finais das franquias
 export const clients = mysqlTable("clients", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
-  userId: varchar("user_id", { length: 36 }).references(() => users.id),
-  
-  // Dados básicos da empresa
-  companyName: varchar("company_name", { length: 255 }), // Nome Fantasia
-  legalName: varchar("legal_name", { length: 255 }), // Razão Social
+  franchiseId: varchar("franchise_id", { length: 36 }).references(() => franchises.id).notNull(), // Cliente pertence a uma franquia
+
+  // Dados básicos do cliente
+  fullName: varchar("full_name", { length: 255 }).notNull(), // Nome completo
+  email: varchar("email", { length: 255 }), // Email
+  phone: varchar("phone", { length: 20 }), // Telefone
   cpfCnpj: varchar("cpf_cnpj", { length: 20 }), // CPF/CNPJ
-  taxId: varchar("tax_id", { length: 50 }),
-  
-  // Endereço completo
+
+  // Endereço
   street: varchar("street", { length: 255 }), // Rua
   number: varchar("number", { length: 20 }), // Número
   complement: varchar("complement", { length: 100 }), // Complemento
   neighborhood: varchar("neighborhood", { length: 100 }), // Bairro
-  city: varchar("city", { length: 100 }),
-  state: varchar("state", { length: 50 }),
-  zipCode: varchar("zip_code", { length: 10 }),
-  address: text("address"), // Endereço completo (legacy)
-  
-  // Contatos
-  contactPhone: varchar("contact_phone", { length: 20 }), // Telefone de contato
-  whatsapp: varchar("whatsapp", { length: 20 }), // WhatsApp
-  email: varchar("email", { length: 255 }), // Email
-  website: varchar("website", { length: 255 }), // Site
-  
-  // Dados para acesso ao sistema
-  systemPassword: varchar("system_password", { length: 255 }), // Senha para entrar no sistema
-  
-  // Campos legados (manter compatibilidade)
-  fullName: varchar("full_name", { length: 255 }), // Nome Completo/Razão Social
-  primaryContactName: varchar("primary_contact_name", { length: 255 }),
-  primaryContactPhone: varchar("primary_contact_phone", { length: 20 }),
-  primaryContactEmail: varchar("primary_contact_email", { length: 255 }),
-  phone: varchar("phone", { length: 20 }), // Legacy
-  
+  city: varchar("city", { length: 100 }), // Cidade
+  state: varchar("state", { length: 50 }), // Estado
+  zipCode: varchar("zip_code", { length: 10 }), // CEP
+
   // Informações adicionais
-  businessSector: varchar("business_sector", { length: 100 }), // Setor de Atuação
-  generalNotes: text("general_notes"), // Observações Gerais
-  status: varchar("status", { length: 20 }).notNull().default("active"), // Status (Ativo, Inativo, Potencial)
-  
+  notes: text("notes"), // Observações
+  status: varchar("status", { length: 20 }).notNull().default("active"), // Status (active, inactive)
+
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
 });
@@ -327,10 +434,44 @@ export const whatsappInstances = mysqlTable("whatsapp_instances", {
 export const usersRelations = relations(users, ({ one }) => ({
   client: one(clients, { fields: [users.id], references: [clients.userId] }),
   teamMember: one(teamMembers, { fields: [users.id], references: [teamMembers.userId] }),
+  franchisor: one(franchisors, { fields: [users.id], references: [franchisors.userId] }),
+  franchise: one(franchises, { fields: [users.id], references: [franchises.userId] }),
+}));
+
+export const plansRelations = relations(plans, ({ many }) => ({
+  franchisors: many(franchisors),
+}));
+
+export const franchisorsRelations = relations(franchisors, ({ one, many }) => ({
+  user: one(users, { fields: [franchisors.userId], references: [users.id] }),
+  plan: one(plans, { fields: [franchisors.planId], references: [plans.id] }),
+  franchises: many(franchises),
+}));
+
+export const franchisesRelations = relations(franchises, ({ one, many }) => ({
+  user: one(users, { fields: [franchises.userId], references: [users.id] }),
+  franchisor: one(franchisors, { fields: [franchises.franchisorId], references: [franchisors.id] }),
+  clients: many(clients),
+  phoneNumbers: many(franchisePhoneNumbers),
+  agents: many(franchiseAgents),
+  prompts: many(franchisePrompts),
+}));
+
+export const franchisePhoneNumbersRelations = relations(franchisePhoneNumbers, ({ one }) => ({
+  franchise: one(franchises, { fields: [franchisePhoneNumbers.franchiseId], references: [franchises.id] }),
+  whatsappInstance: one(whatsappInstances, { fields: [franchisePhoneNumbers.whatsappInstanceId], references: [whatsappInstances.id] }),
+}));
+
+export const franchiseAgentsRelations = relations(franchiseAgents, ({ one }) => ({
+  franchise: one(franchises, { fields: [franchiseAgents.franchiseId], references: [franchises.id] }),
+}));
+
+export const franchisePromptsRelations = relations(franchisePrompts, ({ one }) => ({
+  franchise: one(franchises, { fields: [franchisePrompts.franchiseId], references: [franchises.id] }),
 }));
 
 export const clientsRelations = relations(clients, ({ one, many }) => ({
-  user: one(users, { fields: [clients.userId], references: [users.id] }),
+  franchise: one(franchises, { fields: [clients.franchiseId], references: [franchises.id] }),
   invoices: many(invoices),
   projects: many(projects),
   contacts: many(clientContacts),
@@ -504,6 +645,42 @@ export const insertWhatsappInstanceSchema = createInsertSchema(whatsappInstances
   updatedAt: true,
 });
 
+export const insertPlanSchema = createInsertSchema(plans).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertFranchisorSchema = createInsertSchema(franchisors).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertFranchiseSchema = createInsertSchema(franchises).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertFranchisePhoneNumberSchema = createInsertSchema(franchisePhoneNumbers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertFranchiseAgentSchema = createInsertSchema(franchiseAgents).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertFranchisePromptSchema = createInsertSchema(franchisePrompts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Schema for creating/updating roles
 export const createRoleSchema = z.object({
   name: z.string().min(1, "Nome da role é obrigatório").regex(/^[a-z_]+$/, "Nome deve conter apenas letras minúsculas e underscore"),
@@ -552,8 +729,8 @@ export const createTeamMemberSchema = z.object({
   email: z.string().email("Email inválido"),
   phone: z.string().optional(),
   password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
-  role: z.enum(["admin", "team", "client"]).default("team"),
-  
+  role: z.enum(["super_root", "admin", "team", "client", "franchisor", "franchise"]).default("team"),
+
   // Team member specific data
   position: z.string().min(1, "Cargo é obrigatório"),
   department: z.string().min(1, "Departamento é obrigatório"),
@@ -563,42 +740,15 @@ export const createTeamMemberSchema = z.object({
 
 export type CreateTeamMember = z.infer<typeof createTeamMemberSchema>;
 
-// Schema customizado para criação de cliente com usuário
+// Schema para criação de cliente final (pertence a uma franquia)
 export const createClientSchema = z.object({
-  // Dados básicos da empresa
-  companyName: z.string().min(1, "Nome fantasia é obrigatório"),
-  legalName: z.string().min(1, "Razão social é obrigatória"),
-  
-  // Endereço completo
-  street: z.string().min(1, "Rua é obrigatória"),
-  number: z.string().min(1, "Número é obrigatório"),
-  complement: z.string().optional(),
-  neighborhood: z.string().min(1, "Bairro é obrigatório"),
-  city: z.string().min(1, "Cidade é obrigatória"),
-  state: z.string().min(1, "Estado é obrigatório"),
-  zipCode: z.string().min(1, "CEP é obrigatório"),
-  
-  // Contatos
-  contactPhone: z.string().min(1, "Telefone de contato é obrigatório"),
-  whatsapp: z.string().optional(),
-  email: z.string().email("Email inválido"),
-  website: z.string().url("URL inválida").optional().or(z.literal("")),
-  
-  // Senha para acesso ao sistema
-  systemPassword: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
-  
-  // Campos opcionais
+  // Dados básicos do cliente
+  fullName: z.string().min(1, "Nome completo é obrigatório"),
+  email: z.string().email("Email inválido").optional().or(z.literal("")),
+  phone: z.string().optional(),
   cpfCnpj: z.string().optional(),
-  businessSector: z.string().optional(),
-  generalNotes: z.string().optional(),
-});
 
-export type CreateClient = z.infer<typeof createClientSchema>;
-
-// Schema para edição de cliente - todos os campos opcionais
-export const editClientSchema = z.object({
-  companyName: z.string().optional(),
-  legalName: z.string().optional(),
+  // Endereço
   street: z.string().optional(),
   number: z.string().optional(),
   complement: z.string().optional(),
@@ -606,14 +756,27 @@ export const editClientSchema = z.object({
   city: z.string().optional(),
   state: z.string().optional(),
   zipCode: z.string().optional(),
-  contactPhone: z.string().optional(),
-  whatsapp: z.string().optional(),
+
+  // Informações adicionais
+  notes: z.string().optional(),
+});
+
+export type CreateClient = z.infer<typeof createClientSchema>;
+
+// Schema para edição de cliente - todos os campos opcionais
+export const editClientSchema = z.object({
+  fullName: z.string().optional(),
   email: z.union([z.string().email("Email inválido"), z.literal("")]).optional(),
-  website: z.union([z.string().url("URL inválida"), z.literal("")]).optional(),
-  systemPassword: z.union([z.string().min(6, "Senha deve ter pelo menos 6 caracteres"), z.literal("")]).optional(),
+  phone: z.string().optional(),
   cpfCnpj: z.string().optional(),
-  businessSector: z.string().optional(),
-  generalNotes: z.string().optional(),
+  street: z.string().optional(),
+  number: z.string().optional(),
+  complement: z.string().optional(),
+  neighborhood: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 export type EditClient = z.infer<typeof editClientSchema>;
@@ -645,6 +808,154 @@ export const createWhatsappInstanceSchema = z.object({
   webhook: z.string().url("URL de webhook inválida").optional().or(z.literal("")),
 });
 
+// Schema para criação de plano
+export const createPlanSchema = z.object({
+  name: z.string().min(1, "Nome do plano é obrigatório"),
+  description: z.string().optional(),
+  maxFranchises: z.number().min(1, "Máximo de franquias deve ser pelo menos 1"),
+  maxPhoneNumbers: z.number().min(1, "Máximo de números deve ser pelo menos 1"),
+  maxAgents: z.number().min(1, "Máximo de agentes deve ser pelo menos 1"),
+  maxPrompts: z.number().min(1, "Máximo de prompts deve ser pelo menos 1"),
+  monthlyPrice: z.number().min(0, "Preço mensal deve ser positivo"),
+  features: z.array(z.string()).default([]),
+  active: z.boolean().default(true),
+});
+
+// Schema para criação de franqueador
+export const createFranchisorSchema = z.object({
+  // Dados do usuário
+  firstName: z.string().min(1, "Nome é obrigatório"),
+  lastName: z.string().min(1, "Sobrenome é obrigatório"),
+  email: z.string().email("Email inválido"),
+  phone: z.string().min(1, "Telefone é obrigatório"),
+  password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+
+  // Dados da empresa
+  planId: z.string().min(1, "Plano é obrigatório"),
+  companyName: z.string().min(1, "Nome fantasia é obrigatório"),
+  legalName: z.string().min(1, "Razão social é obrigatória"),
+  cnpj: z.string().min(1, "CNPJ é obrigatório"),
+
+  // Endereço
+  street: z.string().min(1, "Rua é obrigatória"),
+  number: z.string().min(1, "Número é obrigatório"),
+  complement: z.string().optional(),
+  neighborhood: z.string().min(1, "Bairro é obrigatório"),
+  city: z.string().min(1, "Cidade é obrigatória"),
+  state: z.string().min(1, "Estado é obrigatório"),
+  zipCode: z.string().min(1, "CEP é obrigatório"),
+
+  // Contatos
+  contactPhone: z.string().min(1, "Telefone de contato é obrigatório"),
+  website: z.string().url("URL inválida").optional().or(z.literal("")),
+
+  // Datas do plano
+  planStartDate: z.string().min(1, "Data de início do plano é obrigatória"),
+  planEndDate: z.string().optional(),
+});
+
+// Schema para criação de franquia
+export const createFranchiseSchema = z.object({
+  // Dados do usuário
+  firstName: z.string().min(1, "Nome é obrigatório"),
+  lastName: z.string().min(1, "Sobrenome é obrigatório"),
+  email: z.string().email("Email inválido"),
+  phone: z.string().min(1, "Telefone é obrigatório"),
+  password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+
+  // Dados da franquia
+  franchiseName: z.string().min(1, "Nome da franquia é obrigatório"),
+  franchiseCode: z.string().min(1, "Código da franquia é obrigatório"),
+
+  // Endereço
+  street: z.string().min(1, "Rua é obrigatória"),
+  number: z.string().min(1, "Número é obrigatório"),
+  complement: z.string().optional(),
+  neighborhood: z.string().min(1, "Bairro é obrigatório"),
+  city: z.string().min(1, "Cidade é obrigatória"),
+  state: z.string().min(1, "Estado é obrigatório"),
+  zipCode: z.string().min(1, "CEP é obrigatório"),
+
+  // Contatos
+  contactPhone: z.string().min(1, "Telefone de contato é obrigatório"),
+
+  // Responsável
+  managerName: z.string().min(1, "Nome do responsável é obrigatório"),
+  managerPhone: z.string().optional(),
+  managerEmail: z.string().email("Email do responsável inválido").optional().or(z.literal("")),
+});
+
+// Schema para criação de número de telefone da franquia
+export const createFranchisePhoneNumberSchema = z.object({
+  phoneNumber: z.string().min(1, "Número de telefone é obrigatório"),
+  isPrimary: z.boolean().default(false),
+});
+
+// Schema para criação de agente da franquia
+export const createFranchiseAgentSchema = z.object({
+  name: z.string().min(1, "Nome do agente é obrigatório"),
+  email: z.string().email("Email inválido").optional().or(z.literal("")),
+  phone: z.string().optional(),
+  department: z.string().optional(),
+  specialties: z.array(z.string()).default([]),
+});
+
+// Schema para criação de prompt da franquia
+export const createFranchisePromptSchema = z.object({
+  name: z.string().min(1, "Nome do prompt é obrigatório"),
+  description: z.string().optional(),
+  prompt: z.string().min(1, "Conteúdo do prompt é obrigatório"),
+  category: z.string().optional(),
+  isDefault: z.boolean().default(false),
+});
+
+// Schema para edição de perfil do super root
+export const editSuperRootProfileSchema = z.object({
+  firstName: z.string().min(1, "Nome é obrigatório"),
+  lastName: z.string().min(1, "Sobrenome é obrigatório"),
+  email: z.string().email("Email inválido"),
+  phone: z.string().min(1, "Telefone é obrigatório"),
+  currentPassword: z.string().optional(),
+  newPassword: z.string().min(6, "Nova senha deve ter pelo menos 6 caracteres").optional(),
+  confirmPassword: z.string().optional(),
+}).refine((data) => {
+  if (data.newPassword && !data.currentPassword) {
+    return false;
+  }
+  if (data.newPassword && data.newPassword !== data.confirmPassword) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Para alterar a senha, informe a senha atual e confirme a nova senha",
+  path: ["confirmPassword"],
+});
+
 export type WhatsappInstance = typeof whatsappInstances.$inferSelect;
 export type InsertWhatsappInstance = z.infer<typeof insertWhatsappInstanceSchema>;
 export type CreateWhatsappInstance = z.infer<typeof createWhatsappInstanceSchema>;
+
+// Novos tipos para o sistema hierárquico
+export type Plan = typeof plans.$inferSelect;
+export type InsertPlan = z.infer<typeof insertPlanSchema>;
+export type CreatePlan = z.infer<typeof createPlanSchema>;
+
+export type Franchisor = typeof franchisors.$inferSelect;
+export type InsertFranchisor = z.infer<typeof insertFranchisorSchema>;
+export type CreateFranchisor = z.infer<typeof createFranchisorSchema>;
+
+export type Franchise = typeof franchises.$inferSelect;
+export type InsertFranchise = z.infer<typeof insertFranchiseSchema>;
+export type CreateFranchise = z.infer<typeof createFranchiseSchema>;
+
+export type FranchisePhoneNumber = typeof franchisePhoneNumbers.$inferSelect;
+export type InsertFranchisePhoneNumber = z.infer<typeof insertFranchisePhoneNumberSchema>;
+export type CreateFranchisePhoneNumber = z.infer<typeof createFranchisePhoneNumberSchema>;
+
+export type FranchiseAgent = typeof franchiseAgents.$inferSelect;
+export type InsertFranchiseAgent = z.infer<typeof insertFranchiseAgentSchema>;
+export type CreateFranchiseAgent = z.infer<typeof createFranchiseAgentSchema>;
+
+export type FranchisePrompt = typeof franchisePrompts.$inferSelect;
+export type InsertFranchisePrompt = z.infer<typeof insertFranchisePromptSchema>;
+export type CreateFranchisePrompt = z.infer<typeof createFranchisePromptSchema>;

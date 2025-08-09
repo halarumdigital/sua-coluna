@@ -8,6 +8,9 @@ import { z } from "zod";
 import multer from "multer";
 import path from "path";
 import fs from "fs/promises";
+import { db } from "./db";
+import { aiUsage } from "@shared/schema";
+import { sum, count, desc, sql } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -1627,6 +1630,1026 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to update client profile" });
+    }
+  });
+
+  // ========================================
+  // FRANCHISE SYSTEM ROUTES
+  // ========================================
+
+  // Super Root Routes - Gerenciamento de Planos
+  app.get("/api/super-root/plans", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+      
+      const plans = await storage.getAllPlans();
+      res.json(plans);
+    } catch (error) {
+      console.error("Error fetching plans:", error);
+      res.status(500).json({ message: "Failed to fetch plans" });
+    }
+  });
+
+  app.post("/api/super-root/plans", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+      
+      const { createPlanSchema } = await import("@shared/schema");
+      const validatedData = createPlanSchema.parse(req.body);
+      
+      const plan = await storage.createPlan(validatedData);
+      res.status(201).json(plan);
+    } catch (error) {
+      console.error("Error creating plan:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create plan" });
+    }
+  });
+
+  app.put("/api/super-root/plans/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+      
+      const { createPlanSchema } = await import("@shared/schema");
+      const validatedData = createPlanSchema.parse(req.body);
+      
+      const plan = await storage.updatePlan(req.params.id, validatedData);
+      res.json(plan);
+    } catch (error) {
+      console.error("Error updating plan:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update plan" });
+    }
+  });
+
+  app.delete("/api/super-root/plans/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+      
+      await storage.deletePlan(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting plan:", error);
+      res.status(500).json({ message: "Failed to delete plan" });
+    }
+  });
+
+  // Super Root Routes - System Settings
+  app.get("/api/super-root/settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+      
+      const settings = await storage.getSystemSettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching system settings:", error);
+      res.status(500).json({ message: "Failed to fetch system settings" });
+    }
+  });
+
+  app.post("/api/super-root/settings", isAuthenticated, upload.fields([
+    { name: 'logo', maxCount: 1 },
+    { name: 'favicon', maxCount: 1 }
+  ]), async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      const {
+        systemName,
+        systemSubtitle,
+        systemDescription,
+        systemColor,
+        systemColorHex,
+      } = req.body;
+
+      // Handle logo upload
+      if (files?.logo?.[0]) {
+        const logoFile = files.logo[0];
+        const logoPath = `/uploads/${logoFile.filename}`;
+        await storage.setSystemSetting("system_logo", logoPath, "string");
+        await storage.setSystemSetting("logo", logoPath, "string");
+      }
+
+      // Handle favicon upload
+      if (files?.favicon?.[0]) {
+        const faviconFile = files.favicon[0];
+        const faviconPath = `/uploads/${faviconFile.filename}`;
+        await storage.setSystemSetting("system_favicon", faviconPath, "string");
+        await storage.setSystemSetting("favicon", faviconPath, "string");
+      }
+
+      // Handle other settings
+      if (systemName) {
+        await storage.setSystemSetting("system_name", systemName, "string");
+        await storage.setSystemSetting("systemName", systemName, "string");
+      }
+
+      if (systemSubtitle) {
+        await storage.setSystemSetting("system_subtitle", systemSubtitle, "string");
+        await storage.setSystemSetting("systemSubtitle", systemSubtitle, "string");
+      }
+
+      if (systemDescription) {
+        await storage.setSystemSetting("system_description", systemDescription, "string");
+        await storage.setSystemSetting("systemDescription", systemDescription, "string");
+      }
+
+      if (systemColor || systemColorHex) {
+        const color = systemColorHex || systemColor;
+        await storage.setSystemSetting("primary_color", color, "string");
+        await storage.setSystemSetting("systemColor", color, "string");
+      }
+
+      res.json({ message: "Configurações do sistema salvas com sucesso" });
+    } catch (error) {
+      console.error("Error saving system settings:", error);
+      res.status(500).json({ message: "Failed to save system settings" });
+    }
+  });
+
+  // Super Root Routes - WhatsApp Settings
+  app.get("/api/super-root/whatsapp-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+      
+      const settings = await storage.getWhatsappApiSettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching WhatsApp settings:", error);
+      res.status(500).json({ message: "Failed to fetch WhatsApp settings" });
+    }
+  });
+
+  app.post("/api/super-root/whatsapp-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+
+      const { whatsappApiSettingsSchema } = await import("@shared/schema");
+      const validatedData = whatsappApiSettingsSchema.parse(req.body);
+      
+      const settings = await storage.saveWhatsappApiSettings(validatedData, userId);
+      
+      res.json(settings);
+    } catch (error) {
+      console.error("Error saving WhatsApp settings:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to save WhatsApp settings" });
+    }
+  });
+
+  // Super Root Routes - AI Settings
+  app.get("/api/super-root/ai-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+      
+      const settings = await storage.getAISettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching AI settings:", error);
+      res.status(500).json({ message: "Failed to fetch AI settings" });
+    }
+  });
+
+  app.post("/api/super-root/ai-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+
+      const { aiSettingsSchema } = await import("@shared/schema");
+      const validatedData = aiSettingsSchema.parse(req.body);
+      
+      await storage.saveAISettings(validatedData);
+      res.json({ message: "Configurações de IA salvas com sucesso" });
+    } catch (error) {
+      console.error("Error saving AI settings:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to save AI settings" });
+    }
+  });
+
+  app.get("/api/super-root/ai-models", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+      
+      // Return available AI models
+      const models = [
+        { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo" },
+        { id: "gpt-4", name: "GPT-4" },
+        { id: "gpt-4-turbo", name: "GPT-4 Turbo" },
+        { id: "gpt-4o", name: "GPT-4o" },
+      ];
+      
+      res.json(models);
+    } catch (error) {
+      console.error("Error fetching AI models:", error);
+      res.status(500).json({ message: "Failed to fetch AI models" });
+    }
+  });
+
+  app.get("/api/super-root/ai-usage", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+      
+      // Get AI usage statistics
+      const today = new Date();
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      
+      const [totalUsage] = await db
+        .select({
+          totalTokens: sum(aiUsage.totalTokens),
+          totalCost: sum(aiUsage.cost),
+        })
+        .from(aiUsage);
+
+      const [todayUsage] = await db
+        .select({
+          requestsToday: count(),
+        })
+        .from(aiUsage)
+        .where(sql`${aiUsage.createdAt} >= ${startOfDay}`);
+
+      const [monthUsage] = await db
+        .select({
+          requestsThisMonth: count(),
+        })
+        .from(aiUsage)
+        .where(sql`${aiUsage.createdAt} >= ${startOfMonth}`);
+
+      const [lastUsage] = await db
+        .select({
+          lastUsed: aiUsage.createdAt,
+        })
+        .from(aiUsage)
+        .orderBy(desc(aiUsage.createdAt))
+        .limit(1);
+
+      res.json({
+        totalTokens: Number(totalUsage?.totalTokens || 0),
+        totalCost: Number(totalUsage?.totalCost || 0),
+        requestsToday: Number(todayUsage?.requestsToday || 0),
+        requestsThisMonth: Number(monthUsage?.requestsThisMonth || 0),
+        lastUsed: lastUsage?.lastUsed || null,
+      });
+    } catch (error) {
+      console.error("Error fetching AI usage:", error);
+      res.status(500).json({ message: "Failed to fetch AI usage" });
+    }
+  });
+
+  app.post("/api/super-root/ai-test", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+      
+      const settings = await storage.getAISettings();
+      
+      if (!settings.chatGptApiKey) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "API key not configured" 
+        });
+      }
+
+      // Test connection with OpenAI
+      try {
+        const response = await openaiService.testConnection(settings);
+        res.json({ 
+          success: true, 
+          model: settings.model,
+          message: "Connection successful" 
+        });
+      } catch (error: any) {
+        res.json({ 
+          success: false, 
+          error: error.message || "Connection failed" 
+        });
+      }
+    } catch (error) {
+      console.error("Error testing AI connection:", error);
+      res.status(500).json({ message: "Failed to test AI connection" });
+    }
+  });
+
+  app.post("/api/super-root/ai-chat", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+
+      const { message, settings } = req.body;
+      
+      if (!message || !settings) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "Message and settings are required" 
+        });
+      }
+
+      try {
+        const response = await openaiService.chat(message, settings);
+        
+        // Record usage
+        await storage.recordAIUsage({
+          userId: userId,
+          model: settings.model,
+          promptTokens: response.usage?.prompt_tokens || 0,
+          completionTokens: response.usage?.completion_tokens || 0,
+          totalTokens: response.usage?.total_tokens || 0,
+          cost: 0, // Calculate based on model pricing
+          requestType: "chat",
+          success: true,
+        });
+
+        res.json({ 
+          success: true, 
+          response: response.content 
+        });
+      } catch (error: any) {
+        // Record failed usage
+        await storage.recordAIUsage({
+          userId: userId,
+          model: settings.model,
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          cost: 0,
+          requestType: "chat",
+          success: false,
+          errorMessage: error.message,
+        });
+
+        res.json({ 
+          success: false, 
+          error: error.message || "Chat request failed" 
+        });
+      }
+    } catch (error) {
+      console.error("Error in AI chat:", error);
+      res.status(500).json({ message: "Failed to process AI chat" });
+    }
+  });
+
+  // Super Root Routes - Gerenciamento de Franqueadores
+  app.get("/api/super-root/franchisors", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+      
+      const franchisors = await storage.getAllFranchisors();
+      res.json(franchisors);
+    } catch (error) {
+      console.error("Error fetching franchisors:", error);
+      res.status(500).json({ message: "Failed to fetch franchisors" });
+    }
+  });
+
+  app.post("/api/super-root/franchisors", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+      
+      const { createFranchisorSchema } = await import("@shared/schema");
+      const validatedData = createFranchisorSchema.parse(req.body);
+      
+      const franchisor = await storage.createFranchisor(validatedData);
+      res.status(201).json(franchisor);
+    } catch (error) {
+      console.error("Error creating franchisor:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create franchisor" });
+    }
+  });
+
+  // Franchisor Routes - Gerenciamento de Franquias
+  app.get("/api/franchisor/franchises", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchisor') {
+        return res.status(403).json({ message: "Access denied - Franchisor only" });
+      }
+      
+      const franchisor = await storage.getFranchisorByUserId(userId);
+      if (!franchisor) {
+        return res.status(404).json({ message: "Franchisor data not found" });
+      }
+      
+      const franchises = await storage.getFranchisesByFranchisorId(franchisor.id);
+      res.json(franchises);
+    } catch (error) {
+      console.error("Error fetching franchises:", error);
+      res.status(500).json({ message: "Failed to fetch franchises" });
+    }
+  });
+
+  app.post("/api/franchisor/franchises", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchisor') {
+        return res.status(403).json({ message: "Access denied - Franchisor only" });
+      }
+      
+      const franchisor = await storage.getFranchisorByUserId(userId);
+      if (!franchisor) {
+        return res.status(404).json({ message: "Franchisor data not found" });
+      }
+      
+      const { createFranchiseSchema } = await import("@shared/schema");
+      const validatedData = createFranchiseSchema.parse(req.body);
+      
+      const franchise = await storage.createFranchise(franchisor.id, validatedData);
+      res.status(201).json(franchise);
+    } catch (error) {
+      console.error("Error creating franchise:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create franchise" });
+    }
+  });
+
+  // Franchise Routes - Gerenciamento de Números de Telefone
+  app.get("/api/franchise/phone-numbers", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchise') {
+        return res.status(403).json({ message: "Access denied - Franchise only" });
+      }
+      
+      const franchise = await storage.getFranchiseByUserId(userId);
+      if (!franchise) {
+        return res.status(404).json({ message: "Franchise data not found" });
+      }
+      
+      const phoneNumbers = await storage.getFranchisePhoneNumbers(franchise.id);
+      res.json(phoneNumbers);
+    } catch (error) {
+      console.error("Error fetching phone numbers:", error);
+      res.status(500).json({ message: "Failed to fetch phone numbers" });
+    }
+  });
+
+  app.post("/api/franchise/phone-numbers", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchise') {
+        return res.status(403).json({ message: "Access denied - Franchise only" });
+      }
+      
+      const franchise = await storage.getFranchiseByUserId(userId);
+      if (!franchise) {
+        return res.status(404).json({ message: "Franchise data not found" });
+      }
+      
+      const { createFranchisePhoneNumberSchema } = await import("@shared/schema");
+      const validatedData = createFranchisePhoneNumberSchema.parse(req.body);
+      
+      const phoneNumber = await storage.createFranchisePhoneNumber(franchise.id, validatedData);
+      res.status(201).json(phoneNumber);
+    } catch (error) {
+      console.error("Error creating phone number:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create phone number" });
+    }
+  });
+
+  // Franchise Routes - Gerenciamento de Agentes
+  app.get("/api/franchise/agents", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchise') {
+        return res.status(403).json({ message: "Access denied - Franchise only" });
+      }
+      
+      const franchise = await storage.getFranchiseByUserId(userId);
+      if (!franchise) {
+        return res.status(404).json({ message: "Franchise data not found" });
+      }
+      
+      const agents = await storage.getFranchiseAgents(franchise.id);
+      res.json(agents);
+    } catch (error) {
+      console.error("Error fetching agents:", error);
+      res.status(500).json({ message: "Failed to fetch agents" });
+    }
+  });
+
+  app.post("/api/franchise/agents", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchise') {
+        return res.status(403).json({ message: "Access denied - Franchise only" });
+      }
+      
+      const franchise = await storage.getFranchiseByUserId(userId);
+      if (!franchise) {
+        return res.status(404).json({ message: "Franchise data not found" });
+      }
+      
+      const { createFranchiseAgentSchema } = await import("@shared/schema");
+      const validatedData = createFranchiseAgentSchema.parse(req.body);
+      
+      const agent = await storage.createFranchiseAgent(franchise.id, validatedData);
+      res.status(201).json(agent);
+    } catch (error) {
+      console.error("Error creating agent:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create agent" });
+    }
+  });
+
+  // Franchise Routes - Gerenciamento de Prompts
+  app.get("/api/franchise/prompts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchise') {
+        return res.status(403).json({ message: "Access denied - Franchise only" });
+      }
+      
+      const franchise = await storage.getFranchiseByUserId(userId);
+      if (!franchise) {
+        return res.status(404).json({ message: "Franchise data not found" });
+      }
+      
+      const prompts = await storage.getFranchisePrompts(franchise.id);
+      res.json(prompts);
+    } catch (error) {
+      console.error("Error fetching prompts:", error);
+      res.status(500).json({ message: "Failed to fetch prompts" });
+    }
+  });
+
+  app.post("/api/franchise/prompts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchise') {
+        return res.status(403).json({ message: "Access denied - Franchise only" });
+      }
+      
+      const franchise = await storage.getFranchiseByUserId(userId);
+      if (!franchise) {
+        return res.status(404).json({ message: "Franchise data not found" });
+      }
+      
+      const { createFranchisePromptSchema } = await import("@shared/schema");
+      const validatedData = createFranchisePromptSchema.parse(req.body);
+      
+      const prompt = await storage.createFranchisePrompt(franchise.id, validatedData);
+      res.status(201).json(prompt);
+    } catch (error) {
+      console.error("Error creating prompt:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create prompt" });
+    }
+  });
+
+  // Super Root Profile routes
+  app.get("/api/super-root/profile", isAuthenticated, async (req: any, res) => {
+    try {
+      console.log("🔍 Super Root Profile GET - Starting");
+      const userId = getCurrentUserId(req);
+      console.log("👤 User ID:", userId);
+      
+      if (!userId) {
+        console.log("❌ No user ID found");
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      console.log("👤 User found:", user ? `${user.firstName} ${user.lastName} (${user.role})` : 'null');
+      
+      if (user?.role !== 'super_root') {
+        console.log("❌ Access denied - user role:", user?.role);
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Retornar dados do usuário (sem senha)
+      const { password, ...userProfile } = user;
+      console.log("✅ Returning profile data");
+      res.json(userProfile);
+    } catch (error) {
+      console.error("❌ Error fetching super root profile:", error);
+      res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
+  app.put("/api/super-root/profile", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { editSuperRootProfileSchema } = await import("@shared/schema");
+      const validatedData = editSuperRootProfileSchema.parse(req.body);
+      
+      // Se está alterando senha, verificar senha atual
+      if (validatedData.newPassword && validatedData.currentPassword) {
+        const bcrypt = await import('bcrypt');
+        const isValidPassword = await bcrypt.compare(validatedData.currentPassword, user.password || '');
+        
+        if (!isValidPassword) {
+          return res.status(400).json({ message: "Senha atual incorreta" });
+        }
+      }
+      
+      const updatedUser = await storage.updateSuperRootProfile(userId, validatedData);
+      res.json({ 
+        message: "Perfil atualizado com sucesso",
+        user: updatedUser
+      });
+    } catch (error) {
+      console.error("Error updating super root profile:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
+  // Franchisors routes (Super Root only)
+  app.get("/api/super-root/franchisors", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const franchisors = await storage.getAllFranchisors();
+      res.json(franchisors);
+    } catch (error) {
+      console.error("Error fetching franchisors:", error);
+      res.status(500).json({ message: "Failed to fetch franchisors" });
+    }
+  });
+
+  app.post("/api/super-root/franchisors", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { createFranchisorSchema } = await import("@shared/schema");
+      const validatedData = createFranchisorSchema.parse(req.body);
+      
+      const franchisor = await storage.createFranchisor(validatedData);
+      res.json({ 
+        message: "Franqueador criado com sucesso",
+        franchisor
+      });
+    } catch (error) {
+      console.error("Error creating franchisor:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create franchisor" });
+    }
+  });
+
+  app.put("/api/super-root/franchisors/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { id } = req.params;
+      const { createFranchisorSchema } = await import("@shared/schema");
+      const validatedData = createFranchisorSchema.parse(req.body);
+      
+      const franchisor = await storage.updateFranchisor(id, validatedData);
+      res.json({ 
+        message: "Franqueador atualizado com sucesso",
+        franchisor
+      });
+    } catch (error) {
+      console.error("Error updating franchisor:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update franchisor" });
+    }
+  });
+
+  app.delete("/api/super-root/franchisors/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { id } = req.params;
+      await storage.deleteFranchisor(id);
+      res.json({ message: "Franqueador excluído com sucesso" });
+    } catch (error) {
+      console.error("Error deleting franchisor:", error);
+      res.status(500).json({ message: "Failed to delete franchisor" });
+    }
+  });
+
+  // Plans routes (Super Root only)
+  app.get("/api/super-root/plans", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const plans = await storage.getPlans();
+      res.json(plans);
+    } catch (error) {
+      console.error("Error fetching plans:", error);
+      res.status(500).json({ message: "Failed to fetch plans" });
+    }
+  });
+
+  app.post("/api/super-root/plans", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { insertPlanSchema } = await import("@shared/schema");
+      const validatedData = insertPlanSchema.parse(req.body);
+      
+      const plan = await storage.createPlan(validatedData);
+      res.json({ 
+        message: "Plano criado com sucesso",
+        plan
+      });
+    } catch (error) {
+      console.error("Error creating plan:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create plan" });
+    }
+  });
+
+  app.put("/api/super-root/plans/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { id } = req.params;
+      const { insertPlanSchema } = await import("@shared/schema");
+      const validatedData = insertPlanSchema.parse(req.body);
+      
+      const plan = await storage.updatePlan(id, validatedData);
+      res.json({ 
+        message: "Plano atualizado com sucesso",
+        plan
+      });
+    } catch (error) {
+      console.error("Error updating plan:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update plan" });
+    }
+  });
+
+  app.delete("/api/super-root/plans/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { id } = req.params;
+      await storage.deletePlan(id);
+      res.json({ message: "Plano excluído com sucesso" });
+    } catch (error) {
+      console.error("Error deleting plan:", error);
+      res.status(500).json({ message: "Failed to delete plan" });
     }
   });
 

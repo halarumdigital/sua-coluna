@@ -2,107 +2,118 @@ const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 async function checkMigrationStatus() {
-  let connection;
-  
+  const connection = await mysql.createConnection({
+    host: process.env.MYSQL_HOST,
+    port: parseInt(process.env.MYSQL_PORT || '3306'),
+    user: process.env.MYSQL_USER,
+    password: process.env.MYSQL_PASSWORD,
+    database: process.env.MYSQL_DATABASE,
+  });
+
   try {
-    console.log('🔍 Verificando status das migrações...');
-    
-    // Conectar ao banco
-    connection = await mysql.createConnection({
-      host: process.env.DB_HOST || 'localhost',
-      user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'sua_coluna',
+    console.log('🔍 Verificando status da migração...\n');
+
+    // 1. Verificar usuários por role
+    const [usersByRole] = await connection.execute(`
+      SELECT role, COUNT(*) as count
+      FROM users
+      GROUP BY role
+      ORDER BY role
+    `);
+
+    console.log('👥 Usuários por role:');
+    usersByRole.forEach(row => {
+      console.log(`   ${row.role}: ${row.count} usuário(s)`);
     });
-    
-    console.log('✅ Conexão estabelecida!');
-    
-    // Verificar se a tabela migrations existe
-    const [tables] = await connection.execute(`
-      SHOW TABLES LIKE 'migrations'
+
+    // 2. Verificar franqueadores
+    const [franchisors] = await connection.execute(`
+      SELECT f.company_name, f.email, u.first_name, u.last_name, p.name as plan_name
+      FROM franchisors f
+      JOIN users u ON f.user_id = u.id
+      JOIN plans p ON f.plan_id = p.id
     `);
-    
-    if (tables.length === 0) {
-      console.log('❌ Tabela migrations não encontrada. Criando...');
-      await connection.execute(`
-        CREATE TABLE migrations (
-          id VARCHAR(255) PRIMARY KEY,
-          name VARCHAR(255) NOT NULL,
-          success BOOLEAN DEFAULT FALSE,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-      console.log('✅ Tabela migrations criada!');
-    }
-    
-    // Verificar migrações existentes
-    const [migrations] = await connection.execute(`
-      SELECT * FROM migrations ORDER BY created_at
-    `);
-    
-    console.log('\n📋 Migrações encontradas:');
-    migrations.forEach(migration => {
-      const status = migration.success ? '✅' : '❌';
-      console.log(`${status} ${migration.id} - ${migration.name}`);
+
+    console.log('\n🏢 Franqueadores:');
+    franchisors.forEach(f => {
+      console.log(`   ✅ ${f.company_name} (${f.first_name} ${f.last_name}) - ${f.email} - Plano: ${f.plan_name}`);
     });
-    
-    // Verificar se a tabela whatsapp_api_settings existe
-    const [whatsappTable] = await connection.execute(`
-      SHOW TABLES LIKE 'whatsapp_api_settings'
+
+    // 3. Verificar franquias
+    const [franchises] = await connection.execute(`
+      SELECT fr.franchise_name, fr.franchise_code, fr.email, u.first_name, u.last_name, 
+             fs.company_name as franchisor_name
+      FROM franchises fr
+      JOIN users u ON fr.user_id = u.id
+      JOIN franchisors fs ON fr.franchisor_id = fs.id
     `);
-    
-    if (whatsappTable.length > 0) {
-      console.log('\n✅ Tabela whatsapp_api_settings já existe!');
-      
-      // Verificar se a migração do WhatsApp foi registrada
-      const whatsappMigration = migrations.find(m => m.id === '20250204130000_create_whatsapp_api_settings');
-      
-      if (!whatsappMigration) {
-        console.log('📝 Registrando migração do WhatsApp...');
-        await connection.execute(`
-          INSERT INTO migrations (id, name, success) 
-          VALUES ('20250204130000_create_whatsapp_api_settings', 'Create WhatsApp API Settings', TRUE)
-        `);
-        console.log('✅ Migração do WhatsApp registrada!');
-      } else {
-        console.log('✅ Migração do WhatsApp já registrada!');
-      }
+
+    console.log('\n🏪 Franquias:');
+    franchises.forEach(f => {
+      console.log(`   ✅ ${f.franchise_name} (${f.franchise_code}) - ${f.first_name} ${f.last_name} - ${f.email}`);
+      console.log(`      Franqueador: ${f.franchisor_name}`);
+    });
+
+    // 4. Verificar clientes novos
+    const [newClients] = await connection.execute(`
+      SELECT c.full_name, c.email, c.phone, fr.franchise_name
+      FROM clients c
+      JOIN franchises fr ON c.franchise_id = fr.id
+    `);
+
+    console.log('\n👤 Clientes (nova estrutura):');
+    if (newClients.length > 0) {
+      newClients.forEach(c => {
+        console.log(`   ✅ ${c.full_name} - ${c.email || 'Sem email'} - ${c.phone || 'Sem telefone'}`);
+        console.log(`      Franquia: ${c.franchise_name}`);
+      });
     } else {
-      console.log('\n❌ Tabela whatsapp_api_settings não existe. Criando...');
-      
-      // Criar a tabela
-      await connection.execute(`
-        CREATE TABLE IF NOT EXISTS whatsapp_api_settings (
-          id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-          evolution_api_url VARCHAR(500) NOT NULL,
-          global_token VARCHAR(500) NOT NULL,
-          is_active BOOLEAN NOT NULL DEFAULT TRUE,
-          created_by VARCHAR(36),
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          INDEX idx_whatsapp_api_active (is_active),
-          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
-        )
-      `);
-      
-      // Registrar a migração
-      await connection.execute(`
-        INSERT INTO migrations (id, name, success) 
-        VALUES ('20250204130000_create_whatsapp_api_settings', 'Create WhatsApp API Settings', TRUE)
-      `);
-      
-      console.log('✅ Tabela whatsapp_api_settings criada e migração registrada!');
+      console.log('   📝 Nenhum cliente na nova estrutura ainda');
     }
+
+    // 5. Verificar dados antigos (backup)
+    try {
+      const [oldClients] = await connection.execute(`
+        SELECT COUNT(*) as count FROM old_clients
+      `);
+      console.log(`\n📦 Backup: ${oldClients[0].count} registros na tabela old_clients`);
+    } catch (error) {
+      console.log('\n📦 Backup: Tabela old_clients não encontrada');
+    }
+
+    // 6. Verificar estrutura das tabelas relacionadas
+    console.log('\n🔗 Verificando integridade das relações:');
     
-    console.log('\n🎉 Verificação concluída com sucesso!');
-    
+    // Números de telefone das franquias
+    const [phoneNumbers] = await connection.execute(`
+      SELECT COUNT(*) as count FROM franchise_phone_numbers
+    `);
+    console.log(`   📞 Números de telefone: ${phoneNumbers[0].count}`);
+
+    // Agentes das franquias
+    const [agents] = await connection.execute(`
+      SELECT COUNT(*) as count FROM franchise_agents
+    `);
+    console.log(`   👨‍💼 Agentes: ${agents[0].count}`);
+
+    // Prompts das franquias
+    const [prompts] = await connection.execute(`
+      SELECT COUNT(*) as count FROM franchise_prompts
+    `);
+    console.log(`   💬 Prompts: ${prompts[0].count}`);
+
+    console.log('\n🎉 Verificação de migração concluída!');
+    console.log('\n📋 Resumo da nova estrutura:');
+    console.log('1. Super Root → Gerencia planos e franqueadores');
+    console.log('2. Franqueadores (ex-admins) → Gerenciam franquias');
+    console.log('3. Franquias (ex-clients) → Gerenciam clientes finais');
+    console.log('4. Clientes → Clientes finais das franquias');
+
   } catch (error) {
-    console.error('❌ Erro:', error.message);
+    console.error('❌ Erro ao verificar migração:', error);
   } finally {
-    if (connection) {
-      await connection.end();
-    }
+    await connection.end();
   }
 }
 
-checkMigrationStatus(); 
+checkMigrationStatus();

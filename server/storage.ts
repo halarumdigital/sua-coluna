@@ -11,6 +11,12 @@ import {
   aiUsage,
   whatsappApiSettings,
   whatsappInstances,
+  plans,
+  franchisors,
+  franchises,
+  franchisePhoneNumbers,
+  franchiseAgents,
+  franchisePrompts,
   type User,
   type UpsertUser,
   type Client,
@@ -35,6 +41,24 @@ import {
   type WhatsappApiSettingsForm,
   type WhatsappInstance,
   type InsertWhatsappInstance,
+  type Plan,
+  type InsertPlan,
+  type CreatePlan,
+  type Franchisor,
+  type InsertFranchisor,
+  type CreateFranchisor,
+  type Franchise,
+  type InsertFranchise,
+  type CreateFranchise,
+  type FranchisePhoneNumber,
+  type InsertFranchisePhoneNumber,
+  type CreateFranchisePhoneNumber,
+  type FranchiseAgent,
+  type InsertFranchiseAgent,
+  type CreateFranchiseAgent,
+  type FranchisePrompt,
+  type InsertFranchisePrompt,
+  type CreateFranchisePrompt,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, count, sum, sql } from "drizzle-orm";
@@ -163,6 +187,33 @@ export class DatabaseStorage implements IStorage {
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email));
     return user;
+  }
+
+  async updateSuperRootProfile(userId: string, profileData: any): Promise<User> {
+    const updateData: any = {
+      firstName: profileData.firstName,
+      lastName: profileData.lastName,
+      email: profileData.email,
+      phone: profileData.phone,
+    };
+
+    // Se está alterando senha, hash da nova senha
+    if (profileData.newPassword) {
+      const bcrypt = await import('bcrypt');
+      updateData.password = await bcrypt.hash(profileData.newPassword, 10);
+    }
+
+    await db
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, userId));
+
+    // Buscar o usuário atualizado
+    const [updatedUser] = await db.select().from(users).where(eq(users.id, userId));
+    
+    // Retornar sem a senha
+    const { password, ...userWithoutPassword } = updatedUser;
+    return userWithoutPassword as User;
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
@@ -1057,6 +1108,258 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWhatsappInstance(id: string): Promise<void> {
     await db.delete(whatsappInstances).where(eq(whatsappInstances.id, id));
+  }
+  // ========================================
+  // FRANCHISE SYSTEM METHODS
+  // ========================================
+
+  // Plans operations
+  async getAllPlans(): Promise<Plan[]> {
+    return await db.select().from(plans).orderBy(desc(plans.createdAt));
+  }
+
+  async getPlan(id: string): Promise<Plan | undefined> {
+    const [plan] = await db.select().from(plans).where(eq(plans.id, id));
+    return plan;
+  }
+
+  async getPlans(): Promise<Plan[]> {
+    return await db.select().from(plans).orderBy(plans.name);
+  }
+
+  async createPlan(planData: CreatePlan): Promise<Plan> {
+    const [newPlan] = await db.insert(plans).values(planData).returning();
+    return newPlan;
+  }
+
+  async updatePlan(id: string, planData: Partial<CreatePlan>): Promise<Plan> {
+    const [updatedPlan] = await db
+      .update(plans)
+      .set(planData)
+      .where(eq(plans.id, id))
+      .returning();
+    return updatedPlan;
+  }
+
+  async deletePlan(id: string): Promise<void> {
+    await db.delete(plans).where(eq(plans.id, id));
+  }
+
+  // Franchisors operations
+  async getAllFranchisors(): Promise<any[]> {
+    const franchisorsData = await db
+      .select({
+        id: franchisors.id,
+        companyName: franchisors.companyName,
+        email: franchisors.email,
+        status: franchisors.status,
+        planName: plans.name,
+        planStartDate: franchisors.planStartDate,
+        planEndDate: franchisors.planEndDate,
+        createdAt: franchisors.createdAt,
+      })
+      .from(franchisors)
+      .leftJoin(plans, eq(franchisors.planId, plans.id))
+      .orderBy(desc(franchisors.createdAt));
+
+    // Get franchise count for each franchisor
+    const franchisorsWithCount = await Promise.all(
+      franchisorsData.map(async (franchisor) => {
+        const [franchiseCount] = await db
+          .select({ count: count() })
+          .from(franchises)
+          .where(eq(franchises.franchisorId, franchisor.id));
+        
+        return {
+          ...franchisor,
+          franchiseCount: franchiseCount.count,
+        };
+      })
+    );
+
+    return franchisorsWithCount;
+  }
+
+  async getFranchisor(id: string): Promise<Franchisor | undefined> {
+    const [franchisor] = await db.select().from(franchisors).where(eq(franchisors.id, id));
+    return franchisor;
+  }
+
+  async getFranchisorByUserId(userId: string): Promise<Franchisor | undefined> {
+    const [franchisor] = await db.select().from(franchisors).where(eq(franchisors.userId, userId));
+    return franchisor;
+  }
+
+  async createFranchisor(franchisorData: CreateFranchisor): Promise<Franchisor> {
+    const bcrypt = await import('bcrypt');
+    
+    // Create user first
+    const hashedPassword = await bcrypt.hash(franchisorData.password, 10);
+    const [newUser] = await db.insert(users).values({
+      email: franchisorData.email,
+      firstName: franchisorData.firstName,
+      lastName: franchisorData.lastName,
+      phone: franchisorData.phone,
+      password: hashedPassword,
+      role: 'franchisor',
+      active: true,
+    }).returning();
+
+    // Create franchisor
+    const [newFranchisor] = await db.insert(franchisors).values({
+      userId: newUser.id,
+      planId: franchisorData.planId,
+      companyName: franchisorData.companyName,
+      legalName: franchisorData.legalName,
+      cnpj: franchisorData.cnpj,
+      street: franchisorData.street,
+      number: franchisorData.number,
+      complement: franchisorData.complement,
+      neighborhood: franchisorData.neighborhood,
+      city: franchisorData.city,
+      state: franchisorData.state,
+      zipCode: franchisorData.zipCode,
+      contactPhone: franchisorData.contactPhone,
+      email: franchisorData.email,
+      website: franchisorData.website,
+      planStartDate: new Date(franchisorData.planStartDate),
+      planEndDate: franchisorData.planEndDate ? new Date(franchisorData.planEndDate) : null,
+    }).returning();
+
+    return newFranchisor;
+  }
+
+  // Franchises operations
+  async getFranchisesByFranchisorId(franchisorId: string): Promise<any[]> {
+    return await db
+      .select({
+        id: franchises.id,
+        franchiseName: franchises.franchiseName,
+        franchiseCode: franchises.franchiseCode,
+        email: franchises.email,
+        status: franchises.status,
+        managerName: franchises.managerName,
+        city: franchises.city,
+        state: franchises.state,
+        createdAt: franchises.createdAt,
+      })
+      .from(franchises)
+      .where(eq(franchises.franchisorId, franchisorId))
+      .orderBy(desc(franchises.createdAt));
+  }
+
+  async getFranchise(id: string): Promise<Franchise | undefined> {
+    const [franchise] = await db.select().from(franchises).where(eq(franchises.id, id));
+    return franchise;
+  }
+
+  async getFranchiseByUserId(userId: string): Promise<Franchise | undefined> {
+    const [franchise] = await db.select().from(franchises).where(eq(franchises.userId, userId));
+    return franchise;
+  }
+
+  async createFranchise(franchisorId: string, franchiseData: CreateFranchise): Promise<Franchise> {
+    const bcrypt = await import('bcrypt');
+    
+    // Create user first
+    const hashedPassword = await bcrypt.hash(franchiseData.password, 10);
+    const [newUser] = await db.insert(users).values({
+      email: franchiseData.email,
+      firstName: franchiseData.firstName,
+      lastName: franchiseData.lastName,
+      phone: franchiseData.phone,
+      password: hashedPassword,
+      role: 'franchise',
+      active: true,
+    }).returning();
+
+    // Create franchise
+    const [newFranchise] = await db.insert(franchises).values({
+      franchisorId: franchisorId,
+      userId: newUser.id,
+      franchiseName: franchiseData.franchiseName,
+      franchiseCode: franchiseData.franchiseCode,
+      street: franchiseData.street,
+      number: franchiseData.number,
+      complement: franchiseData.complement,
+      neighborhood: franchiseData.neighborhood,
+      city: franchiseData.city,
+      state: franchiseData.state,
+      zipCode: franchiseData.zipCode,
+      contactPhone: franchiseData.contactPhone,
+      email: franchiseData.email,
+      managerName: franchiseData.managerName,
+      managerPhone: franchiseData.managerPhone,
+      managerEmail: franchiseData.managerEmail,
+    }).returning();
+
+    return newFranchise;
+  }
+
+  // Franchise Phone Numbers operations
+  async getFranchisePhoneNumbers(franchiseId: string): Promise<FranchisePhoneNumber[]> {
+    return await db
+      .select()
+      .from(franchisePhoneNumbers)
+      .where(eq(franchisePhoneNumbers.franchiseId, franchiseId))
+      .orderBy(desc(franchisePhoneNumbers.isPrimary), desc(franchisePhoneNumbers.createdAt));
+  }
+
+  async createFranchisePhoneNumber(franchiseId: string, phoneData: CreateFranchisePhoneNumber): Promise<FranchisePhoneNumber> {
+    const [newPhoneNumber] = await db.insert(franchisePhoneNumbers).values({
+      franchiseId: franchiseId,
+      phoneNumber: phoneData.phoneNumber,
+      isPrimary: phoneData.isPrimary,
+      isActive: true,
+    }).returning();
+
+    return newPhoneNumber;
+  }
+
+  // Franchise Agents operations
+  async getFranchiseAgents(franchiseId: string): Promise<FranchiseAgent[]> {
+    return await db
+      .select()
+      .from(franchiseAgents)
+      .where(eq(franchiseAgents.franchiseId, franchiseId))
+      .orderBy(desc(franchiseAgents.createdAt));
+  }
+
+  async createFranchiseAgent(franchiseId: string, agentData: CreateFranchiseAgent): Promise<FranchiseAgent> {
+    const [newAgent] = await db.insert(franchiseAgents).values({
+      franchiseId: franchiseId,
+      name: agentData.name,
+      email: agentData.email,
+      phone: agentData.phone,
+      department: agentData.department,
+      specialties: JSON.stringify(agentData.specialties),
+      isActive: true,
+    }).returning();
+
+    return newAgent;
+  }
+
+  // Franchise Prompts operations
+  async getFranchisePrompts(franchiseId: string): Promise<FranchisePrompt[]> {
+    return await db
+      .select()
+      .from(franchisePrompts)
+      .where(eq(franchisePrompts.franchiseId, franchiseId))
+      .orderBy(desc(franchisePrompts.isDefault), desc(franchisePrompts.createdAt));
+  }
+
+  async createFranchisePrompt(franchiseId: string, promptData: CreateFranchisePrompt): Promise<FranchisePrompt> {
+    const [newPrompt] = await db.insert(franchisePrompts).values({
+      franchiseId: franchiseId,
+      name: promptData.name,
+      description: promptData.description,
+      prompt: promptData.prompt,
+      category: promptData.category,
+      isDefault: promptData.isDefault,
+      isActive: true,
+    }).returning();
+
+    return newPrompt;
   }
 }
 

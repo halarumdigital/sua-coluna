@@ -2,12 +2,22 @@ import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 
-// Admin Pages
+// Super Root Pages
+import SuperRootDashboard from "@/pages/super-root/dashboard";
+import SuperRootSettings from "@/pages/super-root/settings";
+import SuperRootWhatsApp from "@/pages/super-root/whatsapp";
+import SuperRootAI from "@/pages/super-root/ai";
+import SuperRootPlans from "@/pages/super-root/plans";
+import SuperRootFranchisors from "@/pages/super-root/franchisors";
+import SuperRootProfile from "@/pages/super-root/profile";
+
+// Admin Pages (now Franchisor)
 import AdminDashboard from "@/pages/admin/dashboard";
 import ClientsPage from "@/pages/admin/clients";
 import TeamPage from "@/pages/admin/team";
@@ -27,6 +37,9 @@ import ClientConversationsPage from "@/pages/client/conversations";
 import TeamDashboard from "@/pages/team/dashboard";
 import TeamProjectsPage from "@/pages/team/projects";
 import TeamProfilePage from "@/pages/team/profile";
+
+// Debug Page
+import Debug from "@/pages/debug";
 
 function Router() {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -51,9 +64,13 @@ function Router() {
   // Route users to their appropriate dashboard based on role
   const getDefaultRoute = () => {
     switch (user?.role) {
-      case "admin":
+      case "super_root":
+        return "/super-root";
+      case "franchisor":
+      case "admin": // Backward compatibility
         return "/admin";
-      case "client":
+      case "franchise":
+      case "client": // Backward compatibility
         return "/client";
       case "team":
         return "/team";
@@ -68,6 +85,7 @@ function Router() {
       <Route path="/">
         {() => {
           const defaultRoute = getDefaultRoute();
+          if (defaultRoute === "/super-root") return <SuperRootDashboard />;
           if (defaultRoute === "/admin") return <AdminDashboard />;
           if (defaultRoute === "/client") return <ClientDashboard />;
           if (defaultRoute === "/team") return <TeamDashboard />;
@@ -75,17 +93,40 @@ function Router() {
         }}
       </Route>
 
-      {/* Admin Routes */}
-      {user?.role === "admin" && (
+      {/* Super Root Routes */}
+      {user?.role === "super_root" && (
+        <>
+          <Route path="/super-root" component={SuperRootDashboard} />
+          <Route path="/super-root/plans" component={SuperRootPlans} />
+          <Route path="/super-root/franchisors" component={SuperRootFranchisors} />
+          <Route path="/super-root/reports">
+            {() => (
+              <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                  <h1 className="text-2xl font-bold text-gray-900 mb-2">Relatórios do Sistema</h1>
+                  <p className="text-gray-600">Esta funcionalidade será implementada em breve.</p>
+                </div>
+              </div>
+            )}
+          </Route>
+          <Route path="/super-root/ai" component={SuperRootAI} />
+          <Route path="/super-root/whatsapp" component={SuperRootWhatsApp} />
+          <Route path="/super-root/settings" component={SuperRootSettings} />
+          <Route path="/super-root/profile" component={SuperRootProfile} />
+        </>
+      )}
+
+      {/* Franchisor Routes (Admin) */}
+      {(user?.role === "franchisor" || user?.role === "admin") && (
         <>
           <Route path="/admin" component={AdminDashboard} />
           <Route path="/admin/clients" component={ClientsPage} />
           <Route path="/admin/clients/new" component={ClientsPage} />
           <Route path="/admin/team" component={TeamPage} />
           <Route path="/admin/team/new" component={TeamPage} />
-          <Route path="/admin/ai" component={AIPage} />
-          <Route path="/admin/whatsapp" component={WhatsAppPage} />
-          <Route path="/admin/settings" component={AdminSettings} />
+
+
+
           <Route path="/admin/reports">
             {() => (
               <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -99,8 +140,8 @@ function Router() {
         </>
       )}
 
-      {/* Client Routes */}
-      {user?.role === "client" && (
+      {/* Franchise Routes (Client) */}
+      {(user?.role === "franchise" || user?.role === "client") && (
         <>
           <Route path="/client" component={ClientDashboard} />
           <Route path="/client/clients" component={ClientClientsPage} />
@@ -120,6 +161,9 @@ function Router() {
         </>
       )}
 
+      {/* Debug Route */}
+      <Route path="/debug" component={Debug} />
+
       {/* Fallback to 404 */}
       <Route component={NotFound} />
     </Switch>
@@ -131,6 +175,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
+        <SonnerToaster />
         <Router />
       </TooltipProvider>
     </QueryClientProvider>

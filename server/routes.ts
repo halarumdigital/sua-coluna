@@ -756,6 +756,184 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin/Franchisor routes for managing franchises
+  app.get("/api/admin/franchises", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchisor' && user?.role !== 'admin') {
+        return res.status(403).json({ message: "Access denied - Franchisor only" });
+      }
+
+      const franchisor = await storage.getFranchisorByUserId(userId);
+      if (!franchisor) {
+        return res.status(404).json({ message: "Franchisor data not found" });
+      }
+
+      const franchises = await storage.getFranchisesByFranchisorId(franchisor.id);
+      res.json(franchises);
+    } catch (error) {
+      console.error("Error fetching franchises:", error);
+      res.status(500).json({ message: "Failed to fetch franchises" });
+    }
+  });
+
+  app.post("/api/admin/franchises", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Usuário não autenticado" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchisor' && user?.role !== 'admin') {
+        return res.status(403).json({ message: "Acesso negado - Apenas franqueadores" });
+      }
+
+      const franchisor = await storage.getFranchisorByUserId(userId);
+      if (!franchisor) {
+        return res.status(404).json({ message: "Dados do franqueador não encontrados" });
+      }
+
+      const { createFranchiseSchema } = await import("@shared/schema");
+      const validatedData = createFranchiseSchema.parse(req.body);
+
+      const franchise = await storage.createFranchise(franchisor.id, validatedData);
+      res.json({
+        message: "Franquia criada com sucesso",
+        franchise
+      });
+    } catch (error) {
+      console.error("Error creating franchise:", error);
+      if (error instanceof z.ZodError) {
+        const firstError = error.errors[0];
+        return res.status(400).json({ 
+          message: firstError?.message || "Dados inválidos", 
+          errors: error.errors 
+        });
+      }
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Erro interno do servidor" });
+    }
+  });
+
+  app.get("/api/admin/franchises/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchisor' && user?.role !== 'admin') {
+        return res.status(403).json({ message: "Access denied - Franchisor only" });
+      }
+
+      const franchisor = await storage.getFranchisorByUserId(userId);
+      if (!franchisor) {
+        return res.status(404).json({ message: "Franchisor data not found" });
+      }
+
+      const { id } = req.params;
+      const franchise = await storage.getFranchise(id);
+      
+      if (!franchise || franchise.franchisorId !== franchisor.id) {
+        return res.status(404).json({ message: "Franchise not found" });
+      }
+
+      res.json(franchise);
+    } catch (error) {
+      console.error("Error fetching franchise:", error);
+      res.status(500).json({ message: "Failed to fetch franchise" });
+    }
+  });
+
+  app.put("/api/admin/franchises/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Usuário não autenticado" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchisor' && user?.role !== 'admin') {
+        return res.status(403).json({ message: "Acesso negado - Apenas franqueadores" });
+      }
+
+      const franchisor = await storage.getFranchisorByUserId(userId);
+      if (!franchisor) {
+        return res.status(404).json({ message: "Dados do franqueador não encontrados" });
+      }
+
+      const { id } = req.params;
+      const franchise = await storage.getFranchise(id);
+      
+      if (!franchise || franchise.franchisorId !== franchisor.id) {
+        return res.status(404).json({ message: "Franquia não encontrada" });
+      }
+
+      const { createFranchiseSchema } = await import("@shared/schema");
+      const validatedData = createFranchiseSchema.parse(req.body);
+
+      const updatedFranchise = await storage.updateFranchise(id, validatedData);
+      res.json({
+        message: "Franquia atualizada com sucesso",
+        franchise: updatedFranchise
+      });
+    } catch (error) {
+      console.error("Error updating franchise:", error);
+      if (error instanceof z.ZodError) {
+        const firstError = error.errors[0];
+        return res.status(400).json({ 
+          message: firstError?.message || "Dados inválidos", 
+          errors: error.errors 
+        });
+      }
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Erro interno do servidor" });
+    }
+  });
+
+  app.delete("/api/admin/franchises/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Usuário não autenticado" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchisor' && user?.role !== 'admin') {
+        return res.status(403).json({ message: "Acesso negado - Apenas franqueadores" });
+      }
+
+      const franchisor = await storage.getFranchisorByUserId(userId);
+      if (!franchisor) {
+        return res.status(404).json({ message: "Dados do franqueador não encontrados" });
+      }
+
+      const { id } = req.params;
+      const franchise = await storage.getFranchise(id);
+      
+      if (!franchise || franchise.franchisorId !== franchisor.id) {
+        return res.status(404).json({ message: "Franquia não encontrada" });
+      }
+
+      await storage.deleteFranchise(id);
+      res.json({ message: "Franquia excluída com sucesso" });
+    } catch (error) {
+      console.error("Error deleting franchise:", error);
+      res.status(500).json({ message: "Erro ao excluir franquia" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

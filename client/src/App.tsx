@@ -21,6 +21,7 @@ import SuperRootProfile from "@/pages/super-root/profile";
 import AdminDashboard from "@/pages/admin/dashboard";
 import ClientsPage from "@/pages/admin/clients";
 import TeamPage from "@/pages/admin/team";
+import FranchisesPage from "@/pages/admin/franchises";
 import AdminSettings from "@/pages/admin/settings";
 import AIPage from "@/pages/admin/ai";
 import WhatsAppPage from "@/pages/admin/whatsapp";
@@ -125,8 +126,8 @@ function Router() {
           <Route path="/admin/clients/new" component={ClientsPage} />
           <Route path="/admin/team" component={TeamPage} />
           <Route path="/admin/team/new" component={TeamPage} />
-
-
+          <Route path="/admin/franchises" component={FranchisesPage} />
+          <Route path="/admin/franchises/new" component={FranchisesPage} />
 
           <Route path="/admin/reports">
             {() => (

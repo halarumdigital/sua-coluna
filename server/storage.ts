@@ -1571,39 +1571,58 @@ export class DatabaseStorage implements IStorage {
   async createFranchise(franchisorId: string, franchiseData: CreateFranchise): Promise<Franchise> {
     const bcrypt = await import('bcrypt');
     
-    // Create user first
-    const hashedPassword = await bcrypt.hash(franchiseData.password, 10);
-    const [newUser] = await db.insert(users).values({
-      email: franchiseData.email,
-      firstName: franchiseData.firstName,
-      lastName: franchiseData.lastName,
-      phone: franchiseData.phone,
-      password: hashedPassword,
-      role: 'franchise',
-      active: true,
-    }).returning();
+    try {
+      // Create user first
+      const hashedPassword = await bcrypt.hash(franchiseData.password, 10);
+      await db.insert(users).values({
+        email: franchiseData.email,
+        firstName: franchiseData.firstName,
+        lastName: franchiseData.lastName,
+        phone: franchiseData.phone,
+        password: hashedPassword,
+        role: 'franchise',
+        active: true,
+      });
 
-    // Create franchise
-    const [newFranchise] = await db.insert(franchises).values({
-      franchisorId: franchisorId,
-      userId: newUser.id,
-      franchiseName: franchiseData.franchiseName,
-      franchiseCode: franchiseData.franchiseCode,
-      street: franchiseData.street,
-      number: franchiseData.number,
-      complement: franchiseData.complement,
-      neighborhood: franchiseData.neighborhood,
-      city: franchiseData.city,
-      state: franchiseData.state,
-      zipCode: franchiseData.zipCode,
-      contactPhone: franchiseData.contactPhone,
-      email: franchiseData.email,
-      managerName: franchiseData.managerName,
-      managerPhone: franchiseData.managerPhone,
-      managerEmail: franchiseData.managerEmail,
-    }).returning();
+      // Get the newly created user
+      const [newUser] = await db.select().from(users).where(eq(users.email, franchiseData.email)).orderBy(desc(users.createdAt)).limit(1);
 
-    return newFranchise;
+      if (!newUser) {
+        throw new Error('Falha ao criar usuário da franquia');
+      }
+
+      // Create franchise
+      await db.insert(franchises).values({
+        franchisorId: franchisorId,
+        userId: newUser.id,
+        franchiseName: franchiseData.franchiseName,
+        franchiseCode: franchiseData.franchiseCode,
+        street: franchiseData.street,
+        number: franchiseData.number,
+        complement: franchiseData.complement,
+        neighborhood: franchiseData.neighborhood,
+        city: franchiseData.city,
+        state: franchiseData.state,
+        zipCode: franchiseData.zipCode,
+        contactPhone: franchiseData.contactPhone,
+        email: franchiseData.email,
+        managerName: franchiseData.managerName,
+        managerPhone: franchiseData.managerPhone,
+        managerEmail: franchiseData.managerEmail,
+      });
+
+      // Get the newly created franchise
+      const [newFranchise] = await db.select().from(franchises).where(eq(franchises.userId, newUser.id)).orderBy(desc(franchises.createdAt)).limit(1);
+
+      if (!newFranchise) {
+        throw new Error('Falha ao criar franquia');
+      }
+
+      return newFranchise;
+    } catch (error) {
+      console.error('Erro ao criar franquia:', error);
+      throw error;
+    }
   }
 
   // Franchise Phone Numbers operations
@@ -1616,12 +1635,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createFranchisePhoneNumber(franchiseId: string, phoneData: CreateFranchisePhoneNumber): Promise<FranchisePhoneNumber> {
-    const [newPhoneNumber] = await db.insert(franchisePhoneNumbers).values({
+    await db.insert(franchisePhoneNumbers).values({
       franchiseId: franchiseId,
       phoneNumber: phoneData.phoneNumber,
       isPrimary: phoneData.isPrimary,
       isActive: true,
-    }).returning();
+    });
+
+    // Get the newly created phone number
+    const [newPhoneNumber] = await db
+      .select()
+      .from(franchisePhoneNumbers)
+      .where(and(
+        eq(franchisePhoneNumbers.franchiseId, franchiseId),
+        eq(franchisePhoneNumbers.phoneNumber, phoneData.phoneNumber)
+      ))
+      .orderBy(desc(franchisePhoneNumbers.createdAt))
+      .limit(1);
 
     return newPhoneNumber;
   }
@@ -1636,7 +1666,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createFranchiseAgent(franchiseId: string, agentData: CreateFranchiseAgent): Promise<FranchiseAgent> {
-    const [newAgent] = await db.insert(franchiseAgents).values({
+    await db.insert(franchiseAgents).values({
       franchiseId: franchiseId,
       name: agentData.name,
       email: agentData.email,
@@ -1644,7 +1674,18 @@ export class DatabaseStorage implements IStorage {
       department: agentData.department,
       specialties: JSON.stringify(agentData.specialties),
       isActive: true,
-    }).returning();
+    });
+
+    // Get the newly created agent
+    const [newAgent] = await db
+      .select()
+      .from(franchiseAgents)
+      .where(and(
+        eq(franchiseAgents.franchiseId, franchiseId),
+        eq(franchiseAgents.name, agentData.name)
+      ))
+      .orderBy(desc(franchiseAgents.createdAt))
+      .limit(1);
 
     return newAgent;
   }
@@ -1659,7 +1700,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createFranchisePrompt(franchiseId: string, promptData: CreateFranchisePrompt): Promise<FranchisePrompt> {
-    const [newPrompt] = await db.insert(franchisePrompts).values({
+    await db.insert(franchisePrompts).values({
       franchiseId: franchiseId,
       name: promptData.name,
       description: promptData.description,
@@ -1667,9 +1708,96 @@ export class DatabaseStorage implements IStorage {
       category: promptData.category,
       isDefault: promptData.isDefault,
       isActive: true,
-    }).returning();
+    });
+
+    // Get the newly created prompt
+    const [newPrompt] = await db
+      .select()
+      .from(franchisePrompts)
+      .where(and(
+        eq(franchisePrompts.franchiseId, franchiseId),
+        eq(franchisePrompts.name, promptData.name)
+      ))
+      .orderBy(desc(franchisePrompts.createdAt))
+      .limit(1);
 
     return newPrompt;
+  }
+
+  async updateFranchise(id: string, franchiseData: Partial<CreateFranchise>): Promise<Franchise> {
+    try {
+      const franchise = await this.getFranchise(id);
+      if (!franchise) {
+        throw new Error('Franquia não encontrada');
+      }
+
+      // If password is being updated, hash it
+      const updateData: any = { ...franchiseData };
+      if (franchiseData.password) {
+        const bcrypt = await import('bcrypt');
+        updateData.password = await bcrypt.hash(franchiseData.password, 10);
+      }
+
+      // Update user first if user-related fields are provided
+      const userFields = ['firstName', 'lastName', 'email', 'phone', 'password'];
+      const userUpdates: any = {};
+      let hasUserUpdates = false;
+
+      userFields.forEach(field => {
+        if (updateData[field] !== undefined) {
+          userUpdates[field] = updateData[field];
+          hasUserUpdates = true;
+          delete updateData[field];
+        }
+      });
+
+      if (hasUserUpdates) {
+        await db
+          .update(users)
+          .set({ ...userUpdates, updatedAt: new Date() })
+          .where(eq(users.id, franchise.userId));
+      }
+
+      // Update franchise
+      await db
+        .update(franchises)
+        .set({ ...updateData, updatedAt: new Date() })
+        .where(eq(franchises.id, id));
+
+      // Get the updated franchise
+      const [updatedFranchise] = await db
+        .select()
+        .from(franchises)
+        .where(eq(franchises.id, id));
+
+      return updatedFranchise;
+    } catch (error) {
+      console.error('Erro ao atualizar franquia:', error);
+      throw error;
+    }
+  }
+
+  async deleteFranchise(id: string): Promise<void> {
+    try {
+      const franchise = await this.getFranchise(id);
+      if (!franchise) {
+        throw new Error('Franquia não encontrada');
+      }
+
+      // Delete franchise-related data first (due to foreign key constraints)
+      await db.delete(franchisePhoneNumbers).where(eq(franchisePhoneNumbers.franchiseId, id));
+      await db.delete(franchiseAgents).where(eq(franchiseAgents.franchiseId, id));
+      await db.delete(franchisePrompts).where(eq(franchisePrompts.franchiseId, id));
+      
+      // Delete franchise
+      await db.delete(franchises).where(eq(franchises.id, id));
+      
+      // Delete associated user
+      await db.delete(users).where(eq(users.id, franchise.userId));
+    } catch (error) {
+      console.error('Erro ao excluir franquia:', error);
+      throw error;
+    }
   }
 
   // WhatsApp Conversations operations

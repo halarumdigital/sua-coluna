@@ -294,12 +294,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
-        return res.status(401).json({ message: "Not authenticated" });
+        return res.status(401).json({ message: "Usuário não autenticado" });
       }
 
       const user = await storage.getUser(userId);
       if (user?.role !== 'super_root') {
-        return res.status(403).json({ message: "Access denied" });
+        return res.status(403).json({ message: "Acesso negado" });
       }
 
       const { createFranchisorSchema } = await import("@shared/schema");
@@ -313,9 +313,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error creating franchisor:", error);
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+        const firstError = error.errors[0];
+        return res.status(400).json({ 
+          message: firstError?.message || "Dados inválidos", 
+          errors: error.errors 
+        });
       }
-      res.status(500).json({ message: "Failed to create franchisor" });
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Erro interno do servidor" });
     }
   });
 
@@ -403,8 +410,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      const { insertPlanSchema } = await import("@shared/schema");
-      const validatedData = insertPlanSchema.parse(req.body);
+      const { createPlanSchema } = await import("@shared/schema");
+      const validatedData = createPlanSchema.parse(req.body);
 
       const plan = await storage.createPlan(validatedData);
       res.json({
@@ -433,8 +440,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { id } = req.params;
-      const { insertPlanSchema } = await import("@shared/schema");
-      const validatedData = insertPlanSchema.parse(req.body);
+      const { createPlanSchema } = await import("@shared/schema");
+      const validatedData = createPlanSchema.parse(req.body);
 
       const plan = await storage.updatePlan(id, validatedData);
       res.json({
@@ -468,6 +475,284 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting plan:", error);
       res.status(500).json({ message: "Failed to delete plan" });
+    }
+  });
+
+  // Super Root Routes - WhatsApp Settings
+  app.get("/api/super-root/whatsapp-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+
+      const settings = await storage.getWhatsappApiSettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching WhatsApp settings:", error);
+      res.status(500).json({ message: "Failed to fetch WhatsApp settings" });
+    }
+  });
+
+  app.post("/api/super-root/whatsapp-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+
+      const { whatsappApiSettingsSchema } = await import("@shared/schema");
+      const validatedData = whatsappApiSettingsSchema.parse(req.body);
+
+      const settings = await storage.saveWhatsappApiSettings(validatedData, userId);
+
+      res.json(settings);
+    } catch (error) {
+      console.error("Error saving WhatsApp settings:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to save WhatsApp settings" });
+    }
+  });
+
+  // Super Root Routes - AI Settings
+  app.get("/api/super-root/ai-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+
+      const settings = await storage.getAISettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching AI settings:", error);
+      res.status(500).json({ message: "Failed to fetch AI settings" });
+    }
+  });
+
+  app.post("/api/super-root/ai-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+
+      const { aiSettingsSchema } = await import("@shared/schema");
+      const validatedData = aiSettingsSchema.parse(req.body);
+
+      await storage.saveAISettings(validatedData);
+      res.json({ message: "Configurações de IA salvas com sucesso" });
+    } catch (error) {
+      console.error("Error saving AI settings:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to save AI settings" });
+    }
+  });
+
+  app.get("/api/super-root/ai-models", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+
+      // Return available AI models
+      const models = [
+        { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo" },
+        { id: "gpt-4", name: "GPT-4" },
+        { id: "gpt-4-turbo", name: "GPT-4 Turbo" },
+        { id: "gpt-4o", name: "GPT-4o" },
+      ];
+
+      res.json(models);
+    } catch (error) {
+      console.error("Error fetching AI models:", error);
+      res.status(500).json({ message: "Failed to fetch AI models" });
+    }
+  });
+
+  app.get("/api/super-root/ai-usage", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+
+      // Get AI usage statistics
+      const today = new Date();
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+      const [totalUsage] = await db
+        .select({
+          totalTokens: sum(aiUsage.totalTokens),
+          totalCost: sum(aiUsage.cost),
+        })
+        .from(aiUsage);
+
+      const [todayUsage] = await db
+        .select({
+          requestsToday: count(),
+        })
+        .from(aiUsage)
+        .where(sql`${aiUsage.createdAt} >= ${startOfDay}`);
+
+      const [monthUsage] = await db
+        .select({
+          requestsThisMonth: count(),
+        })
+        .from(aiUsage)
+        .where(sql`${aiUsage.createdAt} >= ${startOfMonth}`);
+
+      const [lastUsage] = await db
+        .select({
+          lastUsed: aiUsage.createdAt,
+        })
+        .from(aiUsage)
+        .orderBy(desc(aiUsage.createdAt))
+        .limit(1);
+
+      res.json({
+        totalTokens: Number(totalUsage?.totalTokens || 0),
+        totalCost: Number(totalUsage?.totalCost || 0),
+        requestsToday: Number(todayUsage?.requestsToday || 0),
+        requestsThisMonth: Number(monthUsage?.requestsThisMonth || 0),
+        lastUsed: lastUsage?.lastUsed || null,
+      });
+    } catch (error) {
+      console.error("Error fetching AI usage:", error);
+      res.status(500).json({ message: "Failed to fetch AI usage" });
+    }
+  });
+
+  app.post("/api/super-root/ai-test", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+
+      const settings = await storage.getAISettings();
+
+      if (!settings.chatGptApiKey) {
+        return res.status(400).json({
+          success: false,
+          error: "API key not configured"
+        });
+      }
+
+      try {
+        const { openaiService } = await import("./openai");
+        const testResult = await openaiService.testConnection();
+
+        res.json({
+          success: true,
+          model: testResult.model,
+          message: "Connection successful"
+        });
+      } catch (testError: any) {
+        res.json({
+          success: false,
+          error: testError.message || "Failed to connect to OpenAI API"
+        });
+      }
+    } catch (error) {
+      console.error("Error testing AI connection:", error);
+      res.status(500).json({ message: "Failed to test AI connection" });
+    }
+  });
+
+  app.post("/api/super-root/ai-chat", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+
+      const { message, settings } = req.body;
+
+      if (!message || !settings) {
+        return res.status(400).json({
+          success: false,
+          error: "Message and settings are required"
+        });
+      }
+
+      if (!settings.chatGptApiKey) {
+        return res.status(400).json({
+          success: false,
+          error: "API key not configured"
+        });
+      }
+
+      try {
+        const { openaiService } = await import("./openai");
+        const result = await openaiService.chat(message, settings, userId);
+
+        if (result.success) {
+          res.json({
+            success: true,
+            response: result.response
+          });
+        } else {
+          res.json({
+            success: false,
+            error: result.error || "Failed to generate response"
+          });
+        }
+      } catch (testError: any) {
+        res.json({
+          success: false,
+          error: testError.message || "Failed to generate response"
+        });
+      }
+    } catch (error) {
+      console.error("Error in AI chat:", error);
+      res.status(500).json({ message: "Failed to process AI chat" });
     }
   });
 

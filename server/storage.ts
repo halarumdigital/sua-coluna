@@ -1399,42 +1399,144 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createFranchisor(franchisorData: CreateFranchisor): Promise<Franchisor> {
-    const bcrypt = await import('bcrypt');
-    
-    // Create user first
-    const hashedPassword = await bcrypt.hash(franchisorData.password, 10);
-    const [newUser] = await db.insert(users).values({
-      email: franchisorData.email,
-      firstName: franchisorData.firstName,
-      lastName: franchisorData.lastName,
-      phone: franchisorData.phone,
-      password: hashedPassword,
-      role: 'franchisor',
-      active: true,
-    }).returning();
+    try {
+      const bcrypt = await import('bcrypt');
+      
+      // Check if email already exists
+      const existingUser = await this.getUserByEmail(franchisorData.email);
+      if (existingUser) {
+        throw new Error('Email já está em uso');
+      }
+      
+      // Create user first
+      const hashedPassword = await bcrypt.hash(franchisorData.password, 10);
+      const userId = crypto.randomUUID();
+      await db.insert(users).values({
+        id: userId,
+        email: franchisorData.email,
+        firstName: franchisorData.firstName,
+        lastName: franchisorData.lastName,
+        phone: franchisorData.phone,
+        password: hashedPassword,
+        role: 'franchisor',
+        active: true,
+      });
 
-    // Create franchisor
-    const [newFranchisor] = await db.insert(franchisors).values({
-      userId: newUser.id,
-      planId: franchisorData.planId,
-      companyName: franchisorData.companyName,
-      legalName: franchisorData.legalName,
-      cnpj: franchisorData.cnpj,
-      street: franchisorData.street,
-      number: franchisorData.number,
-      complement: franchisorData.complement,
-      neighborhood: franchisorData.neighborhood,
-      city: franchisorData.city,
-      state: franchisorData.state,
-      zipCode: franchisorData.zipCode,
-      contactPhone: franchisorData.contactPhone,
-      email: franchisorData.email,
-      website: franchisorData.website,
-      planStartDate: new Date(franchisorData.planStartDate),
-      planEndDate: franchisorData.planEndDate ? new Date(franchisorData.planEndDate) : null,
-    }).returning();
+      const newUser = await this.getUser(userId);
+      if (!newUser) {
+        throw new Error('Erro ao criar usuário');
+      }
 
-    return newFranchisor;
+      // Create franchisor
+      const franchisorId = crypto.randomUUID();
+      await db.insert(franchisors).values({
+        id: franchisorId,
+        userId: newUser.id,
+        planId: franchisorData.planId,
+        companyName: franchisorData.companyName,
+        legalName: franchisorData.legalName,
+        cnpj: franchisorData.cnpj,
+        street: franchisorData.street,
+        number: franchisorData.number,
+        complement: franchisorData.complement,
+        neighborhood: franchisorData.neighborhood,
+        city: franchisorData.city,
+        state: franchisorData.state,
+        zipCode: franchisorData.zipCode,
+        contactPhone: franchisorData.contactPhone,
+        email: franchisorData.email,
+        website: franchisorData.website,
+        planStartDate: new Date(franchisorData.planStartDate),
+        planEndDate: franchisorData.planEndDate ? new Date(franchisorData.planEndDate) : null,
+      });
+
+      const newFranchisor = await this.getFranchisor(franchisorId);
+      if (!newFranchisor) {
+        throw new Error('Erro ao criar franqueador');
+      }
+
+      return newFranchisor;
+    } catch (error) {
+      console.error('Erro ao criar franqueador:', error);
+      throw error;
+    }
+  }
+
+  async updateFranchisor(id: string, franchisorData: Partial<CreateFranchisor>): Promise<Franchisor> {
+    try {
+      // Update user if user data is provided
+      if (franchisorData.firstName || franchisorData.lastName || franchisorData.email || franchisorData.phone) {
+        const franchisor = await this.getFranchisor(id);
+        if (!franchisor) {
+          throw new Error('Franqueador não encontrado');
+        }
+
+        const userUpdateData: any = {};
+        if (franchisorData.firstName) userUpdateData.firstName = franchisorData.firstName;
+        if (franchisorData.lastName) userUpdateData.lastName = franchisorData.lastName;
+        if (franchisorData.email) userUpdateData.email = franchisorData.email;
+        if (franchisorData.phone) userUpdateData.phone = franchisorData.phone;
+
+        if (Object.keys(userUpdateData).length > 0) {
+          await db.update(users)
+            .set(userUpdateData)
+            .where(eq(users.id, franchisor.userId));
+        }
+      }
+
+      // Update franchisor data
+      const franchisorUpdateData: any = {};
+      if (franchisorData.planId) franchisorUpdateData.planId = franchisorData.planId;
+      if (franchisorData.companyName) franchisorUpdateData.companyName = franchisorData.companyName;
+      if (franchisorData.legalName) franchisorUpdateData.legalName = franchisorData.legalName;
+      if (franchisorData.cnpj) franchisorUpdateData.cnpj = franchisorData.cnpj;
+      if (franchisorData.street) franchisorUpdateData.street = franchisorData.street;
+      if (franchisorData.number) franchisorUpdateData.number = franchisorData.number;
+      if (franchisorData.complement !== undefined) franchisorUpdateData.complement = franchisorData.complement;
+      if (franchisorData.neighborhood) franchisorUpdateData.neighborhood = franchisorData.neighborhood;
+      if (franchisorData.city) franchisorUpdateData.city = franchisorData.city;
+      if (franchisorData.state) franchisorUpdateData.state = franchisorData.state;
+      if (franchisorData.zipCode) franchisorUpdateData.zipCode = franchisorData.zipCode;
+      if (franchisorData.contactPhone) franchisorUpdateData.contactPhone = franchisorData.contactPhone;
+      if (franchisorData.email) franchisorUpdateData.email = franchisorData.email;
+      if (franchisorData.website !== undefined) franchisorUpdateData.website = franchisorData.website;
+      if (franchisorData.planStartDate) franchisorUpdateData.planStartDate = new Date(franchisorData.planStartDate);
+      if (franchisorData.planEndDate) franchisorUpdateData.planEndDate = franchisorData.planEndDate ? new Date(franchisorData.planEndDate) : null;
+
+      if (Object.keys(franchisorUpdateData).length > 0) {
+        await db.update(franchisors)
+          .set(franchisorUpdateData)
+          .where(eq(franchisors.id, id));
+      }
+
+      const updatedFranchisor = await this.getFranchisor(id);
+      if (!updatedFranchisor) {
+        throw new Error('Erro ao recuperar franqueador atualizado');
+      }
+
+      return updatedFranchisor;
+    } catch (error) {
+      console.error('Erro ao atualizar franqueador:', error);
+      throw error;
+    }
+  }
+
+  async deleteFranchisor(id: string): Promise<void> {
+    try {
+      const franchisor = await this.getFranchisor(id);
+      if (!franchisor) {
+        throw new Error('Franqueador não encontrado');
+      }
+
+      // Delete franchisor first (due to foreign key constraints)
+      await db.delete(franchisors).where(eq(franchisors.id, id));
+      
+      // Delete associated user
+      await db.delete(users).where(eq(users.id, franchisor.userId));
+    } catch (error) {
+      console.error('Erro ao excluir franqueador:', error);
+      throw error;
+    }
   }
 
   // Franchises operations

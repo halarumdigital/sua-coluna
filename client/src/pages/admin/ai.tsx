@@ -8,11 +8,19 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Badge } from "@/components/ui/badge";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, Key, Thermometer, Hash, Brain, MessageSquare, DollarSign, Activity, Calendar, CheckCircle, RefreshCw, Send, Loader2 } from "lucide-react";
+import { Bot, Thermometer, Hash, MessageSquare, Send, Loader2, Plus, Edit, Trash2, Play, Sparkles, Settings } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
 import type { AISettings } from "@shared/schema";
+import { createGlobalPromptSchema } from "@shared/schema";
 
-export default function AIPage() {
+export default function AdminAIPage() {
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
@@ -28,6 +36,15 @@ export default function AIPage() {
     const [testResponse, setTestResponse] = useState("");
     const [isTestingAgent, setIsTestingAgent] = useState(false);
 
+    // Global Prompts states
+    const [promptDialogOpen, setPromptDialogOpen] = useState(false);
+    const [testDialogOpen, setTestDialogOpen] = useState(false);
+    const [editingPrompt, setEditingPrompt] = useState<any>(null);
+    const [testingPrompt, setTestingPrompt] = useState<any>(null);
+    const [promptTestMessage, setPromptTestMessage] = useState("");
+    const [promptTestResponse, setPromptTestResponse] = useState("");
+    const [promptTestLoading, setPromptTestLoading] = useState(false);
+
     // Fetch current AI settings
     const { data: aiSettings, isLoading } = useQuery({
         queryKey: ["/api/admin/ai-settings"],
@@ -42,33 +59,9 @@ export default function AIPage() {
         },
     });
 
-    // Fetch available AI models
-    const { data: aiModels } = useQuery({
-        queryKey: ["/api/admin/ai-models"],
-        queryFn: async () => {
-            const response = await fetch("/api/admin/ai-models", {
-                credentials: "include",
-            });
-            if (!response.ok) {
-                throw new Error("Failed to fetch AI models");
-            }
-            return response.json();
-        },
-    });
-
-    // Fetch AI usage statistics with auto-refresh
-    const { data: usageStats, isLoading: usageLoading } = useQuery({
-        queryKey: ["/api/admin/ai-usage"],
-        queryFn: async () => {
-            const response = await fetch("/api/admin/ai-usage", {
-                credentials: "include",
-            });
-            if (!response.ok) {
-                throw new Error("Failed to fetch AI usage");
-            }
-            return response.json();
-        },
-        refetchInterval: 30000, // Auto-refresh every 30 seconds
+    // Fetch global prompts
+    const { data: globalPrompts, isLoading: isLoadingPrompts } = useQuery({
+        queryKey: ["/api/admin/global-prompts"],
     });
 
     // Update form data when settings are loaded
@@ -77,6 +70,42 @@ export default function AIPage() {
             setFormData(aiSettings);
         }
     }, [aiSettings]);
+
+    // Global Prompts form
+    const promptForm = useForm({
+        resolver: zodResolver(createGlobalPromptSchema),
+        defaultValues: {
+            name: "",
+            description: "",
+            prompt: "",
+            temperature: 0.7,
+            category: "",
+            isDefault: false,
+        },
+    });
+
+    // Reset form when editing prompt changes
+    React.useEffect(() => {
+        if (editingPrompt) {
+            promptForm.reset({
+                name: editingPrompt.name || "",
+                description: editingPrompt.description || "",
+                prompt: editingPrompt.prompt || "",
+                temperature: Number(editingPrompt.temperature) || 0.7,
+                category: editingPrompt.category || "",
+                isDefault: editingPrompt.isDefault || false,
+            });
+        } else {
+            promptForm.reset({
+                name: "",
+                description: "",
+                prompt: "",
+                temperature: 0.7,
+                category: "",
+                isDefault: false,
+            });
+        }
+    }, [editingPrompt, promptForm]);
 
     // Save AI settings mutation
     const saveSettingsMutation = useMutation({
@@ -103,7 +132,6 @@ export default function AIPage() {
                 description: "Configurações de IA salvas com sucesso!",
             });
             queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-settings"] });
-            queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage"] });
         },
         onError: (error: Error) => {
             toast({
@@ -114,37 +142,51 @@ export default function AIPage() {
         },
     });
 
-    // Test AI connection mutation
-    const testConnectionMutation = useMutation({
-        mutationFn: async () => {
-            const response = await fetch("/api/admin/ai-test", {
-                method: "POST",
-                credentials: "include",
-            });
-
-            if (!response.ok) {
-                throw new Error("Failed to test connection");
-            }
-
-            return response.json();
-        },
-        onSuccess: (data) => {
-            if (data.success) {
-                toast({
-                    title: "Conexão Bem-sucedida",
-                    description: `Conectado com sucesso ao modelo ${data.model}`,
-                });
+    // Global Prompts mutations
+    const createPromptMutation = useMutation({
+        mutationFn: async (data: any) => {
+            if (editingPrompt) {
+                const response = await apiRequest("PUT", `/api/admin/global-prompts/${editingPrompt.id}`, data);
+                return await response.json();
             } else {
+                const response = await apiRequest("POST", "/api/admin/global-prompts", data);
+                return await response.json();
+            }
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["/api/admin/global-prompts"] });
                 toast({
-                    title: "Falha na Conexão",
-                    description: data.error || "Não foi possível conectar à API",
+                title: "Sucesso",
+                description: editingPrompt ? "Prompt atualizado com sucesso" : "Prompt criado com sucesso",
+            });
+            setPromptDialogOpen(false);
+            setEditingPrompt(null);
+            promptForm.reset();
+        },
+        onError: (error) => {
+                toast({
+                title: "Erro",
+                description: error.message,
                     variant: "destructive",
                 });
-            }
         },
-        onError: (error: Error) => {
+    });
+
+    const deletePromptMutation = useMutation({
+        mutationFn: async (id: string) => {
+            const response = await apiRequest("DELETE", `/api/admin/global-prompts/${id}`);
+            return await response.json();
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["/api/admin/global-prompts"] });
             toast({
-                title: "Erro de Conexão",
+                title: "Sucesso",
+                description: "Prompt excluído com sucesso",
+            });
+        },
+        onError: (error) => {
+            toast({
+                title: "Erro",
                 description: error.message,
                 variant: "destructive",
             });
@@ -163,8 +205,70 @@ export default function AIPage() {
         }));
     };
 
+    // Global Prompts handlers
+    const onPromptSubmit = (data: any) => {
+        createPromptMutation.mutate(data);
+    };
+
+    const handleEditPrompt = (prompt: any) => {
+        setEditingPrompt(prompt);
+        setPromptDialogOpen(true);
+    };
+
+    const handleDeletePrompt = (id: string) => {
+        if (confirm("Tem certeza que deseja excluir este prompt?")) {
+            deletePromptMutation.mutate(id);
+        }
+    };
+
+    const handleTestPrompt = async (prompt: any) => {
+        if (!promptTestMessage.trim()) {
+            toast({
+                title: "Erro",
+                description: "Digite uma mensagem para testar o prompt",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        setPromptTestLoading(true);
+        setPromptTestResponse("");
+
+        try {
+            const response = await apiRequest("POST", `/api/admin/global-prompts/${prompt.id}/test`, {
+                testMessage: promptTestMessage
+            });
+            
+            const result = await response.json();
+
+            if (result.success) {
+                setPromptTestResponse(result.response || "");
+                toast({
+                    title: "Sucesso",
+                    description: "Prompt testado com sucesso!",
+                });
+            } else {
+                setPromptTestResponse(`Erro: ${result.error}`);
+                toast({
+                    title: "Erro no Teste",
+                    description: result.error || "Falha ao testar prompt",
+                    variant: "destructive",
+                });
+            }
+        } catch (error: any) {
+            setPromptTestResponse(`Erro: ${error.message}`);
+            toast({
+                title: "Erro",
+                description: error.message,
+                variant: "destructive",
+            });
+        } finally {
+            setPromptTestLoading(false);
+        }
+    };
+
     const handleTestAgent = async () => {
-        if (!testMessage.trim() || !formData.chatGptApiKey) return;
+        if (!testMessage.trim()) return;
 
         setIsTestingAgent(true);
         setTestResponse("");
@@ -172,8 +276,7 @@ export default function AIPage() {
         try {
             console.log("Sending test request with:", {
                 message: testMessage.substring(0, 50) + "...",
-                model: formData.model,
-                hasApiKey: !!formData.chatGptApiKey
+                settings: formData
             });
 
             const response = await fetch("/api/admin/ai-chat", {
@@ -212,9 +315,6 @@ export default function AIPage() {
                 description: "Agente testado com sucesso!",
             });
 
-            // Refresh usage stats after successful test
-            queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage"] });
-
         } catch (error: any) {
             console.error("Test error:", error);
             
@@ -240,7 +340,7 @@ export default function AIPage() {
 
     if (isLoading) {
         return (
-            <Layout title="Configurações de IA">
+            <Layout title="Inteligência Artificial">
                 <div className="space-y-6">
                     <div className="h-32 bg-gray-200 rounded-xl animate-pulse" />
                     <div className="h-64 bg-gray-200 rounded-xl animate-pulse" />
@@ -250,237 +350,33 @@ export default function AIPage() {
     }
 
     return (
-        <Layout title="Configurações de IA">
+        <Layout title="Inteligência Artificial">
             <div className="space-y-8">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
                         <Bot className="w-6 h-6" />
-                        Configurações de Inteligência Artificial
+                        Inteligência Artificial
                     </h2>
                     <p className="text-gray-600">
-                        Configure as opções do agente de IA para personalizar o comportamento do ChatGPT
+                        Configure as opções de IA e gerencie prompts globais para todas as franquias
                     </p>
                 </div>
 
-                {/* Usage Statistics - Real Time */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <Card>
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                    <p className="text-sm font-medium text-gray-600">Total de Tokens</p>
-                                    <p className="text-2xl font-bold text-gray-900">
-                                        {usageLoading ? (
-                                            <span className="animate-pulse">...</span>
-                                        ) : (
-                                            (usageStats?.totalTokens || 0).toLocaleString('pt-BR')
-                                        )}
-                                    </p>
-                                    {!usageLoading && usageStats?.totalTokens > 0 && (
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            Atualizado: {new Date().toLocaleTimeString('pt-BR')}
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                                    <Hash className="w-6 h-6 text-blue-600" />
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                <Tabs defaultValue="settings" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="settings" className="flex items-center gap-2">
+                            <Settings className="w-4 h-4" />
+                            Configurações
+                        </TabsTrigger>
+                        <TabsTrigger value="prompts" className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4" />
+                            Prompts Globais
+                        </TabsTrigger>
+                    </TabsList>
 
-                    <Card>
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                    <p className="text-sm font-medium text-gray-600">Custo Total</p>
-                                    <p className="text-2xl font-bold text-gray-900">
-                                        {usageLoading ? (
-                                            <span className="animate-pulse">...</span>
-                                        ) : (
-                                            `$${(usageStats?.totalCost || 0).toFixed(4)}`
-                                        )}
-                                    </p>
-                                    {!usageLoading && usageStats?.totalCost > 0 && (
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            ≈ R$ {((usageStats?.totalCost || 0) * 5.5).toFixed(2)}
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                                    <DollarSign className="w-6 h-6 text-green-600" />
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                    <p className="text-sm font-medium text-gray-600">Requests Hoje</p>
-                                    <p className="text-2xl font-bold text-gray-900">
-                                        {usageLoading ? (
-                                            <span className="animate-pulse">...</span>
-                                        ) : (
-                                            usageStats?.requestsToday || 0
-                                        )}
-                                    </p>
-                                    {!usageLoading && (
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            {new Date().toLocaleDateString('pt-BR', {
-                                                weekday: 'long',
-                                                day: 'numeric',
-                                                month: 'short'
-                                            })}
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                                    <Activity className="w-6 h-6 text-purple-600" />
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                    <p className="text-sm font-medium text-gray-600">Requests Este Mês</p>
-                                    <p className="text-2xl font-bold text-gray-900">
-                                        {usageLoading ? (
-                                            <span className="animate-pulse">...</span>
-                                        ) : (
-                                            usageStats?.requestsThisMonth || 0
-                                        )}
-                                    </p>
-                                    {!usageLoading && (
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            {new Date().toLocaleDateString('pt-BR', {
-                                                month: 'long',
-                                                year: 'numeric'
-                                            })}
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                                    <Calendar className="w-6 h-6 text-orange-600" />
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Last Usage Info */}
-                {!usageLoading && usageStats?.lastUsed && (
-                    <Card>
-                        <CardContent className="p-4">
-                            <div className="flex items-center justify-between text-sm">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                                    <span className="text-gray-600">Último uso da API:</span>
-                                    <span className="font-medium text-gray-900">
-                                        {new Date(usageStats.lastUsed).toLocaleString('pt-BR')}
-                                    </span>
-                                </div>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage"] })}
-                                    className="text-xs"
-                                >
-                                    <RefreshCw className="w-3 h-3 mr-1" />
-                                    Atualizar
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
+                    <TabsContent value="settings" className="space-y-6 mt-6">
 
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    {/* API Key */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Key className="w-5 h-5" />
-                                Chave da API
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-2">
-                                <Label htmlFor="apiKey">Chave do ChatGPT</Label>
-                                <Input
-                                    id="apiKey"
-                                    type="password"
-                                    placeholder="sk-..."
-                                    value={formData.chatGptApiKey}
-                                    onChange={(e) => handleInputChange("chatGptApiKey", e.target.value)}
-                                    required
-                                />
-                                <div className="flex items-center justify-between">
-                                    <p className="text-sm text-gray-500">
-                                        Insira sua chave da API do OpenAI para habilitar as funcionalidades de IA
-                                    </p>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => testConnectionMutation.mutate()}
-                                        disabled={!formData.chatGptApiKey || testConnectionMutation.isPending}
-                                        className="ml-2"
-                                    >
-                                        {testConnectionMutation.isPending ? (
-                                            <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                                        ) : (
-                                            <CheckCircle className="w-4 h-4 mr-2" />
-                                        )}
-                                        Testar Conexão
-                                    </Button>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Model Selection */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Brain className="w-5 h-5" />
-                                Modelo
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-2">
-                                <Label htmlFor="model">Versão do Modelo</Label>
-                                <Select
-                                    value={formData.model}
-                                    onValueChange={(value) => handleInputChange("model", value)}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecione o modelo" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {aiModels?.map((model: any) => (
-                                            <SelectItem key={model.id} value={model.id}>
-                                                {model.name}
-                                            </SelectItem>
-                                        )) || (
-                                                <>
-                                                    <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
-                                                    <SelectItem value="gpt-4">GPT-4</SelectItem>
-                                                    <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
-                                                    <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                                                </>
-                                            )}
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-sm text-gray-500">
-                                    Escolha a versão do modelo GPT a ser utilizada
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
 
                     {/* Temperature */}
                     <Card>
@@ -595,7 +491,7 @@ export default function AIPage() {
                                         <Button
                                             type="button"
                                             onClick={handleTestAgent}
-                                            disabled={!testMessage.trim() || !formData.chatGptApiKey || isTestingAgent}
+                                            disabled={!testMessage.trim() || isTestingAgent}
                                             className="min-w-24"
                                         >
                                             {isTestingAgent ? (
@@ -655,6 +551,312 @@ export default function AIPage() {
                         </Button>
                     </div>
                 </form>
+                    </TabsContent>
+
+                    <TabsContent value="prompts" className="space-y-6 mt-6">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900">Prompts Globais</h3>
+                                <p className="text-gray-600">
+                                    Crie prompts que serão aplicados a todas as franquias
+                                </p>
+                            </div>
+                            <Dialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen}>
+                                <DialogTrigger asChild>
+                                    <Button onClick={() => {
+                                        setEditingPrompt(null);
+                                        setPromptDialogOpen(true);
+                                    }}>
+                                        <Plus className="w-4 h-4 mr-2" />
+                                        Novo Prompt
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                                    <DialogHeader>
+                                        <DialogTitle>
+                                            {editingPrompt ? "Editar Prompt Global" : "Novo Prompt Global"}
+                                        </DialogTitle>
+                                    </DialogHeader>
+                                    <Form {...promptForm}>
+                                        <form onSubmit={promptForm.handleSubmit(onPromptSubmit)} className="space-y-4">
+                                            <FormField
+                                                control={promptForm.control}
+                                                name="name"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Nome do Prompt *</FormLabel>
+                                                        <FormControl>
+                                                            <Input placeholder="Ex: Atendimento Vendas" {...field} />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={promptForm.control}
+                                                name="category"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Categoria</FormLabel>
+                                                        <FormControl>
+                                                            <Select onValueChange={field.onChange} value={field.value}>
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Selecione uma categoria" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="vendas">Vendas</SelectItem>
+                                                                    <SelectItem value="suporte">Suporte</SelectItem>
+                                                                    <SelectItem value="geral">Geral</SelectItem>
+                                                                    <SelectItem value="financeiro">Financeiro</SelectItem>
+                                                                    <SelectItem value="marketing">Marketing</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={promptForm.control}
+                                                name="description"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Descrição</FormLabel>
+                                                        <FormControl>
+                                                            <Textarea 
+                                                                placeholder="Descrição do que o prompt faz..."
+                                                                rows={2}
+                                                                {...field}
+                                                            />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={promptForm.control}
+                                                name="prompt"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Conteúdo do Prompt *</FormLabel>
+                                                        <FormControl>
+                                                            <Textarea 
+                                                                placeholder="Você é um assistente especializado em..."
+                                                                rows={6}
+                                                                {...field}
+                                                            />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={promptForm.control}
+                                                name="temperature"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Temperatura ({field.value})</FormLabel>
+                                                        <FormControl>
+                                                            <Slider
+                                                                min={0}
+                                                                max={2}
+                                                                step={0.1}
+                                                                value={[field.value]}
+                                                                onValueChange={(value) => field.onChange(value[0])}
+                                                                className="w-full"
+                                                            />
+                                                        </FormControl>
+                                                        <div className="flex justify-between text-xs text-gray-500">
+                                                            <span>Mais Focado (0)</span>
+                                                            <span>Mais Criativo (2)</span>
+                                                        </div>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <div className="flex justify-end space-x-3 pt-4">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={() => {
+                                                        setPromptDialogOpen(false);
+                                                        setEditingPrompt(null);
+                                                    }}
+                                                >
+                                                    Cancelar
+                                                </Button>
+                                                <Button 
+                                                    type="submit"
+                                                    disabled={createPromptMutation.isPending}
+                                                >
+                                                    {createPromptMutation.isPending ? "Salvando..." : editingPrompt ? "Atualizar" : "Criar"}
+                                                </Button>
+                                            </div>
+                                        </form>
+                                    </Form>
+                                </DialogContent>
+                            </Dialog>
+                        </div>
+
+                        {/* Global Prompts List */}
+                        <div className="grid gap-4">
+                            {isLoadingPrompts ? (
+                                <div className="space-y-4">
+                                    {[...Array(3)].map((_, i) => (
+                                        <div key={i} className="h-32 bg-gray-200 rounded-lg animate-pulse" />
+                                    ))}
+                                </div>
+                            ) : globalPrompts?.length === 0 ? (
+                                <Card>
+                                    <CardContent className="p-12 text-center">
+                                        <MessageSquare className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                                        <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                            Nenhum prompt global encontrado
+                                        </h3>
+                                        <p className="text-gray-600 mb-4">
+                                            Crie seu primeiro prompt global para começar
+                                        </p>
+                                        <Button onClick={() => {
+                                            setEditingPrompt(null);
+                                            setPromptDialogOpen(true);
+                                        }}>
+                                            <Plus className="w-4 h-4 mr-2" />
+                                            Criar Primeiro Prompt
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            ) : (
+                                globalPrompts?.map((prompt: any) => (
+                                    <Card key={prompt.id} className="relative">
+                                        <CardHeader className="pb-3">
+                                            <div className="flex items-start justify-between">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <CardTitle className="text-lg">{prompt.name}</CardTitle>
+                                                        {prompt.category && (
+                                                            <Badge variant="secondary" className="text-xs">
+                                                                {prompt.category}
+                                                            </Badge>
+                                                        )}
+                                                        {prompt.isDefault && (
+                                                            <Badge className="text-xs bg-blue-100 text-blue-800">
+                                                                Padrão
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                    {prompt.description && (
+                                                        <p className="text-sm text-gray-600">{prompt.description}</p>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            setTestingPrompt(prompt);
+                                                            setTestDialogOpen(true);
+                                                        }}
+                                                    >
+                                                        <Play className="w-4 h-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => handleEditPrompt(prompt)}
+                                                    >
+                                                        <Edit className="w-4 h-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => handleDeletePrompt(prompt.id)}
+                                                        disabled={deletePromptMutation.isPending}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </CardHeader>
+                                        <CardContent className="pt-0">
+                                            <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                                                <p className="text-sm text-gray-700 line-clamp-3">{prompt.prompt}</p>
+                                            </div>
+                                            <div className="flex items-center justify-between text-xs text-gray-500">
+                                                <span>Temperatura: {prompt.temperature}</span>
+                                                <span>Criado em: {new Date(prompt.createdAt).toLocaleDateString('pt-BR')}</span>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))
+                            )}
+                        </div>
+
+                        {/* Test Dialog */}
+                        <Dialog open={testDialogOpen} onOpenChange={setTestDialogOpen}>
+                            <DialogContent className="max-w-2xl">
+                                <DialogHeader>
+                                    <DialogTitle>Testar Prompt: {testingPrompt?.name}</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                    <div>
+                                        <Label htmlFor="test-message">Mensagem de Teste</Label>
+                                        <Textarea
+                                            id="test-message"
+                                            rows={3}
+                                            placeholder="Digite uma mensagem para testar o prompt..."
+                                            value={promptTestMessage}
+                                            onChange={(e) => setPromptTestMessage(e.target.value)}
+                                            disabled={promptTestLoading}
+                                        />
+                                    </div>
+                                    
+                                    {promptTestResponse && (
+                                        <div>
+                                            <Label>Resposta do Agente</Label>
+                                            <div className="p-4 bg-gray-50 rounded-lg border">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                                        <Bot className="w-4 h-4 text-blue-600" />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                                                            {promptTestResponse}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex justify-end space-x-3">
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => {
+                                                setTestDialogOpen(false);
+                                                setTestingPrompt(null);
+                                                setPromptTestMessage("");
+                                                setPromptTestResponse("");
+                                            }}
+                                        >
+                                            Fechar
+                                        </Button>
+                                        <Button
+                                            onClick={() => handleTestPrompt(testingPrompt)}
+                                            disabled={!promptTestMessage.trim() || promptTestLoading}
+                                        >
+                                            {promptTestLoading ? (
+                                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                            ) : (
+                                                <Play className="w-4 h-4 mr-2" />
+                                            )}
+                                            {promptTestLoading ? "Testando..." : "Testar"}
+                                        </Button>
+                                    </div>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
+                    </TabsContent>
+                </Tabs>
             </div>
         </Layout>
     );

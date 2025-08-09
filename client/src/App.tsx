@@ -128,6 +128,9 @@ function Router() {
           <Route path="/admin/team/new" component={TeamPage} />
           <Route path="/admin/franchises" component={FranchisesPage} />
           <Route path="/admin/franchises/new" component={FranchisesPage} />
+          <Route path="/admin/ai" component={AIPage} />
+          <Route path="/admin/whatsapp" component={WhatsAppPage} />
+          <Route path="/admin/settings" component={AdminSettings} />
 
           <Route path="/admin/reports">
             {() => (

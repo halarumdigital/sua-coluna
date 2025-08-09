@@ -188,6 +188,21 @@ export const franchisePrompts = mysqlTable("franchise_prompts", {
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
 });
 
+// Prompts globais (servem para todas as franquias)
+export const globalPrompts = mysqlTable("global_prompts", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  franchisorId: varchar("franchisor_id", { length: 36 }).references(() => franchisors.id).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  prompt: text("prompt").notNull(),
+  temperature: decimal("temperature", { precision: 3, scale: 2 }).notNull().default("0.7"),
+  category: varchar("category", { length: 100 }), // Vendas, Suporte, Geral, etc.
+  isDefault: boolean("is_default").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
 // Clients table - Agora são clientes finais das franquias
 export const clients = mysqlTable("clients", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
@@ -496,6 +511,7 @@ export const franchisorsRelations = relations(franchisors, ({ one, many }) => ({
   user: one(users, { fields: [franchisors.userId], references: [users.id] }),
   plan: one(plans, { fields: [franchisors.planId], references: [plans.id] }),
   franchises: many(franchises),
+  globalPrompts: many(globalPrompts),
 }));
 
 export const franchisesRelations = relations(franchises, ({ one, many }) => ({
@@ -518,6 +534,10 @@ export const franchiseAgentsRelations = relations(franchiseAgents, ({ one }) => 
 
 export const franchisePromptsRelations = relations(franchisePrompts, ({ one }) => ({
   franchise: one(franchises, { fields: [franchisePrompts.franchiseId], references: [franchises.id] }),
+}));
+
+export const globalPromptsRelations = relations(globalPrompts, ({ one }) => ({
+  franchisor: one(franchisors, { fields: [globalPrompts.franchisorId], references: [franchisors.id] }),
 }));
 
 export const clientsRelations = relations(clients, ({ one, many }) => ({
@@ -934,6 +954,16 @@ export const createFranchisePromptSchema = z.object({
   isDefault: z.boolean().default(false),
 });
 
+// Schema para criação de prompt global
+export const createGlobalPromptSchema = z.object({
+  name: z.string().min(1, "Nome do prompt é obrigatório"),
+  description: z.string().optional(),
+  prompt: z.string().min(1, "Conteúdo do prompt é obrigatório"),
+  temperature: z.number().min(0).max(2).default(0.7),
+  category: z.string().optional(),
+  isDefault: z.boolean().default(false),
+});
+
 // Schema para edição de perfil do super root
 export const editSuperRootProfileSchema = z.object({
   firstName: z.string().min(1, "Nome é obrigatório"),
@@ -959,3 +989,6 @@ export const editSuperRootProfileSchema = z.object({
 export type WhatsappInstance = typeof whatsappInstances.$inferSelect;
 export type InsertWhatsappInstance = z.infer<typeof insertWhatsappInstanceSchema>;
 export type CreateWhatsappInstance = z.infer<typeof createWhatsappInstanceSchema>;
+
+export type GlobalPrompt = typeof globalPrompts.$inferSelect;
+export type CreateGlobalPrompt = z.infer<typeof createGlobalPromptSchema>;

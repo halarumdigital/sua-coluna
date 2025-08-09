@@ -19,6 +19,7 @@ import {
   franchisePhoneNumbers,
   franchiseAgents,
   franchisePrompts,
+  globalPrompts,
   type User,
   type UpsertUser,
   type Client,
@@ -65,6 +66,8 @@ import {
   type FranchisePrompt,
   type InsertFranchisePrompt,
   type CreateFranchisePrompt,
+  type GlobalPrompt,
+  type CreateGlobalPrompt,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, count, sum, sql, like, gte, lte, or, between, asc } from "drizzle-orm";
@@ -210,6 +213,13 @@ export interface IStorage {
   // WhatsApp Messages operations
   createWhatsappMessage(message: InsertWhatsappMessage): Promise<WhatsappMessage>;
   getWhatsappMessagesByConversation(conversationId: string): Promise<WhatsappMessage[]>;
+
+  // Global Prompts operations
+  getGlobalPrompts(franchisorId: string): Promise<GlobalPrompt[]>;
+  createGlobalPrompt(franchisorId: string, promptData: CreateGlobalPrompt): Promise<GlobalPrompt>;
+  updateGlobalPrompt(id: string, promptData: Partial<CreateGlobalPrompt>): Promise<GlobalPrompt>;
+  deleteGlobalPrompt(id: string): Promise<void>;
+  testGlobalPrompt(id: string, testMessage: string): Promise<{success: boolean, response?: string, error?: string}>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1981,6 +1991,118 @@ export class DatabaseStorage implements IStorage {
       .where(eq(whatsappConversations.id, id));
 
     return updatedConversation;
+  }
+
+  // Global Prompts operations
+  async getGlobalPrompts(franchisorId: string): Promise<GlobalPrompt[]> {
+    return await db
+      .select()
+      .from(globalPrompts)
+      .where(eq(globalPrompts.franchisorId, franchisorId))
+      .orderBy(desc(globalPrompts.isDefault), desc(globalPrompts.createdAt));
+  }
+
+  async createGlobalPrompt(franchisorId: string, promptData: CreateGlobalPrompt): Promise<GlobalPrompt> {
+    await db.insert(globalPrompts).values({
+      franchisorId: franchisorId,
+      name: promptData.name,
+      description: promptData.description,
+      prompt: promptData.prompt,
+      temperature: promptData.temperature,
+      category: promptData.category,
+      isDefault: promptData.isDefault,
+      isActive: true,
+    });
+
+    // Get the newly created prompt
+    const [newPrompt] = await db
+      .select()
+      .from(globalPrompts)
+      .where(and(
+        eq(globalPrompts.franchisorId, franchisorId),
+        eq(globalPrompts.name, promptData.name)
+      ))
+      .orderBy(desc(globalPrompts.createdAt))
+      .limit(1);
+
+    return newPrompt;
+  }
+
+  async updateGlobalPrompt(id: string, promptData: Partial<CreateGlobalPrompt>): Promise<GlobalPrompt> {
+    await db
+      .update(globalPrompts)
+      .set({ 
+        ...promptData,
+        updatedAt: new Date() 
+      })
+      .where(eq(globalPrompts.id, id));
+
+    // Get the updated prompt
+    const [updatedPrompt] = await db
+      .select()
+      .from(globalPrompts)
+      .where(eq(globalPrompts.id, id));
+
+    return updatedPrompt;
+  }
+
+  async deleteGlobalPrompt(id: string): Promise<void> {
+    await db.delete(globalPrompts).where(eq(globalPrompts.id, id));
+  }
+
+  async testGlobalPrompt(id: string, testMessage: string): Promise<{success: boolean, response?: string, error?: string}> {
+    try {
+      // Get the prompt details
+      const [prompt] = await db
+        .select()
+        .from(globalPrompts)
+        .where(eq(globalPrompts.id, id))
+        .limit(1);
+
+      if (!prompt) {
+        return {
+          success: false,
+          error: "Prompt não encontrado"
+        };
+      }
+
+      // Get AI settings
+      const aiSettings = await this.getAISettings();
+      
+      // For testing purposes, return a simulated response if no API key is configured
+      if (!aiSettings.chatGptApiKey) {
+        return {
+          success: true,
+          response: `[SIMULAÇÃO] Resposta simulada usando o prompt "${prompt.name}" com temperatura ${prompt.temperature}:\n\nEste é um exemplo de como o agente responderia à mensagem: "${testMessage}"\n\nO prompt utilizado: "${prompt.prompt.substring(0, 100)}..."`
+        };
+      }
+
+      // Test with OpenAI
+      const { openaiService } = await import("./openai");
+      const result = await openaiService.chat(testMessage, {
+        ...aiSettings,
+        temperature: Number(prompt.temperature),
+        systemPrompt: prompt.prompt
+      }, 'test-user');
+
+      if (result.success) {
+        return {
+          success: true,
+          response: result.response
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || "Falha ao gerar resposta"
+        };
+      }
+    } catch (error: any) {
+      console.error("Error testing global prompt:", error);
+      return {
+        success: false,
+        error: error.message || "Erro interno do servidor"
+      };
+    }
   }
 }
 

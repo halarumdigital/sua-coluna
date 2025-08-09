@@ -108,6 +108,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         { title: "Nova Franquia", href: "/admin/franchises/new" },
       ],
     },
+    {
+      title: "IA",
+      href: "/admin/ai",
+      icon: Bot,
+    },
   ];
 
   const clientMenuItems = [

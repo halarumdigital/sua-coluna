@@ -192,6 +192,104 @@ export class OpenAIService {
     }
   }
 
+  async chat(message: string, settings: any, userId?: string): Promise<{ 
+    success: boolean; 
+    response?: string; 
+    error?: string; 
+    usage?: {
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+      cost: number;
+    }
+  }> {
+    try {
+      const apiKey = settings.chatGptApiKey || await this.getApiKey();
+      if (!apiKey) {
+        return { success: false, error: 'API key not configured' };
+      }
+
+      // Prepare the chat completion request
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: settings.model || 'gpt-3.5-turbo',
+          messages: [
+            { role: 'system', content: settings.systemPrompt || 'Você é um assistente útil e prestativo.' },
+            { role: 'user', content: message }
+          ],
+          max_tokens: settings.maxTokens || 1000,
+          temperature: settings.temperature || 0.7
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        return { 
+          success: false, 
+          error: errorData.error?.message || 'Chat request failed' 
+        };
+      }
+
+      const data = await response.json();
+      
+      // Calculate cost based on model pricing
+      const pricing = this.getModelPricing(settings.model || 'gpt-3.5-turbo');
+      const promptTokens = data.usage?.prompt_tokens || 0;
+      const completionTokens = data.usage?.completion_tokens || 0;
+      const totalTokens = data.usage?.total_tokens || 0;
+      const cost = (promptTokens * pricing.input / 1000) + (completionTokens * pricing.output / 1000);
+
+      // Record usage if userId is provided
+      if (userId) {
+        try {
+          await storage.recordAIUsage({
+            userId,
+            model: settings.model || 'gpt-3.5-turbo',
+            promptTokens,
+            completionTokens,
+            totalTokens,
+            cost,
+            requestData: JSON.stringify({
+              message: message.substring(0, 100) + (message.length > 100 ? '...' : ''),
+              settings: {
+                model: settings.model,
+                maxTokens: settings.maxTokens,
+                temperature: settings.temperature,
+                hasCustomPrompt: !!settings.systemPrompt
+              }
+            }),
+            responseData: JSON.stringify({
+              response: data.choices[0]?.message?.content?.substring(0, 200) + (data.choices[0]?.message?.content && data.choices[0]?.message?.content.length > 200 ? '...' : '')
+            })
+          });
+        } catch (error) {
+          console.error('Error recording AI usage:', error);
+        }
+      }
+
+      return { 
+        success: true, 
+        response: data.choices[0]?.message?.content || 'No response generated',
+        usage: {
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          cost
+        }
+      };
+    } catch (error: any) {
+      return { 
+        success: false, 
+        error: error.message || 'Chat request failed' 
+      };
+    }
+  }
+
   private getDefaultModels() {
     return [
       {

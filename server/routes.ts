@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertClientSchema, insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema, aiSettingsSchema, createClientSchema, editClientSchema } from "@shared/schema";
 import { openaiService } from "./openai";
+import { whatsappAIHandler } from "./whatsapp-ai-handler";
 import { z } from "zod";
 import multer from "multer";
 import path from "path";
@@ -204,7 +205,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Validation errors:", error.errors);
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
-      res.status(500).json({ message: "Failed to update client", error: error.message });
+      res.status(500).json({ message: "Failed to update client", error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
@@ -599,12 +600,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Configurações salvas com sucesso",
         settings: updatedSettings
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving system settings:", error);
       console.error("Error stack:", error.stack);
       res.status(500).json({ 
         message: "Failed to save system settings",
-        error: error.message 
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   });
@@ -1409,56 +1410,222 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Configure Evolution API webhook for WhatsApp instance
+  app.post("/api/client/whatsapp-instances/:instanceKey/webhook", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { instanceKey } = req.params;
+      
+      // Get admin WhatsApp settings
+      const adminSettings = await storage.getWhatsappApiSettings();
+      if (!adminSettings) {
+        return res.status(400).json({ message: "Configurações da API WhatsApp não encontradas" });
+      }
+
+      // Get client ID for the current user
+      const client = await storage.getClientByUserId(userId);
+      if (!client) {
+        return res.status(400).json({ message: "Cliente não encontrado para este usuário" });
+      }
+      
+      // Find instance to verify ownership
+      const instances = await storage.getWhatsappInstancesByClient(client.id);
+      const instance = instances.find(inst => inst.instanceKey === instanceKey);
+      if (!instance) {
+        return res.status(404).json({ message: "Instância não encontrada ou não pertence ao cliente" });
+      }
+
+      // Generate webhook URL for this instance using systemUrl from database
+      const baseUrl = adminSettings.systemUrl || 
+        (process.env.NODE_ENV === 'production' || process.env.REPL_ID) 
+          ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+          : req.protocol + '://' + req.get('host');
+      
+      const webhookUrl = `${baseUrl}/api/client/whatsapp-webhook/${instanceKey}`;
+
+      // Prepare webhook configuration for Evolution API
+      const webhookConfig = {
+        webhook: {
+          enabled: true,
+          url: webhookUrl,
+          headers: {
+            authorization: `Bearer ${adminSettings.globalToken}`,
+            "Content-Type": "application/json"
+          },
+          byEvents: false,
+          base64: true,
+          events: [
+            "MESSAGES_UPSERT"
+          ]
+        }
+      };
+
+      console.log('Configuring webhook for instance:', instanceKey);
+      console.log('Webhook URL:', webhookUrl);
+      console.log('Webhook config:', webhookConfig);
+
+      // Call Evolution API to set webhook
+      const evolutionResponse = await fetch(`${adminSettings.evolutionApiUrl}/webhook/set/${instanceKey}`, {
+        method: 'POST',
+        headers: {
+          'apikey': adminSettings.globalToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(webhookConfig)
+      });
+      
+      if (!evolutionResponse.ok) {
+        let errorData;
+        try {
+          errorData = await evolutionResponse.json();
+        } catch (jsonError) {
+          const errorText = await evolutionResponse.text();
+          console.error('Evolution API webhook error:', {
+            status: evolutionResponse.status,
+            statusText: evolutionResponse.statusText,
+            responseText: errorText
+          });
+          return res.status(400).json({ 
+            message: "Falha ao configurar webhook na Evolution API",
+            details: {
+              status: evolutionResponse.status,
+              statusText: evolutionResponse.statusText,
+              response: errorText
+            }
+          });
+        }
+        
+        console.error('Evolution API webhook error:', errorData);
+        return res.status(400).json({ 
+          message: "Falha ao configurar webhook na Evolution API",
+          details: errorData
+        });
+      }
+      
+      let evolutionData;
+      try {
+        evolutionData = await evolutionResponse.json();
+      } catch (jsonError) {
+        const responseText = await evolutionResponse.text();
+        console.log('Evolution API webhook success response (non-JSON):', responseText);
+        evolutionData = { message: "Webhook configurado com sucesso", response: responseText };
+      }
+
+      // Update instance webhook URL in database
+      await storage.updateWhatsappInstance(instance.id, { webhook: webhookUrl });
+      
+      res.json({
+        message: "Webhook configurado com sucesso",
+        webhookUrl: webhookUrl,
+        config: webhookConfig,
+        response: evolutionData
+      });
+    } catch (error) {
+      console.error("Error configuring Evolution API webhook:", error);
+      res.status(500).json({ message: "Erro ao configurar webhook da Evolution API" });
+    }
+  });
+
   // WhatsApp webhook endpoint with instance key (no authentication required)
   app.post("/api/client/whatsapp-webhook/:instanceKey", async (req: any, res) => {
     try {
       const { instanceKey } = req.params;
       const { event, instance, data } = req.body;
       
-      console.log(`WhatsApp webhook for ${instanceKey}:`, { event, instance, data });
+      console.log(`🔔 WhatsApp webhook for ${instanceKey}:`, { event, instance, data });
       
-      // Handle connection updates
-      if (event === 'connection.update' && data && data.state) {
-        try {
-          // Find instance by instanceKey
-          const instances = await storage.getWhatsappInstances();
-          const matchingInstance = instances.find(inst => inst.instanceKey === instanceKey);
+      // Handle different webhook events
+      switch (event) {
+        case 'connection.update':
+          console.log('🔄 Connection update:', data);
           
-          if (matchingInstance) {
-            let newStatus = 'disconnected';
-            
-            // Map Evolution API states to our status
-            switch (data.state) {
-              case 'open':
-                newStatus = 'connected';
-                break;
-              case 'close':
-              case 'closed':
-                newStatus = 'disconnected';
-                break;
-              case 'connecting':
-                newStatus = 'connecting';
-                break;
-              default:
-                newStatus = data.state;
+          if (data && data.state) {
+            try {
+              // Find instance by instanceKey
+              const instances = await storage.getWhatsappInstances();
+              const matchingInstance = instances.find(inst => inst.instanceKey === instanceKey);
+              
+              if (matchingInstance) {
+                let newStatus = 'disconnected';
+                
+                // Map Evolution API states to our status
+                switch (data.state) {
+                  case 'open':
+                    newStatus = 'connected';
+                    break;
+                  case 'close':
+                  case 'closed':
+                    newStatus = 'disconnected';
+                    break;
+                  case 'connecting':
+                    newStatus = 'connecting';
+                    break;
+                  default:
+                    newStatus = data.state;
+                }
+                
+                // Update status in database
+                await storage.updateWhatsappInstance(matchingInstance.id, { 
+                  status: newStatus,
+                  lastConnection: newStatus === 'connected' ? new Date() : matchingInstance.lastConnection
+                });
+                
+                console.log(`✅ Instance ${instanceKey} status updated to: ${newStatus}`);
+              }
+            } catch (error) {
+              console.error('❌ Error updating instance status from webhook:', error);
             }
-            
-            // Update status in database
-            await storage.updateWhatsappInstance(matchingInstance.id, { 
-              status: newStatus,
-              lastConnection: newStatus === 'connected' ? new Date() : matchingInstance.lastConnection
-            });
-            
-            console.log(`✅ Instance ${instanceKey} status updated to: ${newStatus}`);
           }
-        } catch (error) {
-          console.error('Error updating instance status from webhook:', error);
-        }
+          break;
+
+        case 'messages.upsert':
+          console.log('📱 New message received:', data);
+          
+          // Processar resposta automática com AI
+          try {
+            const isAutoReplyEnabled = await whatsappAIHandler.isAutoReplyEnabled(instanceKey);
+            if (isAutoReplyEnabled) {
+              console.log('🤖 Auto-reply habilitado, processando mensagem...');
+              // Executar em background para não bloquear o webhook
+              whatsappAIHandler.handleIncomingMessage(instanceKey, data).catch(error => {
+                console.error('❌ Erro ao processar resposta automática:', error);
+              });
+            } else {
+              console.log('⚠️ Auto-reply desabilitado para esta instância');
+            }
+          } catch (error) {
+            console.error('❌ Erro ao verificar auto-reply:', error);
+          }
+          break;
+
+        case 'messages.update':
+          console.log('📝 Message updated:', data);
+          break;
+
+        case 'messages.delete':
+          console.log('🗑️ Message deleted:', data);
+          break;
+
+        case 'contacts.update':
+          console.log('👤 Contacts updated:', data);
+          break;
+
+        default:
+          console.log('❓ Unhandled event:', event);
       }
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error processing WhatsApp webhook:", error);
+      console.error("❌ Error processing WhatsApp webhook:", error);
       res.status(500).json({ success: false, error: "Internal server error" });
     }
   });
@@ -1516,6 +1683,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           break;
         case 'messages.upsert':
           console.log('New message received:', data);
+          
+          // Processar resposta automática com AI
+          try {
+            const isAutoReplyEnabled = await whatsappAIHandler.isAutoReplyEnabled(instance);
+            if (isAutoReplyEnabled) {
+              // Executar em background para não bloquear o webhook
+              whatsappAIHandler.handleIncomingMessage(instance, data).catch(error => {
+                console.error('❌ Erro ao processar resposta automática:', error);
+              });
+            }
+          } catch (error) {
+            console.error('❌ Erro ao verificar auto-reply:', error);
+          }
           break;
         case 'messages.update':
           console.log('Message updated:', data);
@@ -1534,6 +1714,226 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Test endpoint first
+  app.get("/api/test-sync", isAuthenticated, async (req: any, res) => {
+    res.json({ message: "Test endpoint working", timestamp: new Date() });
+  });
+
+  // Sync conversations from WhatsApp
+  app.post("/api/sync-whatsapp-chats", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      console.log('🔄 Iniciando sincronização de conversas do WhatsApp...');
+
+      // Get all active WhatsApp instances
+      const instances = await storage.getWhatsappInstances();
+      const activeInstances = instances.filter(inst => inst.isActive);
+
+      if (activeInstances.length === 0) {
+        return res.status(404).json({ message: "No active WhatsApp instances found" });
+      }
+
+      console.log(`📱 ${activeInstances.length} instância(s) ativa(s) encontrada(s)`);
+
+      const { whatsappService } = await import('./whatsapp');
+      let totalSynced = 0;
+
+      for (const instance of activeInstances) {
+        console.log(`🔍 Sincronizando instância: ${instance.instanceName} (${instance.instanceKey})`);
+        
+        // Find chats from Evolution API
+        const chatsResult = await whatsappService.findChats(instance.instanceKey);
+        
+        if (chatsResult.success && chatsResult.data && Array.isArray(chatsResult.data)) {
+          console.log(`📋 ${chatsResult.data.length} chat(s) encontrado(s) na instância ${instance.instanceName}`);
+          console.log(`📱 Primeiros 3 chats:`, chatsResult.data.slice(0, 3).map(c => ({ 
+            remoteJid: c.remoteJid, 
+            pushName: c.pushName,
+            lastMessage: c.lastMessage?.message?.conversation?.substring(0, 50)
+          })));
+
+          for (const chat of chatsResult.data) {
+            try {
+              // Extract chat information
+              const chatId = chat.remoteJid;
+              const contactName = chat.pushName || (chatId ? chatId.split('@')[0] : 'Desconhecido');
+              const contactPhone = chatId.includes('@') ? chatId.split('@')[0] : chatId;
+              const lastMessage = chat.lastMessage?.message?.conversation || 'Sem mensagem';
+              const lastMessageTime = chat.lastMessage?.messageTimestamp 
+                                    ? new Date(chat.lastMessage.messageTimestamp * 1000)
+                                    : new Date();
+
+              if (!chatId || !contactPhone) {
+                console.log('⚠️  Chat sem ID ou telefone válido, pulando...');
+                continue;
+              }
+
+              // Check if conversation already exists
+              const existingConversation = await storage.getWhatsappConversationByChatId(instance.id, chatId);
+              
+              if (existingConversation) {
+                // Update existing conversation
+                await storage.updateWhatsappConversation(existingConversation.id, {
+                  contactName,
+                  lastMessage,
+                  lastMessageAt: lastMessageTime,
+                  status: 'active'
+                });
+                console.log(`🔄 Conversa atualizada: ${contactName} (${contactPhone})`);
+                totalSynced++; // Count updates as well
+              } else {
+                // Create new conversation
+                await storage.createWhatsappConversation({
+                  chatId,
+                  instanceId: instance.id,
+                  contactName,
+                  phoneNumber: contactPhone,
+                  lastMessage,
+                  lastMessageAt: lastMessageTime,
+                  status: 'active'
+                });
+                console.log(`✅ Nova conversa criada: ${contactName} (${contactPhone})`);
+                totalSynced++;
+              }
+            } catch (error) {
+              console.error(`❌ Erro ao processar chat:`, error);
+            }
+          }
+        } else {
+          console.log(`⚠️  Falha ao buscar chats da instância ${instance.instanceName}: ${chatsResult.error}`);
+        }
+      }
+
+      console.log(`🎉 Sincronização concluída! ${totalSynced} nova(s) conversa(s) sincronizada(s)`);
+      
+      res.json({ 
+        message: "Sync completed successfully", 
+        newConversations: totalSynced,
+        totalInstances: activeInstances.length
+      });
+
+    } catch (error) {
+      console.error("Error syncing conversations:", error);
+      res.status(500).json({ 
+        message: "Failed to sync conversations",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Novo endpoint para buscar conversas diretamente da Evolution API
+  app.get("/api/client/conversations-evolution", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Parâmetros de filtro
+      const { search, startDate, endDate } = req.query;
+      console.log('🔍 Buscando conversas diretamente da Evolution API...', {
+        search: search || 'sem filtro',
+        startDate: startDate || 'sem data início',
+        endDate: endDate || 'sem data fim'
+      });
+      
+      // Get active WhatsApp instances
+      const instances = await storage.getWhatsappInstances();
+      if (instances.length === 0) {
+        console.log('❌ Nenhuma instância encontrada');
+        return res.json([]);
+      }
+      
+      const { whatsappService } = await import('./whatsapp');
+      let allChats: any[] = [];
+      
+      // Buscar chats de todas as instâncias
+      for (const instance of instances) {
+        console.log(`🔍 Buscando chats da instância: ${instance.instanceKey}`);
+        
+        const chatsResult = await whatsappService.findChats(instance.instanceKey);
+        if (chatsResult.success && chatsResult.data) {
+          const chats = Array.isArray(chatsResult.data) ? chatsResult.data : [];
+          console.log(`✅ ${chats.length} chats encontrados na instância ${instance.instanceKey}`);
+          
+          // Formatar chats para o frontend
+          const formattedChats = chats
+            .filter(chat => chat && chat.id) // Filtrar chats válidos
+            .map((chat: any) => ({
+              id: chat.id, // remoteJid direto
+              contactName: chat.name || chat.pushName || (chat.id ? chat.id.replace('@s.whatsapp.net', '') : 'Contato'),
+              contactPhone: chat.id ? chat.id.replace('@s.whatsapp.net', '') : '',
+              lastMessage: chat.lastMessage?.message?.conversation || 
+                          chat.lastMessage?.message?.extendedTextMessage?.text || 
+                          '[Mídia]',
+              lastMessageTime: chat.lastMessage?.messageTimestamp 
+                ? new Date(chat.lastMessage.messageTimestamp * 1000).toISOString()
+                : new Date().toISOString(),
+              status: "active",
+              unreadCount: chat.unreadCount || 0,
+              instanceKey: instance.instanceKey
+            }));
+          
+          allChats.push(...formattedChats);
+        } else {
+          console.log(`❌ Falha ao buscar chats da instância ${instance.instanceKey}: ${chatsResult.error}`);
+        }
+      }
+      
+      // Aplicar filtros
+      let filteredChats = allChats;
+      
+      // Filtro de busca por nome ou telefone
+      if (search && typeof search === 'string' && search.trim()) {
+        const searchTerm = search.toLowerCase().trim();
+        filteredChats = filteredChats.filter(chat => 
+          chat.contactName.toLowerCase().includes(searchTerm) ||
+          chat.contactPhone.includes(searchTerm) ||
+          chat.lastMessage.toLowerCase().includes(searchTerm)
+        );
+        console.log(`🔍 Filtro de busca "${search}" aplicado: ${filteredChats.length}/${allChats.length} conversas`);
+      }
+      
+      // Filtro por data (se implementado)
+      if (startDate || endDate) {
+        const start = startDate ? new Date(startDate as string) : null;
+        const end = endDate ? new Date(endDate as string) : null;
+        
+        filteredChats = filteredChats.filter(chat => {
+          const chatDate = new Date(chat.lastMessageTime);
+          if (start && chatDate < start) return false;
+          if (end && chatDate > end) return false;
+          return true;
+        });
+        console.log(`📅 Filtro de data aplicado: ${filteredChats.length}/${allChats.length} conversas`);
+      }
+      
+      console.log(`📬 Total de conversas filtradas: ${filteredChats.length}/${allChats.length}`);
+      res.json(filteredChats);
+      
+    } catch (error) {
+      console.error("Error fetching conversations from Evolution API:", error);
+      res.status(500).json({ 
+        message: "Internal server error",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   app.get("/api/client/conversations", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
@@ -1546,8 +1946,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied" });
       }
       
-      // For now, return empty array - this would be implemented based on business logic
-      res.json([]);
+      // Get client ID for the current user
+      const client = await storage.getClientByUserId(userId);
+      if (!client) {
+        return res.status(400).json({ message: "Cliente não encontrado para este usuário" });
+      }
+
+      // Extract query parameters for filtering
+      const { search, startDate, endDate } = req.query;
+
+      // Prepare filters
+      const filters: any = {};
+      
+      if (search && typeof search === 'string' && search.trim()) {
+        filters.search = search.trim();
+      }
+      
+      if (startDate && typeof startDate === 'string') {
+        filters.startDate = new Date(startDate);
+      }
+      
+      if (endDate && typeof endDate === 'string') {
+        filters.endDate = new Date(endDate);
+      }
+
+      // Fetch conversations with filters
+      const conversations = await storage.getWhatsappConversationsByClient(client.id, filters);
+
+      // Format the response to match the frontend interface
+      const formattedConversations = conversations.map(conv => ({
+        id: conv.id,
+        contactName: conv.contactName || conv.phoneNumber || 'Contato sem nome',
+        contactPhone: conv.phoneNumber,
+        lastMessage: conv.lastMessage || 'Nenhuma mensagem',
+        lastMessageTime: conv.lastMessageAt?.toISOString() || new Date().toISOString(),
+        status: conv.status,
+        unreadCount: conv.unreadCount || 0,
+        avatar: null // Could be added later based on contact info
+      }));
+
+      res.json(formattedConversations);
     } catch (error) {
       console.error("Error fetching client conversations:", error);
       res.status(500).json({ message: "Failed to fetch conversations" });
@@ -1567,15 +2005,203 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const { id } = req.params;
-      // For now, just return success - this would be implemented based on business logic
-      res.json({ message: "Conversa arquivada com sucesso" });
+      
+      // Update conversation status to archived
+      const updatedConversation = await storage.updateConversationStatus(id, "archived");
+      
+      res.json({ 
+        message: "Conversa arquivada com sucesso",
+        conversation: updatedConversation 
+      });
     } catch (error) {
       console.error("Error archiving conversation:", error);
       res.status(500).json({ message: "Failed to archive conversation" });
     }
   });
 
-  // Client profile routes
+  // Debug route temporária - REMOVER EM PRODUÇÃO
+  app.get("/api/debug/whatsapp-settings", async (req: any, res) => {
+    try {
+      const apiSettings = await storage.getWhatsappApiSettings();
+      res.json({
+        evolutionApiUrl: apiSettings?.evolutionApiUrl || 'Not configured',
+        globalToken: apiSettings?.globalToken || 'Not configured',
+        hasSettings: !!apiSettings
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get settings' });
+    }
+  });
+
+  app.get("/api/client/conversations/:id/messages", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { id } = req.params;
+      
+      // O ID agora é o remoteJid diretamente (ex: 552299717515@s.whatsapp.net)
+      const remoteJid = decodeURIComponent(id); // Decodificar URL
+      console.log(`🔍 Buscando mensagens para remoteJid: ${remoteJid}`);
+      
+      let formattedMessages: any[] = [];
+      
+      // Get WhatsApp instance details - usar primeira instância ativa
+      console.log(`🔍 Buscando instâncias disponíveis...`);
+      const instances = await storage.getWhatsappInstances();
+      if (instances.length === 0) {
+        console.log(`❌ Nenhuma instância encontrada`);
+        return res.json([]);
+      }
+      
+      const instance = instances[0]; // Usar primeira instância disponível
+      console.log(`✅ Usando instância: ${instance.instanceName} (${instance.instanceKey})`);
+      
+      // PRIORIZAR Evolution API - buscar mensagens diretamente da API
+      console.log('🔍 Buscando mensagens da Evolution API...');
+      try {
+        const { whatsappService } = await import('./whatsapp');
+        
+        // Testar diferentes formatos de remoteJid baseados no ID passado
+        const remoteJidVariants = [
+          remoteJid, // ID exato decodificado
+          remoteJid.includes('@') ? remoteJid : remoteJid + '@s.whatsapp.net', // Garantir formato WhatsApp
+          remoteJid.replace('@s.whatsapp.net', ''), // Só o número
+          remoteJid.replace('@s.whatsapp.net', '') + '@s.whatsapp.net', // Recriar formato
+        ].filter(Boolean).filter((item, pos, arr) => arr.indexOf(item) === pos); // Remove duplicatas
+        
+        console.log(`🔍 Testando variantes de remoteJid:`, remoteJidVariants);
+        
+        let evolutionResult = null;
+        let usedRemoteJid = null;
+        
+        // Tentar cada variante até encontrar mensagens
+        for (const remoteJid of remoteJidVariants) {
+          console.log(`🔍 Tentando buscar mensagens para: ${remoteJid}`);
+          
+          evolutionResult = await whatsappService.findMessages(instance.instanceKey, remoteJid, 1, 100);
+          console.log(`📋 Resultado para ${remoteJid}:`, {
+            success: evolutionResult.success,
+            hasData: !!evolutionResult.data,
+            dataType: typeof evolutionResult.data,
+            error: evolutionResult.error
+          });
+          
+          if (evolutionResult.success && evolutionResult.data) {
+            const testMessages = Array.isArray(evolutionResult.data) 
+              ? evolutionResult.data 
+              : (evolutionResult.data.messages || []);
+            
+            if (Array.isArray(testMessages) && testMessages.length > 0) {
+              usedRemoteJid = remoteJid;
+              console.log(`✅ Mensagens encontradas com remoteJid: ${remoteJid}`);
+              break;
+            }
+          }
+        }
+        
+        if (evolutionResult && evolutionResult.success && evolutionResult.data && usedRemoteJid) {
+          let messages: any[] = [];
+          
+          // Handle different response formats from Evolution API
+          if (Array.isArray(evolutionResult.data)) {
+            messages = evolutionResult.data;
+          } else if (evolutionResult.data && typeof evolutionResult.data === 'object' && evolutionResult.data.messages) {
+            messages = evolutionResult.data.messages;
+          } else if (evolutionResult.data && typeof evolutionResult.data === 'object') {
+            // Try to find messages in other possible structures
+            const possibleArrays = Object.values(evolutionResult.data).filter(val => Array.isArray(val));
+            messages = possibleArrays.length > 0 ? possibleArrays[0] : [];
+          }
+          
+          console.log(`📬 Raw messages array length: ${Array.isArray(messages) ? messages.length : 'not array'}`);
+          console.log(`📬 Raw data structure:`, JSON.stringify(evolutionResult.data, null, 2).substring(0, 500));
+          
+          if (Array.isArray(messages) && messages.length > 0) {
+            // Format messages from Evolution API
+            formattedMessages = messages
+              .filter(msg => msg && (msg.message || msg.messageText)) // Filtrar mensagens válidas
+              .map((msg: any) => {
+                const timestamp = msg.messageTimestamp 
+                  ? new Date(msg.messageTimestamp * 1000).toISOString()
+                  : new Date().toISOString();
+                
+                const content = msg.message?.conversation || 
+                               msg.message?.extendedTextMessage?.text ||
+                               msg.message?.imageMessage?.caption ||
+                               msg.message?.videoMessage?.caption ||
+                               msg.message?.audioMessage?.caption ||
+                               msg.messageText ||
+                               '[Mídia]';
+                
+                return {
+                  id: msg.key?.id || msg.id || `msg_${Date.now()}_${Math.random()}`,
+                  content: content,
+                  timestamp: timestamp,
+                  isFromUser: msg.key?.fromMe === true || msg.direction === 'outbound',
+                  status: msg.status || 'sent'
+                };
+              });
+            
+            console.log(`✅ ${formattedMessages.length} mensagens formatadas da Evolution API`);
+          } else {
+            console.log(`⚠️ Nenhuma mensagem válida encontrada na Evolution API`);
+          }
+        } else {
+          console.log(`⚠️ Falha ao buscar da Evolution API para todas as variantes`);
+        }
+        
+      } catch (apiError) {
+        console.error('❌ Erro ao buscar da Evolution API:', apiError);
+      }
+      
+      // FALLBACK: Se Evolution API falhou, tentar banco local
+      if (formattedMessages.length === 0) {
+        console.log('🔄 Evolution API não retornou mensagens, tentando banco local...');
+        
+        try {
+          const localMessages = await storage.getWhatsappMessagesByConversation(id);
+          console.log(`📬 ${localMessages.length} mensagens encontradas no banco local`);
+          
+          if (localMessages.length > 0) {
+            formattedMessages = localMessages.map(msg => ({
+              id: msg.id,
+              content: msg.messageText || '',
+              timestamp: msg.timestamp.toISOString(),
+              isFromUser: msg.direction === 'outbound',
+              status: msg.status || 'sent'
+            }));
+            console.log(`✅ ${formattedMessages.length} mensagens formatadas do banco local`);
+          }
+        } catch (dbError) {
+          console.error('❌ Erro ao buscar no banco local:', dbError);
+        }
+      }
+      
+      // Ordenar mensagens por timestamp (mais antigas primeiro)
+      formattedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      
+      console.log(`📤 Retornando ${formattedMessages.length} mensagens para o frontend`);
+      
+      // Garantir que sempre retorna um array válido
+      res.json(Array.isArray(formattedMessages) ? formattedMessages : []);
+      
+    } catch (error) {
+      console.error("Error fetching conversation messages:", error);
+      res.status(500).json({ 
+        message: "Internal server error",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   app.get("/api/client/profile", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
@@ -1633,12 +2259,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+<<<<<<< HEAD
   // ========================================
   // FRANCHISE SYSTEM ROUTES
   // ========================================
 
   // Super Root Routes - Gerenciamento de Planos
   app.get("/api/super-root/plans", isAuthenticated, async (req: any, res) => {
+=======
+  // Client AI Settings routes
+  app.get("/api/client/ai-settings", isAuthenticated, async (req: any, res) => {
+>>>>>>> dcc1cdcc48580a4580f58c36e71af5cb753adecc
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -1646,6 +2277,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const user = await storage.getUser(userId);
+<<<<<<< HEAD
       if (user?.role !== 'super_root') {
         return res.status(403).json({ message: "Access denied - Super Root only" });
       }
@@ -1659,6 +2291,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/super-root/plans", isAuthenticated, async (req: any, res) => {
+=======
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get client's custom AI settings
+      const clientSettings = await storage.getClientAISettings(userId);
+      res.json(clientSettings || {});
+    } catch (error) {
+      console.error("Error fetching client AI settings:", error);
+      res.status(500).json({ message: "Failed to fetch client AI settings" });
+    }
+  });
+
+  app.post("/api/client/ai-settings", isAuthenticated, async (req: any, res) => {
+>>>>>>> dcc1cdcc48580a4580f58c36e71af5cb753adecc
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -1666,6 +2314,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const user = await storage.getUser(userId);
+<<<<<<< HEAD
       if (user?.role !== 'super_root') {
         return res.status(403).json({ message: "Access denied - Super Root only" });
       }
@@ -2002,6 +2651,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/super-root/ai-test", isAuthenticated, async (req: any, res) => {
+=======
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { systemPrompt, maxTokens, temperature } = req.body;
+      
+      // Validate the data
+      const clientAISettings = {
+        systemPrompt: systemPrompt || null,
+        maxTokens: maxTokens || null,
+        temperature: temperature !== undefined ? temperature : null,
+      };
+      
+      await storage.saveClientAISettings(userId, clientAISettings);
+      
+      res.json({ 
+        message: "Configurações de IA salvas com sucesso",
+        settings: clientAISettings
+      });
+    } catch (error) {
+      console.error("Error saving client AI settings:", error);
+      res.status(500).json({ message: "Failed to save client AI settings" });
+    }
+  });
+
+  app.post("/api/client/ai-chat", isAuthenticated, async (req: any, res) => {
+>>>>>>> dcc1cdcc48580a4580f58c36e71af5cb753adecc
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -2009,6 +2686,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const user = await storage.getUser(userId);
+<<<<<<< HEAD
       if (user?.role !== 'super_root') {
         return res.status(403).json({ message: "Access denied - Super Root only" });
       }
@@ -2650,6 +3328,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting plan:", error);
       res.status(500).json({ message: "Failed to delete plan" });
+=======
+      if (user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { message, settings } = req.body;
+      
+      if (!message) {
+        return res.status(400).json({ message: "Message is required" });
+      }
+
+      // Get admin AI settings
+      const adminSettings = await storage.getAISettings();
+      if (!adminSettings.chatGptApiKey) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "API key não configurada pelo administrador" 
+        });
+      }
+
+      // Merge client settings with admin settings (client settings override admin settings)
+      const effectiveSettings = {
+        chatGptApiKey: adminSettings.chatGptApiKey,
+        model: adminSettings.model,
+        systemPrompt: settings?.systemPrompt || adminSettings.systemPrompt,
+        maxTokens: settings?.maxTokens || adminSettings.maxTokens,
+        temperature: settings?.temperature !== undefined ? settings.temperature : adminSettings.temperature,
+      };
+
+      console.log("Client AI chat with:", { 
+        message: message.substring(0, 50) + "...", 
+        model: effectiveSettings.model,
+        hasCustomPrompt: !!settings?.systemPrompt,
+        hasCustomTokens: !!settings?.maxTokens,
+        hasCustomTemperature: settings?.temperature !== undefined
+      });
+
+      const response = await openaiService.chat(message, effectiveSettings, userId);
+      res.json(response);
+    } catch (error) {
+      console.error("Error in client AI chat:", error);
+      res.status(500).json({ 
+        success: false, 
+        error: "Failed to process AI chat" 
+      });
+>>>>>>> dcc1cdcc48580a4580f58c36e71af5cb753adecc
     }
   });
 

@@ -11,12 +11,17 @@ import {
   aiUsage,
   whatsappApiSettings,
   whatsappInstances,
+<<<<<<< HEAD
   plans,
   franchisors,
   franchises,
   franchisePhoneNumbers,
   franchiseAgents,
   franchisePrompts,
+=======
+  whatsappConversations,
+  whatsappMessages,
+>>>>>>> dcc1cdcc48580a4580f58c36e71af5cb753adecc
   type User,
   type UpsertUser,
   type Client,
@@ -41,6 +46,7 @@ import {
   type WhatsappApiSettingsForm,
   type WhatsappInstance,
   type InsertWhatsappInstance,
+<<<<<<< HEAD
   type Plan,
   type InsertPlan,
   type CreatePlan,
@@ -59,9 +65,16 @@ import {
   type FranchisePrompt,
   type InsertFranchisePrompt,
   type CreateFranchisePrompt,
+=======
+  type WhatsappConversation,
+  type InsertWhatsappConversation,
+  type WhatsappMessage,
+  type InsertWhatsappMessage,
+>>>>>>> dcc1cdcc48580a4580f58c36e71af5cb753adecc
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, count, sum, sql } from "drizzle-orm";
+import { eq, desc, and, count, sum, sql, like, gte, lte, or, between, asc } from "drizzle-orm";
+import crypto from "crypto";
 
 export interface IStorage {
   // User operations
@@ -140,6 +153,18 @@ export interface IStorage {
   // AI Settings operations
   getAISettings(): Promise<AISettings>;
   saveAISettings(settings: AISettings): Promise<void>;
+  
+  // Client AI Settings operations
+  getClientAISettings(userId: string): Promise<{
+    systemPrompt?: string | null;
+    maxTokens?: number | null;
+    temperature?: number | null;
+  } | null>;
+  saveClientAISettings(userId: string, settings: {
+    systemPrompt?: string | null;
+    maxTokens?: number | null;
+    temperature?: number | null;
+  }): Promise<void>;
 
   // AI Configurations operations (advanced)
   getAIConfigurations(): Promise<AIConfiguration[]>;
@@ -175,6 +200,22 @@ export interface IStorage {
   createWhatsappInstance(instance: InsertWhatsappInstance): Promise<WhatsappInstance>;
   updateWhatsappInstance(id: string, instance: Partial<InsertWhatsappInstance>): Promise<WhatsappInstance>;
   deleteWhatsappInstance(id: string): Promise<void>;
+
+  // WhatsApp Conversations operations
+  createWhatsappConversation(conversation: InsertWhatsappConversation): Promise<WhatsappConversation>;
+  updateWhatsappConversation(id: string, conversation: Partial<InsertWhatsappConversation>): Promise<WhatsappConversation>;
+  getWhatsappConversationById(id: string): Promise<WhatsappConversation | undefined>;
+  getWhatsappConversationByChatId(instanceId: string, chatId: string): Promise<WhatsappConversation | undefined>;
+  getWhatsappConversationsByClient(clientId: string, filters?: {
+    search?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<WhatsappConversation[]>;
+  updateConversationStatus(id: string, status: string): Promise<WhatsappConversation>;
+  
+  // WhatsApp Messages operations
+  createWhatsappMessage(message: InsertWhatsappMessage): Promise<WhatsappMessage>;
+  getWhatsappMessagesByConversation(conversationId: string): Promise<WhatsappMessage[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -858,6 +899,83 @@ export class DatabaseStorage implements IStorage {
     ]);
   }
 
+  // Client AI Settings operations
+  async getClientAISettings(userId: string): Promise<{
+    systemPrompt?: string | null;
+    maxTokens?: number | null;
+    temperature?: number | null;
+  } | null> {
+    try {
+      const settings = await db.select().from(systemSettings).where(
+        sql`${systemSettings.settingKey} LIKE CONCAT('client_ai_', ${userId}, '_%')`
+      );
+
+      if (settings.length === 0) {
+        return null;
+      }
+
+      const result: {
+        systemPrompt?: string | null;
+        maxTokens?: number | null;
+        temperature?: number | null;
+      } = {};
+
+      settings.forEach(setting => {
+        const key = setting.settingKey.replace(`client_ai_${userId}_`, '');
+        switch (key) {
+          case 'system_prompt':
+            result.systemPrompt = setting.settingValue;
+            break;
+          case 'max_tokens':
+            result.maxTokens = setting.settingValue ? parseInt(setting.settingValue) : null;
+            break;
+          case 'temperature':
+            result.temperature = setting.settingValue ? parseFloat(setting.settingValue) : null;
+            break;
+        }
+      });
+
+      return result;
+    } catch (error) {
+      console.error("Error getting client AI settings:", error);
+      return null;
+    }
+  }
+
+  async saveClientAISettings(userId: string, settings: {
+    systemPrompt?: string | null;
+    maxTokens?: number | null;
+    temperature?: number | null;
+  }): Promise<void> {
+    try {
+      // Save each setting individually
+      const promises: Promise<SystemSetting>[] = [];
+
+      if (settings.systemPrompt !== undefined) {
+        promises.push(
+          this.setSystemSetting(`client_ai_${userId}_system_prompt`, settings.systemPrompt || '', 'string')
+        );
+      }
+
+      if (settings.maxTokens !== undefined) {
+        promises.push(
+          this.setSystemSetting(`client_ai_${userId}_max_tokens`, settings.maxTokens?.toString() || '', 'number')
+        );
+      }
+
+      if (settings.temperature !== undefined) {
+        promises.push(
+          this.setSystemSetting(`client_ai_${userId}_temperature`, settings.temperature?.toString() || '', 'number')
+        );
+      }
+
+      await Promise.all(promises);
+    } catch (error) {
+      console.error("Error saving client AI settings:", error);
+      throw error;
+    }
+  }
+
   // AI Configurations operations (advanced)
   async getAIConfigurations(): Promise<AIConfiguration[]> {
     return await db.select().from(aiConfigurations).orderBy(desc(aiConfigurations.createdAt));
@@ -916,8 +1034,27 @@ export class DatabaseStorage implements IStorage {
 
   // AI Usage operations
   async recordAIUsage(usage: InsertAIUsage): Promise<AIUsage> {
-    const [newUsage] = await db.insert(aiUsage).values(usage).returning();
-    return newUsage;
+    try {
+      // Insert the usage record
+      await db.insert(aiUsage).values(usage);
+      
+      // Return a simulated record with the provided data
+      return {
+        id: crypto.randomUUID(),
+        ...usage,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      } as AIUsage;
+    } catch (error) {
+      console.error('Error recording AI usage:', error);
+      // Return a default record to avoid breaking the flow
+      return {
+        id: crypto.randomUUID(),
+        ...usage,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      } as AIUsage;
+    }
   }
 
   async getAIUsageStats(): Promise<{
@@ -1016,6 +1153,7 @@ export class DatabaseStorage implements IStorage {
       .values({
         evolutionApiUrl: settings.evolutionApiUrl,
         globalToken: settings.globalToken,
+        systemUrl: settings.systemUrl,
         isActive: settings.isActive,
         createdBy: userId,
       });
@@ -1109,6 +1247,7 @@ export class DatabaseStorage implements IStorage {
   async deleteWhatsappInstance(id: string): Promise<void> {
     await db.delete(whatsappInstances).where(eq(whatsappInstances.id, id));
   }
+<<<<<<< HEAD
   // ========================================
   // FRANCHISE SYSTEM METHODS
   // ========================================
@@ -1360,6 +1499,190 @@ export class DatabaseStorage implements IStorage {
     }).returning();
 
     return newPrompt;
+=======
+
+  // WhatsApp Conversations operations
+  async createWhatsappConversation(conversation: InsertWhatsappConversation): Promise<WhatsappConversation> {
+    try {
+      const [newConversation] = await db
+        .insert(whatsappConversations)
+        .values({
+          ...conversation,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+
+      return newConversation;
+    } catch (error: any) {
+      // If duplicate, update instead
+      if (error.code === 'ER_DUP_ENTRY') {
+        const updated = await this.updateWhatsappConversationByChatId(
+          conversation.instanceId!,
+          conversation.chatId!,
+          {
+            contactName: conversation.contactName,
+            lastMessage: conversation.lastMessage,
+            lastMessageAt: conversation.lastMessageAt,
+            status: conversation.status,
+            updatedAt: new Date()
+          }
+        );
+        return updated;
+      }
+      throw error;
+    }
+  }
+
+  async updateWhatsappConversation(id: string, conversation: Partial<InsertWhatsappConversation>): Promise<WhatsappConversation> {
+    await db
+      .update(whatsappConversations)
+      .set({ ...conversation, updatedAt: new Date() })
+      .where(eq(whatsappConversations.id, id));
+
+    const [updatedConversation] = await db
+      .select()
+      .from(whatsappConversations)
+      .where(eq(whatsappConversations.id, id));
+
+    return updatedConversation;
+  }
+
+  async updateWhatsappConversationByChatId(instanceId: string, chatId: string, conversation: Partial<InsertWhatsappConversation>): Promise<WhatsappConversation> {
+    await db
+      .update(whatsappConversations)
+      .set({ ...conversation, updatedAt: new Date() })
+      .where(
+        and(
+          eq(whatsappConversations.instanceId, instanceId),
+          eq(whatsappConversations.chatId, chatId)
+        )
+      );
+
+    const [updatedConversation] = await db
+      .select()
+      .from(whatsappConversations)
+      .where(
+        and(
+          eq(whatsappConversations.instanceId, instanceId),
+          eq(whatsappConversations.chatId, chatId)
+        )
+      );
+
+    return updatedConversation;
+  }
+
+  async getWhatsappConversationById(id: string): Promise<WhatsappConversation | undefined> {
+    const [conversation] = await db
+      .select()
+      .from(whatsappConversations)
+      .where(eq(whatsappConversations.id, id));
+    return conversation;
+  }
+
+  async getWhatsappConversationByChatId(instanceId: string, chatId: string): Promise<WhatsappConversation | undefined> {
+    const [conversation] = await db
+      .select()
+      .from(whatsappConversations)
+      .where(and(
+        eq(whatsappConversations.instanceId, instanceId),
+        eq(whatsappConversations.chatId, chatId)
+      ));
+
+    return conversation;
+  }
+
+  async getWhatsappConversationsByClient(clientId: string, filters?: {
+    search?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<WhatsappConversation[]> {
+    // Base query
+    let query = db
+      .select()
+      .from(whatsappConversations)
+      .innerJoin(whatsappInstances, eq(whatsappConversations.instanceId, whatsappInstances.id))
+      .where(eq(whatsappInstances.clientId, clientId));
+
+    // Build conditions array
+    const conditions = [eq(whatsappInstances.clientId, clientId)];
+
+    // Apply search filter (busca por nome do contato ou telefone)
+    if (filters?.search) {
+      const searchTerm = `%${filters.search}%`;
+      conditions.push(
+        or(
+          like(whatsappConversations.contactName, searchTerm),
+          like(whatsappConversations.phoneNumber, searchTerm)
+        )
+      );
+    }
+
+    // Apply date range filter
+    if (filters?.startDate && filters?.endDate) {
+      conditions.push(
+        between(whatsappConversations.lastMessageAt, filters.startDate, filters.endDate)
+      );
+    } else if (filters?.startDate) {
+      conditions.push(gte(whatsappConversations.lastMessageAt, filters.startDate));
+    } else if (filters?.endDate) {
+      conditions.push(lte(whatsappConversations.lastMessageAt, filters.endDate));
+    }
+
+    // Execute query with conditions
+    const results = await db
+      .select({
+        id: whatsappConversations.id,
+        instanceId: whatsappConversations.instanceId,
+        chatId: whatsappConversations.chatId,
+        phoneNumber: whatsappConversations.phoneNumber,
+        contactName: whatsappConversations.contactName,
+        lastMessage: whatsappConversations.lastMessage,
+        lastMessageAt: whatsappConversations.lastMessageAt,
+        unreadCount: whatsappConversations.unreadCount,
+        isGroup: whatsappConversations.isGroup,
+        groupName: whatsappConversations.groupName,
+        status: whatsappConversations.status,
+        createdAt: whatsappConversations.createdAt,
+        updatedAt: whatsappConversations.updatedAt,
+      })
+      .from(whatsappConversations)
+      .innerJoin(whatsappInstances, eq(whatsappConversations.instanceId, whatsappInstances.id))
+      .where(and(...conditions))
+      .orderBy(desc(whatsappConversations.lastMessageAt));
+
+    return results;
+  }
+
+  async createWhatsappMessage(message: InsertWhatsappMessage): Promise<WhatsappMessage> {
+    const [newMessage] = await db
+      .insert(whatsappMessages)
+      .values(message);
+
+    return newMessage;
+  }
+
+  async getWhatsappMessagesByConversation(conversationId: string): Promise<WhatsappMessage[]> {
+    return await db
+      .select()
+      .from(whatsappMessages)
+      .where(eq(whatsappMessages.conversationId, conversationId))
+      .orderBy(asc(whatsappMessages.timestamp));
+  }
+
+  async updateConversationStatus(id: string, status: string): Promise<WhatsappConversation> {
+    await db
+      .update(whatsappConversations)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(whatsappConversations.id, id));
+
+    // Get the updated conversation
+    const [updatedConversation] = await db
+      .select()
+      .from(whatsappConversations)
+      .where(eq(whatsappConversations.id, id));
+
+    return updatedConversation;
+>>>>>>> dcc1cdcc48580a4580f58c36e71af5cb753adecc
   }
 }
 

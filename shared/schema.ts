@@ -402,6 +402,7 @@ export const whatsappApiSettings = mysqlTable("whatsapp_api_settings", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
   evolutionApiUrl: varchar("evolution_api_url", { length: 500 }).notNull(),
   globalToken: varchar("global_token", { length: 500 }).notNull(),
+  systemUrl: varchar("system_url", { length: 255 }),
   isActive: boolean("is_active").notNull().default(true),
   createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
@@ -428,6 +429,55 @@ export const whatsappInstances = mysqlTable("whatsapp_instances", {
   index("idx_whatsapp_instances_client").on(table.clientId),
   index("idx_whatsapp_instances_status").on(table.status),
   index("idx_whatsapp_instances_active").on(table.isActive),
+]);
+
+// Conversas do WhatsApp
+export const whatsappConversations = mysqlTable("whatsapp_conversations", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  instanceId: varchar("instance_id", { length: 36 }).references(() => whatsappInstances.id).notNull(),
+  chatId: varchar("chat_id", { length: 100 }).notNull(),
+  phoneNumber: varchar("phone_number", { length: 20 }).notNull(),
+  contactName: varchar("contact_name", { length: 255 }),
+  lastMessage: text("last_message"),
+  lastMessageAt: timestamp("last_message_at"),
+  unreadCount: int("unread_count").default(0),
+  isGroup: boolean("is_group").default(false),
+  groupName: varchar("group_name", { length: 255 }),
+  status: varchar("status", { length: 20 }).notNull().default("active"), // active, archived, blocked
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_whatsapp_conversations_instance").on(table.instanceId),
+  index("idx_whatsapp_conversations_chat").on(table.chatId),
+  index("idx_whatsapp_conversations_phone").on(table.phoneNumber),
+  index("idx_whatsapp_conversations_updated").on(table.updatedAt),
+  index("unique_instance_chat").on(table.instanceId, table.chatId),
+]);
+
+// Mensagens do WhatsApp
+export const whatsappMessages = mysqlTable("whatsapp_messages", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  conversationId: varchar("conversation_id", { length: 36 }).references(() => whatsappConversations.id).notNull(),
+  messageId: varchar("message_id", { length: 100 }), // ID único da mensagem no WhatsApp
+  senderPhone: varchar("sender_phone", { length: 20 }).notNull(),
+  messageText: text("message_text"),
+  messageType: varchar("message_type", { length: 50 }).notNull().default("text"), // text, image, audio, video, document, etc
+  mediaUrl: varchar("media_url", { length: 500 }),
+  mediaType: varchar("media_type", { length: 50 }),
+  mediaCaption: text("media_caption"),
+  direction: varchar("direction", { length: 20 }).notNull(), // inbound, outbound
+  status: varchar("status", { length: 20 }).notNull().default("sent"), // sent, delivered, read, failed
+  timestamp: timestamp("timestamp").notNull(),
+  isAiResponse: boolean("is_ai_response").default(false),
+  aiModel: varchar("ai_model", { length: 50 }),
+  rawData: json("raw_data"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_whatsapp_messages_conversation").on(table.conversationId),
+  index("idx_whatsapp_messages_sender").on(table.senderPhone),
+  index("idx_whatsapp_messages_timestamp").on(table.timestamp),
+  index("idx_whatsapp_messages_direction").on(table.direction),
+  index("idx_whatsapp_messages_ai").on(table.isAiResponse),
 ]);
 
 // Relations
@@ -540,8 +590,18 @@ export const aiUsageRelations = relations(aiUsage, ({ one }) => ({
   user: one(users, { fields: [aiUsage.userId], references: [users.id] }),
 }));
 
-export const whatsappInstancesRelations = relations(whatsappInstances, ({ one }) => ({
+export const whatsappInstancesRelations = relations(whatsappInstances, ({ one, many }) => ({
   client: one(clients, { fields: [whatsappInstances.clientId], references: [clients.id] }),
+  conversations: many(whatsappConversations),
+}));
+
+export const whatsappConversationsRelations = relations(whatsappConversations, ({ one, many }) => ({
+  instance: one(whatsappInstances, { fields: [whatsappConversations.instanceId], references: [whatsappInstances.id] }),
+  messages: many(whatsappMessages),
+}));
+
+export const whatsappMessagesRelations = relations(whatsappMessages, ({ one }) => ({
+  conversation: one(whatsappConversations, { fields: [whatsappMessages.conversationId], references: [whatsappConversations.id] }),
 }));
 
 // Insert schemas
@@ -640,42 +700,6 @@ export const insertWhatsappApiSettingsSchema = createInsertSchema(whatsappApiSet
 });
 
 export const insertWhatsappInstanceSchema = createInsertSchema(whatsappInstances).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const insertPlanSchema = createInsertSchema(plans).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const insertFranchisorSchema = createInsertSchema(franchisors).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const insertFranchiseSchema = createInsertSchema(franchises).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const insertFranchisePhoneNumberSchema = createInsertSchema(franchisePhoneNumbers).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const insertFranchiseAgentSchema = createInsertSchema(franchiseAgents).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const insertFranchisePromptSchema = createInsertSchema(franchisePrompts).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -794,6 +818,7 @@ export type InsertAIUsage = z.infer<typeof insertAIUsageSchema>;
 export const whatsappApiSettingsSchema = z.object({
   evolutionApiUrl: z.string().url("URL da Evolution API é obrigatória e deve ser válida"),
   globalToken: z.string().min(1, "Token Global é obrigatório"),
+  systemUrl: z.string().url("URL do Sistema é obrigatória e deve ser válida").optional(),
   isActive: z.boolean().default(true),
 });
 
@@ -934,28 +959,3 @@ export const editSuperRootProfileSchema = z.object({
 export type WhatsappInstance = typeof whatsappInstances.$inferSelect;
 export type InsertWhatsappInstance = z.infer<typeof insertWhatsappInstanceSchema>;
 export type CreateWhatsappInstance = z.infer<typeof createWhatsappInstanceSchema>;
-
-// Novos tipos para o sistema hierárquico
-export type Plan = typeof plans.$inferSelect;
-export type InsertPlan = z.infer<typeof insertPlanSchema>;
-export type CreatePlan = z.infer<typeof createPlanSchema>;
-
-export type Franchisor = typeof franchisors.$inferSelect;
-export type InsertFranchisor = z.infer<typeof insertFranchisorSchema>;
-export type CreateFranchisor = z.infer<typeof createFranchisorSchema>;
-
-export type Franchise = typeof franchises.$inferSelect;
-export type InsertFranchise = z.infer<typeof insertFranchiseSchema>;
-export type CreateFranchise = z.infer<typeof createFranchiseSchema>;
-
-export type FranchisePhoneNumber = typeof franchisePhoneNumbers.$inferSelect;
-export type InsertFranchisePhoneNumber = z.infer<typeof insertFranchisePhoneNumberSchema>;
-export type CreateFranchisePhoneNumber = z.infer<typeof createFranchisePhoneNumberSchema>;
-
-export type FranchiseAgent = typeof franchiseAgents.$inferSelect;
-export type InsertFranchiseAgent = z.infer<typeof insertFranchiseAgentSchema>;
-export type CreateFranchiseAgent = z.infer<typeof createFranchiseAgentSchema>;
-
-export type FranchisePrompt = typeof franchisePrompts.$inferSelect;
-export type InsertFranchisePrompt = z.infer<typeof insertFranchisePromptSchema>;
-export type CreateFranchisePrompt = z.infer<typeof createFranchisePromptSchema>;

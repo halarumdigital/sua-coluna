@@ -122,6 +122,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       icon: Users,
     },
     {
+<<<<<<< HEAD
       title: "Números",
       href: "/client/phone-numbers",
       icon: MessageCircle,
@@ -135,6 +136,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       title: "Prompts",
       href: "/client/prompts",
       icon: MessageCircle,
+=======
+      title: "IA",
+      href: "/client/ai",
+      icon: Bot,
+>>>>>>> dcc1cdcc48580a4580f58c36e71af5cb753adecc
     },
     {
       title: "WhatsApp",

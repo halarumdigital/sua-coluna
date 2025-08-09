@@ -23,7 +23,7 @@ export default function AdminWhatsApp() {
 
   // Update WhatsApp settings mutation
   const updateWhatsAppSettingsMutation = useMutation({
-    mutationFn: async (data: { evolutionApiUrl: string; globalToken: string }) => {
+    mutationFn: async (data: { evolutionApiUrl: string; globalToken: string; systemUrl: string }) => {
       const response = await fetch("/api/admin/whatsapp-settings", {
         method: "POST",
         headers: {
@@ -59,8 +59,9 @@ export default function AdminWhatsApp() {
     const formData = new FormData(e.currentTarget);
     const evolutionApiUrl = formData.get("evolutionApiUrl") as string;
     const globalToken = formData.get("globalToken") as string;
+    const systemUrl = formData.get("systemUrl") as string;
 
-    if (!evolutionApiUrl || !globalToken) {
+    if (!evolutionApiUrl || !globalToken || !systemUrl) {
       toast({
         title: "Erro",
         description: "Todos os campos são obrigatórios",
@@ -71,7 +72,7 @@ export default function AdminWhatsApp() {
     }
 
     updateWhatsAppSettingsMutation.mutate(
-      { evolutionApiUrl, globalToken },
+      { evolutionApiUrl, globalToken, systemUrl },
       {
         onSettled: () => {
           setIsSubmitting(false);
@@ -143,6 +144,22 @@ export default function AdminWhatsApp() {
                     Token de autenticação global da Evolution API
                   </p>
                 </div>
+
+                <div>
+                  <Label htmlFor="systemUrl">URL do Sistema</Label>
+                  <Input
+                    id="systemUrl"
+                    name="systemUrl"
+                    type="url"
+                    placeholder="https://suacoluna.gilliard.dev.br"
+                    defaultValue={settings?.systemUrl || ""}
+                    required
+                    className="mt-1"
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    URL pública do seu sistema para receber webhooks
+                  </p>
+                </div>
               </div>
 
               <div className="flex justify-end">
@@ -180,6 +197,12 @@ export default function AdminWhatsApp() {
                   <span className="font-medium">Token Global:</span>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
                     {settings.globalToken ? "••••••••••••••••" : "Não configurado"}
+                  </p>
+                </div>
+                <div>
+                  <span className="font-medium">URL do Sistema:</span>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 break-all">
+                    {settings.systemUrl || "Não configurado"}
                   </p>
                 </div>
                 <div>

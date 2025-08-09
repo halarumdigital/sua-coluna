@@ -32,6 +32,7 @@ import ClientProfilePage from "@/pages/client/profile";
 import ClientClientsPage from "@/pages/client/clients";
 import ClientWhatsAppPage from "@/pages/client/whatsapp";
 import ClientConversationsPage from "@/pages/client/conversations";
+import ClientAIPage from "@/pages/client/ai";
 
 // Team Pages
 import TeamDashboard from "@/pages/team/dashboard";
@@ -145,6 +146,7 @@ function Router() {
         <>
           <Route path="/client" component={ClientDashboard} />
           <Route path="/client/clients" component={ClientClientsPage} />
+          <Route path="/client/ai" component={ClientAIPage} />
           <Route path="/client/whatsapp" component={ClientWhatsAppPage} />
           <Route path="/client/conversations" component={ClientConversationsPage} />
           <Route path="/client/invoices" component={ClientInvoicesPage} />

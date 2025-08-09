@@ -495,6 +495,24 @@ export const whatsappMessages = mysqlTable("whatsapp_messages", {
   index("idx_whatsapp_messages_ai").on(table.isAiResponse),
 ]);
 
+// Instâncias WhatsApp do admin (para o próprio sistema)
+export const adminWhatsappInstances = mysqlTable("admin_whatsapp_instances", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  instanceName: varchar("instance_name", { length: 100 }).notNull(),
+  instanceKey: varchar("instance_key", { length: 100 }).unique().notNull(),
+  webhook: varchar("webhook", { length: 500 }),
+  status: varchar("status", { length: 20 }).notNull().default("disconnected"), // connected, disconnected, connecting, error
+  qrCode: text("qr_code"),
+  lastConnection: timestamp("last_connection"),
+  phoneNumber: varchar("phone_number", { length: 20 }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_admin_whatsapp_instances_status").on(table.status),
+  index("idx_admin_whatsapp_instances_active").on(table.isActive),
+]);
+
 // Relations
 export const usersRelations = relations(users, ({ one }) => ({
   client: one(clients, { fields: [users.id], references: [clients.userId] }),
@@ -989,6 +1007,9 @@ export const editSuperRootProfileSchema = z.object({
 export type WhatsappInstance = typeof whatsappInstances.$inferSelect;
 export type InsertWhatsappInstance = z.infer<typeof insertWhatsappInstanceSchema>;
 export type CreateWhatsappInstance = z.infer<typeof createWhatsappInstanceSchema>;
+
+export type AdminWhatsappInstance = typeof adminWhatsappInstances.$inferSelect;
+export type InsertAdminWhatsappInstance = typeof adminWhatsappInstances.$inferInsert;
 
 export type GlobalPrompt = typeof globalPrompts.$inferSelect;
 export type CreateGlobalPrompt = z.infer<typeof createGlobalPromptSchema>;

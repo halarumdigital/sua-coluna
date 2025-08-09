@@ -113,6 +113,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       href: "/admin/ai",
       icon: Bot,
     },
+    {
+      title: "WhatsApp",
+      href: "/admin/whatsapp",
+      icon: MessageCircle,
+    },
   ];
 
   const clientMenuItems = [

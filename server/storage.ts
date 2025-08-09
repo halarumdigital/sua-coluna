@@ -11,6 +11,7 @@ import {
   aiUsage,
   whatsappApiSettings,
   whatsappInstances,
+  adminWhatsappInstances,
   whatsappConversations,
   whatsappMessages,
   plans,
@@ -44,6 +45,8 @@ import {
   type WhatsappApiSettingsForm,
   type WhatsappInstance,
   type InsertWhatsappInstance,
+  type AdminWhatsappInstance,
+  type InsertAdminWhatsappInstance,
   type WhatsappConversation,
   type InsertWhatsappConversation,
   type WhatsappMessage,
@@ -197,6 +200,14 @@ export interface IStorage {
   createWhatsappInstance(instance: InsertWhatsappInstance): Promise<WhatsappInstance>;
   updateWhatsappInstance(id: string, instance: Partial<InsertWhatsappInstance>): Promise<WhatsappInstance>;
   deleteWhatsappInstance(id: string): Promise<void>;
+
+  // Admin WhatsApp Instances operations
+  getAdminWhatsappInstances(): Promise<AdminWhatsappInstance[]>;
+  getAdminWhatsappInstance(id: string): Promise<AdminWhatsappInstance | undefined>;
+  getAdminWhatsappInstanceByKey(instanceKey: string): Promise<AdminWhatsappInstance | undefined>;
+  createAdminWhatsappInstance(instance: InsertAdminWhatsappInstance): Promise<AdminWhatsappInstance>;
+  updateAdminWhatsappInstance(id: string, instance: Partial<InsertAdminWhatsappInstance>): Promise<AdminWhatsappInstance>;
+  deleteAdminWhatsappInstance(id: string): Promise<void>;
 
   // WhatsApp Conversations operations
   createWhatsappConversation(conversation: InsertWhatsappConversation): Promise<WhatsappConversation>;
@@ -1325,6 +1336,91 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWhatsappInstance(id: string): Promise<void> {
     await db.delete(whatsappInstances).where(eq(whatsappInstances.id, id));
+  }
+
+  // Admin WhatsApp Instances operations
+  async getAdminWhatsappInstances(): Promise<AdminWhatsappInstance[]> {
+    await this.ensureAdminWhatsappInstancesTable();
+    return await db
+      .select()
+      .from(adminWhatsappInstances)
+      .orderBy(desc(adminWhatsappInstances.createdAt));
+  }
+
+  async getAdminWhatsappInstance(id: string): Promise<AdminWhatsappInstance | undefined> {
+    await this.ensureAdminWhatsappInstancesTable();
+    const [instance] = await db
+      .select()
+      .from(adminWhatsappInstances)
+      .where(eq(adminWhatsappInstances.id, id));
+    return instance;
+  }
+
+  async getAdminWhatsappInstanceByKey(instanceKey: string): Promise<AdminWhatsappInstance | undefined> {
+    await this.ensureAdminWhatsappInstancesTable();
+    const [instance] = await db
+      .select()
+      .from(adminWhatsappInstances)
+      .where(eq(adminWhatsappInstances.instanceKey, instanceKey));
+    return instance;
+  }
+
+  async createAdminWhatsappInstance(instance: InsertAdminWhatsappInstance): Promise<AdminWhatsappInstance> {
+    await this.ensureAdminWhatsappInstancesTable();
+    // MySQL may not support RETURNING; do a follow-up select by unique key
+    await db.insert(adminWhatsappInstances).values(instance);
+    const [inserted] = await db
+      .select()
+      .from(adminWhatsappInstances)
+      .where(eq(adminWhatsappInstances.instanceKey, instance.instanceKey));
+    return inserted;
+  }
+
+  async updateAdminWhatsappInstance(id: string, instance: Partial<InsertAdminWhatsappInstance>): Promise<AdminWhatsappInstance> {
+    await this.ensureAdminWhatsappInstancesTable();
+    await db
+      .update(adminWhatsappInstances)
+      .set({ ...instance, updatedAt: new Date() })
+      .where(eq(adminWhatsappInstances.id, id));
+
+    const [updated] = await db
+      .select()
+      .from(adminWhatsappInstances)
+      .where(eq(adminWhatsappInstances.id, id));
+
+    return updated;
+  }
+
+  async deleteAdminWhatsappInstance(id: string): Promise<void> {
+    await this.ensureAdminWhatsappInstancesTable();
+    await db.delete(adminWhatsappInstances).where(eq(adminWhatsappInstances.id, id));
+  }
+
+  private async ensureAdminWhatsappInstancesTable(): Promise<void> {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS admin_whatsapp_instances (
+          id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+          instance_name VARCHAR(100) NOT NULL,
+          instance_key VARCHAR(100) UNIQUE NOT NULL,
+          webhook VARCHAR(500),
+          status VARCHAR(20) NOT NULL DEFAULT 'disconnected',
+          qr_code TEXT,
+          last_connection TIMESTAMP NULL,
+          phone_number VARCHAR(20),
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_admin_whatsapp_instances_status (status),
+          INDEX idx_admin_whatsapp_instances_active (is_active)
+        )
+      `);
+    } catch (error: any) {
+      if (error?.code !== 'ER_TABLE_EXISTS_ERROR') {
+        // Log but don't crash; subsequent queries may still fail and surface meaningful errors
+        console.error('Erro ao garantir tabela admin_whatsapp_instances:', error);
+      }
+    }
   }
 
   // ========================================

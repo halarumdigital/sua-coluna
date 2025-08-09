@@ -23,7 +23,7 @@ export default function SuperRootWhatsApp() {
 
   // Update WhatsApp settings mutation
   const updateWhatsAppSettingsMutation = useMutation({
-    mutationFn: async (data: { evolutionApiUrl: string; globalToken: string }) => {
+    mutationFn: async (data: { evolutionApiUrl: string; globalToken: string; systemUrl?: string }) => {
       const response = await fetch("/api/super-root/whatsapp-settings", {
         method: "POST",
         headers: {
@@ -60,6 +60,7 @@ export default function SuperRootWhatsApp() {
     const formData = new FormData(e.currentTarget);
     const evolutionApiUrl = formData.get("evolutionApiUrl") as string;
     const globalToken = formData.get("globalToken") as string;
+    const systemUrl = (formData.get("systemUrl") as string) || "";
 
     if (!evolutionApiUrl || !globalToken) {
       toast({
@@ -84,8 +85,20 @@ export default function SuperRootWhatsApp() {
       return;
     }
 
+    if (systemUrl) {
+      try { new URL(systemUrl); } catch {
+        toast({
+          title: "Erro",
+          description: "URL do Sistema inválida",
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     updateWhatsAppSettingsMutation.mutate(
-      { evolutionApiUrl, globalToken },
+      { evolutionApiUrl, globalToken, systemUrl: systemUrl || undefined },
       {
         onSettled: () => {
           setIsSubmitting(false);
@@ -173,6 +186,21 @@ export default function SuperRootWhatsApp() {
                     Token de autenticação global da Evolution API para criar e gerenciar instâncias
                   </p>
                 </div>
+
+                <div>
+                  <Label htmlFor="systemUrl">URL do Sistema</Label>
+                  <Input
+                    id="systemUrl"
+                    name="systemUrl"
+                    type="url"
+                    placeholder="https://seusistema.com"
+                    defaultValue={settings?.systemUrl || ""}
+                    className="mt-1"
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    URL pública do sistema que será usada como base nos webhooks da Evolution
+                  </p>
+                </div>
               </div>
 
               <div className="flex justify-end space-x-4">
@@ -218,6 +246,12 @@ export default function SuperRootWhatsApp() {
                     <span className="font-medium text-gray-700">Token Global:</span>
                     <p className="text-sm text-gray-600 mt-1">
                       {settings.globalToken ? "••••••••••••••••" : "Não configurado"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-700">URL do Sistema:</span>
+                    <p className="text-sm text-gray-600 break-all mt-1">
+                      {settings.systemUrl || "Não configurado"}
                     </p>
                   </div>
                 </div>

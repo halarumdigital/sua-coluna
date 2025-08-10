@@ -464,6 +464,9 @@ export default function AdminWhatsApp() {
       setInstanceAgentBindings([...instanceAgentBindings, newBindingData]);
       setNewBinding({ instanceId: '', agentId: '' });
       
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/whatsapp-instance-agent-bindings"] });
+      
       toast({
         title: "Sucesso",
         description: result.message || "Vinculação criada com sucesso"

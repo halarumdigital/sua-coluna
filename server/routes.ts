@@ -2115,6 +2115,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin WhatsApp Instance-Agent Bindings routes
   app.get("/api/admin/whatsapp-instance-agent-bindings", isAuthenticated, async (req: any, res) => {
     try {
+      console.log('🔗 WhatsApp Instance-Agent Bindings route called');
+      
       const userId = getCurrentUserId(req);
       if (!userId) {
         return res.status(401).json({ message: "Not authenticated" });
@@ -2125,7 +2127,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied - Admin/Franchisor only" });
       }
 
+      console.log('🔗 Fetching bindings from database...');
       const bindings = await storage.getWhatsappInstanceAgentBindings();
+      console.log('🔗 Raw bindings found:', bindings.length);
       
       // Enrich bindings with instance and agent data
       const enrichedBindings = await Promise.all(

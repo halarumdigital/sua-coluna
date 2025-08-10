@@ -20,6 +20,7 @@ interface WhatsappInstance {
   phoneNumber?: string;
   isActive: boolean;
   createdAt: string;
+  lastStatusCheck?: string;
 }
 
 interface PhoneNumber {
@@ -55,6 +56,7 @@ export default function SuperRootWhatsapp() {
   const [promptMappings, setPromptMappings] = useState<PromptMapping[]>([]);
   const [globalPrompts, setGlobalPrompts] = useState<GlobalPrompt[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState<Record<string, boolean>>({});
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>('');
 
   // Estados para formulários
@@ -87,27 +89,56 @@ export default function SuperRootWhatsapp() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Buscar instâncias (mock data por enquanto)
-      const mockInstances: WhatsappInstance[] = [
-        {
-          id: '1',
-          instanceName: 'Suporte Principal',
-          instanceKey: 'support_main',
-          webhook: 'https://webhook.site/abc123',
-          status: 'connected',
-          phoneNumber: '+5511999999999',
-          isActive: true,
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: '2',
-          instanceName: 'Vendas',
-          instanceKey: 'sales',
-          status: 'disconnected',
-          isActive: true,
-          createdAt: new Date().toISOString()
-        }
-      ];
+      // Buscar instâncias reais da API
+      const response = await fetch('/api/admin/whatsapp-instances');
+      
+      if (response.ok) {
+        const realInstances = await response.json();
+        
+        // Converter para o formato esperado pela interface
+        const formattedInstances: WhatsappInstance[] = realInstances.map((instance: any) => ({
+          id: instance.id,
+          instanceName: instance.instanceName,
+          instanceKey: instance.instanceKey,
+          webhook: instance.webhook,
+          status: instance.status || 'disconnected',
+          phoneNumber: instance.phoneNumber,
+          isActive: instance.isActive,
+          createdAt: instance.createdAt
+        }));
+
+        setInstances(formattedInstances);
+
+        // Verificar status de cada instância automaticamente
+        setTimeout(() => {
+          formattedInstances.forEach(instance => {
+            checkInstanceStatus(instance.instanceKey);
+          });
+        }, 1000);
+      } else {
+        // Fallback para dados mock se a API não estiver disponível
+        const mockInstances: WhatsappInstance[] = [
+          {
+            id: '1',
+            instanceName: 'Suporte Principal',
+            instanceKey: 'support_main',
+            webhook: 'https://webhook.site/abc123',
+            status: 'connected',
+            phoneNumber: '+5511999999999',
+            isActive: true,
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: '2',
+            instanceName: 'Vendas',
+            instanceKey: 'sales',
+            status: 'disconnected',
+            isActive: true,
+            createdAt: new Date().toISOString()
+          }
+        ];
+        setInstances(mockInstances);
+      }
 
       const mockPhoneNumbers: PhoneNumber[] = [
         {
@@ -115,16 +146,14 @@ export default function SuperRootWhatsapp() {
           phoneNumber: '+5511999999999',
           whatsappInstanceId: '1',
           isActive: true,
-          isPrimary: true,
-          whatsappInstance: mockInstances[0]
+          isPrimary: true
         },
         {
           id: '2',
           phoneNumber: '+5511888888888',
           whatsappInstanceId: '2',
           isActive: true,
-          isPrimary: false,
-          whatsappInstance: mockInstances[1]
+          isPrimary: false
         }
       ];
 
@@ -143,7 +172,6 @@ export default function SuperRootWhatsapp() {
         }
       ];
 
-      setInstances(mockInstances);
       setPhoneNumbers(mockPhoneNumbers);
       setGlobalPrompts(mockGlobalPrompts);
     } catch (error) {
@@ -279,6 +307,42 @@ export default function SuperRootWhatsapp() {
     }
   };
 
+  const checkInstanceStatus = async (instanceKey: string) => {
+    try {
+      setLoadingStatus(prev => ({ ...prev, [instanceKey]: true }));
+      const response = await fetch(`/api/admin/whatsapp-instances/${instanceKey}/status`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erro ao verificar status');
+      }
+
+      const statusData = await response.json();
+      
+      // Atualizar o status da instância na lista local
+      setInstances(prevInstances => 
+        prevInstances.map(instance => 
+          instance.instanceKey === instanceKey 
+            ? { ...instance, status: statusData.status, lastStatusCheck: new Date().toISOString() }
+            : instance
+        )
+      );
+
+      toast({
+        title: "Status Verificado",
+        description: `Status da instância ${instanceKey}: ${getStatusText(statusData.status)}`
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao verificar status da instância",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingStatus(prev => ({ ...prev, [instanceKey]: false }));
+    }
+  };
+
   return (
     <Layout title="WhatsApp Franqueador">
       <div className="container mx-auto p-6">
@@ -360,10 +424,26 @@ export default function SuperRootWhatsapp() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Instâncias Existentes</CardTitle>
-                <CardDescription>
-                  Gerencie suas instâncias da Evolution API
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Instâncias Existentes</CardTitle>
+                    <CardDescription>
+                      Gerencie suas instâncias da Evolution API
+                    </CardDescription>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      instances.forEach(instance => {
+                        checkInstanceStatus(instance.instanceKey);
+                      });
+                    }}
+                    disabled={loading || instances.length === 0}
+                  >
+                    <Settings className="h-4 w-4 mr-2" />
+                    Verificar Todos os Status
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -379,13 +459,34 @@ export default function SuperRootWhatsapp() {
                               {instance.phoneNumber}
                             </span>
                           )}
+                          {instance.lastStatusCheck && (
+                            <span className="text-xs text-muted-foreground">
+                              Última verificação: {new Date(instance.lastStatusCheck).toLocaleString('pt-BR')}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
-                        <Badge className={`${getStatusColor(instance.status)} text-white`}>
-                          {getStatusText(instance.status)}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-3 h-3 rounded-full ${getStatusColor(instance.status)}`}></div>
+                          <Badge className={`${getStatusColor(instance.status)} text-white`}>
+                            {getStatusText(instance.status)}
+                          </Badge>
+                        </div>
                         <div className="flex gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => checkInstanceStatus(instance.instanceKey)}
+                            disabled={loadingStatus[instance.instanceKey]}
+                            title="Verificar Status"
+                          >
+                            {loadingStatus[instance.instanceKey] ? (
+                              <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
+                            ) : (
+                              <Settings className="h-4 w-4" />
+                            )}
+                          </Button>
                           <Button size="sm" variant="outline">
                             <Edit className="h-4 w-4" />
                           </Button>

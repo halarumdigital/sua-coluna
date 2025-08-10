@@ -22,6 +22,7 @@ interface AdminWhatsAppInstance {
   status: 'connected' | 'disconnected' | 'connecting' | 'error';
   qrCode?: string;
   lastConnection?: string;
+  lastStatusCheck?: string;
   isActive: boolean;
   createdAt: string;
 }
@@ -38,6 +39,7 @@ export default function AdminWhatsApp() {
   const [connectingInstances, setConnectingInstances] = useState<Set<string>>(new Set());
   const [deletingInstances, setDeletingInstances] = useState<Set<string>>(new Set());
   const [configuringInstances, setConfiguringInstances] = useState<Set<string>>(new Set());
+  const [checkingStatus, setCheckingStatus] = useState<Set<string>>(new Set());
   const [formData, setFormData] = useState({
     instanceName: "",
     phoneNumber: "",
@@ -281,6 +283,40 @@ export default function AdminWhatsApp() {
     }
   };
 
+  const handleCheckStatus = async (instance: AdminWhatsAppInstance) => {
+    setCheckingStatus(prev => new Set(prev.add(instance.id)));
+    try {
+      const response = await fetch(`/api/admin/whatsapp-instances/${instance.instanceKey}/status`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erro ao verificar status');
+      }
+
+      const statusData = await response.json();
+      
+      toast({
+        title: "Status Verificado",
+        description: `Status da instância ${instance.instanceName}: ${statusData.status === 'connected' ? 'Conectado' : statusData.status === 'connecting' ? 'Conectando' : 'Desconectado'}`
+      });
+
+      // Atualizar a lista de instâncias
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/whatsapp-instances"] });
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao verificar status da instância",
+        variant: "destructive"
+      });
+    } finally {
+      setCheckingStatus(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(instance.id);
+        return newSet;
+      });
+    }
+  };
+
 
 
   const handleCreateInstance = (e: React.FormEvent<HTMLFormElement>) => {
@@ -331,17 +367,20 @@ export default function AdminWhatsApp() {
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
-      connected: { color: "bg-green-100 text-green-800", label: "Conectado" },
-      disconnected: { color: "bg-red-100 text-red-800", label: "Desconectado" },
-      connecting: { color: "bg-yellow-100 text-yellow-800", label: "Conectando" },
-      error: { color: "bg-red-100 text-red-800", label: "Erro" },
+      connected: { color: "bg-green-100 text-green-800", label: "Conectado", dotColor: "bg-green-500" },
+      disconnected: { color: "bg-red-100 text-red-800", label: "Desconectado", dotColor: "bg-red-500" },
+      connecting: { color: "bg-yellow-100 text-yellow-800", label: "Conectando", dotColor: "bg-yellow-500" },
+      error: { color: "bg-red-100 text-red-800", label: "Erro", dotColor: "bg-red-500" },
     };
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.error;
     
     return (
-      <Badge className={config.color}>
-        {config.label}
-      </Badge>
+      <div className="flex items-center gap-2">
+        <div className={`w-3 h-3 rounded-full ${config.dotColor}`}></div>
+        <Badge className={config.color}>
+          {config.label}
+        </Badge>
+      </div>
     );
   };
 
@@ -398,7 +437,23 @@ export default function AdminWhatsApp() {
                   <Phone className="h-5 w-5" />
                   Instâncias WhatsApp
                 </CardTitle>
-                <Dialog open={showInstanceModal} onOpenChange={setShowInstanceModal}>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (instances && instances.length > 0) {
+                        instances.forEach((instance: AdminWhatsAppInstance) => {
+                          handleCheckStatus(instance);
+                        });
+                      }
+                    }}
+                    disabled={instances?.length === 0 || checkingStatus.size > 0}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Verificar Todos
+                  </Button>
+                  <Dialog open={showInstanceModal} onOpenChange={setShowInstanceModal}>
                   <DialogTrigger asChild>
                     <Button className="flex items-center gap-2">
                       <Plus className="h-4 w-4" />
@@ -453,6 +508,7 @@ export default function AdminWhatsApp() {
                     </form>
                   </DialogContent>
                 </Dialog>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -479,9 +535,26 @@ export default function AdminWhatsApp() {
                           {instance.lastConnection && (
                             <p><span className="font-medium">Última conexão:</span> {new Date(instance.lastConnection).toLocaleString()}</p>
                           )}
+                          {instance.lastStatusCheck && (
+                            <p><span className="font-medium">Última verificação:</span> {new Date(instance.lastStatusCheck).toLocaleString('pt-BR')}</p>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCheckStatus(instance)}
+                          disabled={checkingStatus.has(instance.id)}
+                          title="Verificar Status"
+                        >
+                          {checkingStatus.has(instance.id) ? (
+                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-4 w-4 mr-1" />
+                          )}
+                          Status
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"

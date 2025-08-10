@@ -1848,6 +1848,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Check admin WhatsApp instance status
+  app.get("/api/admin/whatsapp-instances/:instanceKey/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin' && user?.role !== 'franchisor') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { instanceKey } = req.params;
+      
+      // Check if instance exists in database
+      const instance = await storage.getAdminWhatsappInstanceByKey(instanceKey);
+      if (!instance) {
+        return res.status(404).json({ message: "Instância não encontrada" });
+      }
+
+      // Import WhatsApp service
+      const { whatsappService } = await import("./whatsapp");
+      
+      // Get status from Evolution API
+      const statusResult = await whatsappService.getInstanceStatus(instanceKey);
+      
+      if (!statusResult.success) {
+        return res.status(500).json({ 
+          message: "Erro ao verificar status da instância",
+          error: statusResult.error 
+        });
+      }
+
+      // Update status in database if different
+      if (instance.status !== statusResult.status) {
+        await storage.updateAdminWhatsappInstance(instance.id, { 
+          status: statusResult.status,
+          updatedAt: new Date()
+        });
+      }
+
+      res.json({
+        instanceKey: instanceKey,
+        status: statusResult.status,
+        lastChecked: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Error checking WhatsApp instance status:", error);
+      res.status(500).json({ message: "Erro ao verificar status da instância" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

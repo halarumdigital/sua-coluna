@@ -108,6 +108,76 @@ export class WhatsAppService {
     }
   }
 
+  async getInstanceStatus(instanceKey: string): Promise<{ success: boolean; status?: 'connected' | 'disconnected' | 'connecting'; error?: string }> {
+    try {
+      const apiSettings = await this.getApiSettings();
+      
+      console.log(`🔍 Verificando status da instância ${instanceKey}`);
+      console.log(`🔗 URL: ${apiSettings.evolutionApiUrl}/instance/connectionState/${instanceKey}`);
+
+      const response = await fetch(`${apiSettings.evolutionApiUrl}/instance/connectionState/${instanceKey}`, {
+        method: 'GET',
+        headers: {
+          'apikey': apiSettings.globalToken,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Erro ao verificar status: ${response.status} - ${errorText}`);
+        return { 
+          success: false, 
+          error: `Failed to get instance status: ${response.status} - ${errorText}` 
+        };
+      }
+
+      const result = await response.json();
+      console.log(`📋 Resposta do status:`, result);
+      
+      // A Evolution API pode retornar diferentes formatos de status
+      let status: 'connected' | 'disconnected' | 'connecting' = 'disconnected';
+      
+      if (result.instance) {
+        // Formato: { instance: { state: "open" } }
+        const state = result.instance.state;
+        if (state === 'open') {
+          status = 'connected';
+        } else if (state === 'connecting') {
+          status = 'connecting';
+        } else {
+          status = 'disconnected';
+        }
+      } else if (result.state) {
+        // Formato: { state: "open" }
+        const state = result.state;
+        if (state === 'open') {
+          status = 'connected';
+        } else if (state === 'connecting') {
+          status = 'connecting';
+        } else {
+          status = 'disconnected';
+        }
+      } else if (result.status) {
+        // Formato: { status: "connected" }
+        status = result.status;
+      }
+
+      console.log(`✅ Status da instância ${instanceKey}: ${status}`);
+      
+      return { 
+        success: true, 
+        status: status 
+      };
+    } catch (error: any) {
+      console.error('❌ Erro ao verificar status da instância:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Unknown error getting instance status' 
+      };
+    }
+  }
+
   async findChats(instanceKey: string): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const apiSettings = await this.getApiSettings();

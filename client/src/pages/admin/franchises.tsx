@@ -25,6 +25,10 @@ export default function FranchisesPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const { data: planUsage } = useQuery({
+    queryKey: ["/api/admin/plan-usage"],
+  });
+
   const { data: franchises, isLoading } = useQuery({
     queryKey: ["/api/admin/franchises"],
   });
@@ -180,6 +184,22 @@ export default function FranchisesPage() {
   return (
     <Layout title="Franquias">
       <div className="space-y-8">
+        {planUsage && (
+          <div className="flex flex-wrap gap-4 text-sm text-gray-700">
+            <div className="px-3 py-2 bg-gray-50 rounded border">
+              Franquias: {planUsage.usage?.franchisesCount} / {planUsage.plan?.maxFranchises}
+            </div>
+            <div className="px-3 py-2 bg-gray-50 rounded border">
+              Números: {planUsage.usage?.phoneNumbersCount} / {planUsage.plan?.maxPhoneNumbers}
+            </div>
+            <div className="px-3 py-2 bg-gray-50 rounded border">
+              Agentes: {planUsage.usage?.agentsCount} / {planUsage.plan?.maxAgents}
+            </div>
+            <div className="px-3 py-2 bg-gray-50 rounded border">
+              Prompts: {(planUsage.usage?.franchisePromptsCount ?? 0) + (planUsage.usage?.globalPromptsCount ?? 0)} / {planUsage.plan?.maxPrompts}
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
@@ -191,7 +211,21 @@ export default function FranchisesPage() {
           </div>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button
+                disabled={
+                  planUsage && planUsage.usage?.franchisesCount >= planUsage.plan?.maxFranchises
+                }
+                onClick={() => {
+                  if (planUsage && planUsage.usage?.franchisesCount >= planUsage.plan?.maxFranchises) {
+                    toast({
+                      title: "Limite atingido",
+                      description: `Seu plano permite no máximo ${planUsage.plan?.maxFranchises} franquias.`,
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                }}
+              >
                 <Plus className="w-4 h-4 mr-2" />
                 Nova Franquia
               </Button>

@@ -1741,6 +1741,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createFranchisePhoneNumber(franchiseId: string, phoneData: CreateFranchisePhoneNumber): Promise<FranchisePhoneNumber> {
+    // Enforce plan limit: maxPhoneNumbers per franchise
+    const [franchise] = await db.select().from(franchises).where(eq(franchises.id, franchiseId)).limit(1);
+    if (!franchise) {
+      throw new Error('Franquia não encontrada');
+    }
+    const [franchisor] = await db.select().from(franchisors).where(eq(franchisors.id, franchise.franchisorId)).limit(1);
+    if (!franchisor) {
+      throw new Error('Franqueador não encontrado');
+    }
+    const [plan] = await db.select().from(plans).where(eq(plans.id, franchisor.planId)).limit(1);
+    if (!plan) {
+      throw new Error('Plano não encontrado');
+    }
+    const [currentCountRow] = await db
+      .select({ value: count() })
+      .from(franchisePhoneNumbers)
+      .where(eq(franchisePhoneNumbers.franchiseId, franchiseId));
+    const currentCount = Number(currentCountRow?.value || 0);
+    if (currentCount >= Number(plan.maxPhoneNumbers)) {
+      throw new Error(`Limite de números de telefone atingido para esta franquia (${plan.maxPhoneNumbers}).`);
+    }
+
     await db.insert(franchisePhoneNumbers).values({
       franchiseId: franchiseId,
       phoneNumber: phoneData.phoneNumber,
@@ -1772,6 +1794,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createFranchiseAgent(franchiseId: string, agentData: CreateFranchiseAgent): Promise<FranchiseAgent> {
+    // Enforce plan limit: maxAgents per franchise
+    const [franchise] = await db.select().from(franchises).where(eq(franchises.id, franchiseId)).limit(1);
+    if (!franchise) {
+      throw new Error('Franquia não encontrada');
+    }
+    const [franchisor] = await db.select().from(franchisors).where(eq(franchisors.id, franchise.franchisorId)).limit(1);
+    if (!franchisor) {
+      throw new Error('Franqueador não encontrado');
+    }
+    const [plan] = await db.select().from(plans).where(eq(plans.id, franchisor.planId)).limit(1);
+    if (!plan) {
+      throw new Error('Plano não encontrado');
+    }
+    const [currentCountRow] = await db
+      .select({ value: count() })
+      .from(franchiseAgents)
+      .where(eq(franchiseAgents.franchiseId, franchiseId));
+    const currentCount = Number(currentCountRow?.value || 0);
+    if (currentCount >= Number(plan.maxAgents)) {
+      throw new Error(`Limite de agentes atingido para esta franquia (${plan.maxAgents}).`);
+    }
+
     await db.insert(franchiseAgents).values({
       franchiseId: franchiseId,
       name: agentData.name,
@@ -1806,6 +1850,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createFranchisePrompt(franchiseId: string, promptData: CreateFranchisePrompt): Promise<FranchisePrompt> {
+    // Enforce plan limit: maxPrompts per franchise
+    const [franchise] = await db.select().from(franchises).where(eq(franchises.id, franchiseId)).limit(1);
+    if (!franchise) {
+      throw new Error('Franquia não encontrada');
+    }
+    const [franchisor] = await db.select().from(franchisors).where(eq(franchisors.id, franchise.franchisorId)).limit(1);
+    if (!franchisor) {
+      throw new Error('Franqueador não encontrado');
+    }
+    const [plan] = await db.select().from(plans).where(eq(plans.id, franchisor.planId)).limit(1);
+    if (!plan) {
+      throw new Error('Plano não encontrado');
+    }
+    const [currentCountRow] = await db
+      .select({ value: count() })
+      .from(franchisePrompts)
+      .where(eq(franchisePrompts.franchiseId, franchiseId));
+    const currentCount = Number(currentCountRow?.value || 0);
+    if (currentCount >= Number(plan.maxPrompts)) {
+      throw new Error(`Limite de prompts atingido para esta franquia (${plan.maxPrompts}).`);
+    }
+
     await db.insert(franchisePrompts).values({
       franchiseId: franchiseId,
       name: promptData.name,

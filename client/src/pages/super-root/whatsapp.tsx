@@ -1,323 +1,649 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Layout from "@/components/layout/layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
-import { MessageCircle, Save, Loader2, Crown, AlertCircle, CheckCircle } from "lucide-react";
+import React, { useState, useEffect } from 'react';
+import Layout from '../../components/layout/layout';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { Textarea } from '../../components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { Badge } from '../../components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { useToast } from '../../hooks/use-toast';
+import { Plus, Edit, Trash2, Phone, MessageSquare, Settings, QrCode } from 'lucide-react';
 
-export default function SuperRootWhatsApp() {
+interface WhatsappInstance {
+  id: string;
+  instanceName: string;
+  instanceKey: string;
+  webhook?: string;
+  status: 'disconnected' | 'connected' | 'connecting';
+  phoneNumber?: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+interface PhoneNumber {
+  id: string;
+  phoneNumber: string;
+  whatsappInstanceId?: string;
+  isActive: boolean;
+  isPrimary: boolean;
+  whatsappInstance?: WhatsappInstance;
+}
+
+interface PromptMapping {
+  id: string;
+  phoneNumberId: string;
+  phoneNumberType: string;
+  promptId: string;
+  promptType: 'global' | 'franchise';
+  priority: number;
+  isActive: boolean;
+}
+
+interface GlobalPrompt {
+  id: string;
+  name: string;
+  description?: string;
+  category?: string;
+}
+
+export default function SuperRootWhatsapp() {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [instances, setInstances] = useState<WhatsappInstance[]>([]);
+  const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([]);
+  const [promptMappings, setPromptMappings] = useState<PromptMapping[]>([]);
+  const [globalPrompts, setGlobalPrompts] = useState<GlobalPrompt[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>('');
 
-  // Fetch current WhatsApp settings
-  const { data: settings, isLoading } = useQuery({
-    queryKey: ["/api/super-root/whatsapp-settings"],
-    onSuccess: (data) => {
-      console.log("Super Root WhatsApp settings loaded:", data);
-    },
+  // Estados para formulários
+  const [newInstance, setNewInstance] = useState({
+    instanceName: '',
+    instanceKey: '',
+    webhook: '',
+    phoneNumber: ''
   });
 
-  // Update WhatsApp settings mutation
-  const updateWhatsAppSettingsMutation = useMutation({
-    mutationFn: async (data: { evolutionApiUrl: string; globalToken: string; systemUrl?: string }) => {
-      const response = await fetch("/api/super-root/whatsapp-settings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) {
-        throw new Error("Erro ao salvar configurações globais do WhatsApp");
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Sucesso",
-        description: "Configurações globais da API WhatsApp salvas com sucesso!",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/super-root/whatsapp-settings"] });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Erro",
-        description: error.message || "Erro ao salvar configurações globais do WhatsApp",
-        variant: "destructive",
-      });
-    },
+  const [newPhoneNumber, setNewPhoneNumber] = useState({
+    phoneNumber: '',
+    whatsappInstanceId: '',
+    isPrimary: false
   });
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const [newMapping, setNewMapping] = useState({
+    phoneNumberId: '',
+    phoneNumberType: '',
+    promptId: '',
+    promptType: 'global' as 'global' | 'franchise',
+    priority: 1
+  });
 
-    const formData = new FormData(e.currentTarget);
-    const evolutionApiUrl = formData.get("evolutionApiUrl") as string;
-    const globalToken = formData.get("globalToken") as string;
-    const systemUrl = (formData.get("systemUrl") as string) || "";
+  // Buscar dados
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-    if (!evolutionApiUrl || !globalToken) {
-      toast({
-        title: "Erro",
-        description: "Todos os campos são obrigatórios",
-        variant: "destructive",
-      });
-      setIsSubmitting(false);
-      return;
-    }
-
-    // Validate URL format
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      new URL(evolutionApiUrl);
-    } catch {
+      // Buscar instâncias (mock data por enquanto)
+      const mockInstances: WhatsappInstance[] = [
+        {
+          id: '1',
+          instanceName: 'Suporte Principal',
+          instanceKey: 'support_main',
+          webhook: 'https://webhook.site/abc123',
+          status: 'connected',
+          phoneNumber: '+5511999999999',
+          isActive: true,
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: '2',
+          instanceName: 'Vendas',
+          instanceKey: 'sales',
+          status: 'disconnected',
+          isActive: true,
+          createdAt: new Date().toISOString()
+        }
+      ];
+
+      const mockPhoneNumbers: PhoneNumber[] = [
+        {
+          id: '1',
+          phoneNumber: '+5511999999999',
+          whatsappInstanceId: '1',
+          isActive: true,
+          isPrimary: true,
+          whatsappInstance: mockInstances[0]
+        },
+        {
+          id: '2',
+          phoneNumber: '+5511888888888',
+          whatsappInstanceId: '2',
+          isActive: true,
+          isPrimary: false,
+          whatsappInstance: mockInstances[1]
+        }
+      ];
+
+      const mockGlobalPrompts: GlobalPrompt[] = [
+        {
+          id: '1',
+          name: 'Atendimento Geral',
+          description: 'Prompt para atendimento geral de clientes',
+          category: 'Suporte'
+        },
+        {
+          id: '2',
+          name: 'Vendas',
+          description: 'Prompt para vendas e prospecção',
+          category: 'Vendas'
+        }
+      ];
+
+      setInstances(mockInstances);
+      setPhoneNumbers(mockPhoneNumbers);
+      setGlobalPrompts(mockGlobalPrompts);
+    } catch (error) {
       toast({
         title: "Erro",
-        description: "URL da Evolution API inválida",
-        variant: "destructive",
+        description: "Erro ao carregar dados",
+        variant: "destructive"
       });
-      setIsSubmitting(false);
-      return;
+    } finally {
+      setLoading(false);
     }
-
-    if (systemUrl) {
-      try { new URL(systemUrl); } catch {
-        toast({
-          title: "Erro",
-          description: "URL do Sistema inválida",
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-    }
-
-    updateWhatsAppSettingsMutation.mutate(
-      { evolutionApiUrl, globalToken, systemUrl: systemUrl || undefined },
-      {
-        onSettled: () => {
-          setIsSubmitting(false);
-        },
-      }
-    );
   };
 
-  if (isLoading) {
-    return (
-      <Layout title="Configurações WhatsApp">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
-      </Layout>
-    );
-  }
+  const handleCreateInstance = async () => {
+    if (!newInstance.instanceName || !newInstance.instanceKey) {
+      toast({
+        title: "Erro",
+        description: "Nome e chave da instância são obrigatórios",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      // Mock: criar nova instância
+      const newInstanceData: WhatsappInstance = {
+        id: Date.now().toString(),
+        ...newInstance,
+        status: 'disconnected',
+        isActive: true,
+        createdAt: new Date().toISOString()
+      };
+
+      setInstances([...instances, newInstanceData]);
+      setNewInstance({ instanceName: '', instanceKey: '', webhook: '', phoneNumber: '' });
+      
+      toast({
+        title: "Sucesso",
+        description: "Instância criada com sucesso"
+      });
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao criar instância",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleCreatePhoneNumber = async () => {
+    if (!newPhoneNumber.phoneNumber) {
+      toast({
+        title: "Erro",
+        description: "Número de telefone é obrigatório",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      // Mock: criar novo número
+      const newPhoneNumberData: PhoneNumber = {
+        id: Date.now().toString(),
+        ...newPhoneNumber,
+        isActive: true
+      };
+
+      setPhoneNumbers([...phoneNumbers, newPhoneNumberData]);
+      setNewPhoneNumber({ phoneNumber: '', whatsappInstanceId: '', isPrimary: false });
+      
+      toast({
+        title: "Sucesso",
+        description: "Número de telefone adicionado com sucesso"
+      });
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao adicionar número de telefone",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleCreateMapping = async () => {
+    if (!newMapping.phoneNumberId || !newMapping.promptId) {
+      toast({
+        title: "Erro",
+        description: "Número de telefone e prompt são obrigatórios",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      // Mock: criar novo mapeamento
+      const newMappingData: PromptMapping = {
+        id: Date.now().toString(),
+        ...newMapping,
+        isActive: true
+      };
+
+      setPromptMappings([...promptMappings, newMappingData]);
+      setNewMapping({ phoneNumberId: '', phoneNumberType: '', promptId: '', promptType: 'global', priority: 1 });
+      
+      toast({
+        title: "Sucesso",
+        description: "Mapeamento criado com sucesso"
+      });
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao criar mapeamento",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'connected': return 'bg-green-500';
+      case 'connecting': return 'bg-yellow-500';
+      case 'disconnected': return 'bg-red-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'connected': return 'Conectado';
+      case 'connecting': return 'Conectando';
+      case 'disconnected': return 'Desconectado';
+      default: return 'Desconhecido';
+    }
+  };
 
   return (
-    <Layout title="Configurações WhatsApp">
-      <div className="space-y-8">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-gradient-to-r from-green-600 to-blue-600 rounded-lg">
-            <Crown className="h-6 w-6 text-white" />
-          </div>
+    <Layout title="WhatsApp Franqueador">
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              Configurações Globais da API WhatsApp
-            </h2>
-            <p className="text-gray-600">
-              Configure a API WhatsApp Evolution para todo o sistema
+            <h1 className="text-3xl font-bold">WhatsApp Franqueador</h1>
+            <p className="text-muted-foreground">
+              Gerencie instâncias da Evolution API e configure números de telefone
             </p>
           </div>
         </div>
 
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <div className="flex items-center space-x-2">
-            <MessageCircle className="h-5 w-5 text-green-600" />
-            <h3 className="font-medium text-green-900">Configuração Global</h3>
-          </div>
-          <p className="text-sm text-green-700 mt-1">
-            Estas configurações da API WhatsApp serão utilizadas por todos os franqueadores e franquias do sistema.
-            Certifique-se de que a Evolution API esteja funcionando corretamente antes de salvar.
-          </p>
-        </div>
+        <Tabs defaultValue="instances" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="instances">Instâncias</TabsTrigger>
+            <TabsTrigger value="phone-numbers">Números de Telefone</TabsTrigger>
+            <TabsTrigger value="prompt-mapping">Mapeamento de Prompts</TabsTrigger>
+          </TabsList>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MessageCircle className="h-5 w-5" />
-              Configurações da Evolution API
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="evolutionApiUrl">URL da Evolution API</Label>
-                  <Input
-                    id="evolutionApiUrl"
-                    name="evolutionApiUrl"
-                    type="url"
-                    placeholder="https://sua-evolution-api.com"
-                    defaultValue={settings?.evolutionApiUrl || ""}
-                    required
-                    className="mt-1"
-                  />
-                  <p className="text-sm text-gray-500 mt-1">
-                    URL completa da sua instância da Evolution API (ex: https://api.evolution.com)
-                  </p>
+          {/* Aba de Instâncias */}
+          <TabsContent value="instances" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  Nova Instância
+                </CardTitle>
+                <CardDescription>
+                  Crie uma nova instância da Evolution API
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="instanceName">Nome da Instância</Label>
+                    <Input
+                      id="instanceName"
+                      value={newInstance.instanceName}
+                      onChange={(e) => setNewInstance({...newInstance, instanceName: e.target.value})}
+                      placeholder="Ex: Suporte Principal"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="instanceKey">Chave da Instância</Label>
+                    <Input
+                      id="instanceKey"
+                      value={newInstance.instanceKey}
+                      onChange={(e) => setNewInstance({...newInstance, instanceKey: e.target.value})}
+                      placeholder="Ex: support_main"
+                    />
+                  </div>
                 </div>
-
-                <div>
-                  <Label htmlFor="globalToken">Token Global</Label>
-                  <Input
-                    id="globalToken"
-                    name="globalToken"
-                    type="password"
-                    placeholder="Seu token global da Evolution API"
-                    defaultValue={settings?.globalToken || ""}
-                    required
-                    className="mt-1"
-                  />
-                  <p className="text-sm text-gray-500 mt-1">
-                    Token de autenticação global da Evolution API para criar e gerenciar instâncias
-                  </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="webhook">Webhook (opcional)</Label>
+                    <Input
+                      id="webhook"
+                      value={newInstance.webhook}
+                      onChange={(e) => setNewInstance({...newInstance, webhook: e.target.value})}
+                      placeholder="https://webhook.site/abc123"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="phoneNumber">Número de Telefone (opcional)</Label>
+                    <Input
+                      id="phoneNumber"
+                      value={newInstance.phoneNumber}
+                      onChange={(e) => setNewInstance({...newInstance, phoneNumber: e.target.value})}
+                      placeholder="+5511999999999"
+                    />
+                  </div>
                 </div>
-
-                <div>
-                  <Label htmlFor="systemUrl">URL do Sistema</Label>
-                  <Input
-                    id="systemUrl"
-                    name="systemUrl"
-                    type="url"
-                    placeholder="https://seusistema.com"
-                    defaultValue={settings?.systemUrl || ""}
-                    className="mt-1"
-                  />
-                  <p className="text-sm text-gray-500 mt-1">
-                    URL pública do sistema que será usada como base nos webhooks da Evolution
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => window.location.reload()}
-                >
-                  Cancelar
+                <Button onClick={handleCreateInstance} className="w-full">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Criar Instância
                 </Button>
-                <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex items-center gap-2"
-                >
-                  {isSubmitting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4" />
-                  )}
-                  {isSubmitting ? "Salvando..." : "Salvar Configurações"}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
 
-        {settings && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Status da Configuração</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Instâncias Existentes</CardTitle>
+                <CardDescription>
+                  Gerencie suas instâncias da Evolution API
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {instances.map((instance) => (
+                    <div key={instance.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center gap-4">
+                        <div className="flex flex-col">
+                          <span className="font-semibold">{instance.instanceName}</span>
+                          <span className="text-sm text-muted-foreground">{instance.instanceKey}</span>
+                          {instance.phoneNumber && (
+                            <span className="text-sm text-muted-foreground flex items-center gap-1">
+                              <Phone className="h-3 w-3" />
+                              {instance.phoneNumber}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <Badge className={`${getStatusColor(instance.status)} text-white`}>
+                          {getStatusText(instance.status)}
+                        </Badge>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="outline">
+                            <QrCode className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="destructive">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Aba de Números de Telefone */}
+          <TabsContent value="phone-numbers" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Phone className="h-5 w-5" />
+                  Novo Número de Telefone
+                </CardTitle>
+                <CardDescription>
+                  Adicione um novo número de telefone para o franqueador
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <span className="font-medium text-gray-700">URL da Evolution API:</span>
-                    <p className="text-sm text-gray-600 break-all mt-1">
-                      {settings.evolutionApiUrl || "Não configurado"}
-                    </p>
+                    <Label htmlFor="phoneNumber">Número de Telefone</Label>
+                    <Input
+                      id="phoneNumber"
+                      value={newPhoneNumber.phoneNumber}
+                      onChange={(e) => setNewPhoneNumber({...newPhoneNumber, phoneNumber: e.target.value})}
+                      placeholder="+5511999999999"
+                    />
                   </div>
                   <div>
-                    <span className="font-medium text-gray-700">Token Global:</span>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {settings.globalToken ? "••••••••••••••••" : "Não configurado"}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-700">URL do Sistema:</span>
-                    <p className="text-sm text-gray-600 break-all mt-1">
-                      {settings.systemUrl || "Não configurado"}
-                    </p>
+                    <Label htmlFor="whatsappInstance">Instância WhatsApp</Label>
+                    <Select
+                      value={newPhoneNumber.whatsappInstanceId}
+                      onValueChange={(value) => setNewPhoneNumber({...newPhoneNumber, whatsappInstanceId: value})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione uma instância" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {instances.map((instance) => (
+                          <SelectItem key={instance.id} value={instance.id}>
+                            {instance.instanceName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-
                 <div className="flex items-center space-x-2">
-                  <span className="font-medium text-gray-700">Status:</span>
-                  {settings.isActive ? (
-                    <div className="flex items-center space-x-1">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      <span className="text-sm text-green-600 font-medium">Ativo</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center space-x-1">
-                      <AlertCircle className="h-4 w-4 text-red-600" />
-                      <span className="text-sm text-red-600 font-medium">Inativo</span>
-                    </div>
-                  )}
+                  <input
+                    type="checkbox"
+                    id="isPrimary"
+                    checked={newPhoneNumber.isPrimary}
+                    onChange={(e) => setNewPhoneNumber({...newPhoneNumber, isPrimary: e.target.checked})}
+                  />
+                  <Label htmlFor="isPrimary">Número primário</Label>
                 </div>
+                <Button onClick={handleCreatePhoneNumber} className="w-full">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adicionar Número
+                </Button>
+              </CardContent>
+            </Card>
 
-                {settings.createdAt && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Números de Telefone</CardTitle>
+                <CardDescription>
+                  Gerencie os números de telefone do franqueador
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {phoneNumbers.map((phone) => (
+                    <div key={phone.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center gap-4">
+                        <div className="flex flex-col">
+                          <span className="font-semibold flex items-center gap-2">
+                            {phone.phoneNumber}
+                            {phone.isPrimary && (
+                              <Badge variant="secondary">Primário</Badge>
+                            )}
+                          </span>
+                          {phone.whatsappInstance && (
+                            <span className="text-sm text-muted-foreground">
+                              Instância: {phone.whatsappInstance.instanceName}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline">
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="destructive">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Aba de Mapeamento de Prompts */}
+          <TabsContent value="prompt-mapping" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  Novo Mapeamento de Prompt
+                </CardTitle>
+                <CardDescription>
+                  Vincule um número de telefone a um prompt específico
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <span className="font-medium text-gray-700">Configurado em:</span>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {new Date(settings.createdAt).toLocaleString('pt-BR')}
-                    </p>
+                    <Label htmlFor="phoneNumberId">Número de Telefone</Label>
+                    <Select
+                      value={newMapping.phoneNumberId}
+                      onValueChange={(value) => setNewMapping({...newMapping, phoneNumberId: value})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um número" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {phoneNumbers.map((phone) => (
+                          <SelectItem key={phone.id} value={phone.id}>
+                            {phone.phoneNumber}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                  <div>
+                    <Label htmlFor="promptType">Tipo de Prompt</Label>
+                    <Select
+                      value={newMapping.promptType}
+                      onValueChange={(value: 'global' | 'franchise') => setNewMapping({...newMapping, promptType: value})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="global">Prompt Global</SelectItem>
+                        <SelectItem value="franchise">Prompt de Franquia</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="promptId">Prompt</Label>
+                    <Select
+                      value={newMapping.promptId}
+                      onValueChange={(value) => setNewMapping({...newMapping, promptId: value})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um prompt" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {globalPrompts.map((prompt) => (
+                          <SelectItem key={prompt.id} value={prompt.id}>
+                            {prompt.name} - {prompt.category}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="priority">Prioridade</Label>
+                    <Input
+                      id="priority"
+                      type="number"
+                      min="1"
+                      value={newMapping.priority}
+                      onChange={(e) => setNewMapping({...newMapping, priority: parseInt(e.target.value)})}
+                    />
+                  </div>
+                </div>
+                <Button onClick={handleCreateMapping} className="w-full">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Criar Mapeamento
+                </Button>
+              </CardContent>
+            </Card>
 
-        {/* Information Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Informações Importantes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3 text-sm text-gray-600">
-              <div className="flex items-start space-x-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                <p>
-                  <strong>Evolution API:</strong> É necessário ter uma instância da Evolution API rodando e acessível pela URL configurada.
-                </p>
-              </div>
-              <div className="flex items-start space-x-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                <p>
-                  <strong>Token Global:</strong> O token deve ter permissões para criar, listar e gerenciar instâncias do WhatsApp.
-                </p>
-              </div>
-              <div className="flex items-start space-x-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                <p>
-                  <strong>Segurança:</strong> Mantenha o token seguro e não compartilhe com usuários não autorizados.
-                </p>
-              </div>
-              <div className="flex items-start space-x-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                <p>
-                  <strong>Impacto:</strong> Alterações nesta configuração afetam todos os franqueadores e franquias do sistema.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Mapeamentos Existentes</CardTitle>
+                <CardDescription>
+                  Visualize e gerencie os mapeamentos de prompts por número
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {phoneNumbers.map((phone) => (
+                    <div key={phone.id} className="border rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Phone className="h-4 w-4" />
+                        <span className="font-semibold">{phone.phoneNumber}</span>
+                        {phone.isPrimary && (
+                          <Badge variant="secondary">Primário</Badge>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-2">
+                        {promptMappings
+                          .filter(mapping => mapping.phoneNumberId === phone.id)
+                          .map((mapping) => (
+                            <div key={mapping.id} className="flex items-center justify-between p-2 bg-muted rounded">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline">
+                                  Prioridade {mapping.priority}
+                                </Badge>
+                                <span className="text-sm">
+                                  {mapping.promptType === 'global' ? 'Prompt Global' : 'Prompt de Franquia'}
+                                </span>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button size="sm" variant="outline">
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                                <Button size="sm" variant="destructive">
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        
+                        {promptMappings.filter(mapping => mapping.phoneNumberId === phone.id).length === 0 && (
+                          <p className="text-sm text-muted-foreground">
+                            Nenhum prompt configurado para este número
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </Layout>
   );

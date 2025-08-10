@@ -12,6 +12,7 @@ import fs from "fs/promises";
 import { db } from "./db";
 import { aiUsage } from "@shared/schema";
 import { sum, count, desc, sql } from "drizzle-orm";
+import fetch from "node-fetch";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Serve static files from uploads directory
@@ -511,18 +512,142 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied - Super Root only" });
       }
 
+      console.log("📝 Dados recebidos para salvar configurações WhatsApp:", req.body);
+      
       const { whatsappApiSettingsSchema } = await import("@shared/schema");
-      const validatedData = whatsappApiSettingsSchema.parse(req.body);
-
-      const settings = await storage.saveWhatsappApiSettings(validatedData, userId);
-
-      res.json(settings);
+      
+      try {
+        const validatedData = whatsappApiSettingsSchema.parse(req.body);
+        console.log("✅ Dados validados com sucesso:", validatedData);
+        
+        const settings = await storage.saveWhatsappApiSettings(validatedData, userId);
+        console.log("✅ Configurações salvas com sucesso:", settings);
+        
+        res.json(settings);
+      } catch (validationError) {
+        console.error("❌ Erro de validação:", validationError);
+        throw validationError;
+      }
     } catch (error) {
       console.error("Error saving WhatsApp settings:", error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to save WhatsApp settings" });
+    }
+  });
+
+  app.post("/api/super-root/whatsapp-test", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Super Root only" });
+      }
+
+      const { evolutionApiUrl, globalToken } = req.body;
+
+      if (!evolutionApiUrl || !globalToken) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "URL da Evolution API e Token Global são obrigatórios" 
+        });
+      }
+
+      // Validar formato da URL
+      try {
+        new URL(evolutionApiUrl);
+      } catch (urlError) {
+        return res.status(400).json({
+          success: false,
+          error: "URL da Evolution API inválida. Use o formato: http://localhost:8080 ou https://api.exemplo.com"
+        });
+      }
+
+      // Remover barra final da URL se existir
+      const cleanUrl = evolutionApiUrl.replace(/\/$/, '');
+
+      try {
+        // Testar conexão com a Evolution API
+        console.log(`🔍 Testando conexão com Evolution API:`);
+        console.log(`   URL Original: ${evolutionApiUrl}`);
+        console.log(`   URL Limpa: ${cleanUrl}`);
+        console.log(`   Token: ${globalToken?.substring(0, 20)}...`);
+        
+        const testUrl = `${cleanUrl}/instance/fetchInstances`;
+        console.log(`   URL Final: ${testUrl}`);
+        
+        const response = await fetch(testUrl, {
+          method: 'GET',
+          headers: {
+            'apikey': globalToken,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000 // 10 segundos de timeout
+        });
+
+        console.log(`📋 Status da resposta: ${response.status}`);
+        console.log(`📋 Headers da resposta:`, Object.fromEntries(response.headers.entries()));
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`✅ Conexão bem-sucedida. Instâncias encontradas: ${Array.isArray(data) ? data.length : 'N/A'}`);
+          
+          res.json({
+            success: true,
+            message: "Conexão com Evolution API estabelecida com sucesso",
+            instanceCount: Array.isArray(data) ? data.length : 0,
+            url: cleanUrl
+          });
+        } else {
+          const errorText = await response.text();
+          console.error(`❌ Erro na API: ${response.status} - ${errorText}`);
+          
+          res.json({
+            success: false,
+            error: `Erro na API: ${response.status} - ${errorText || 'Resposta vazia'}`,
+            details: {
+              status: response.status,
+              statusText: response.statusText,
+              url: testUrl
+            }
+          });
+        }
+      } catch (testError: any) {
+        console.error(`❌ Erro ao testar conexão:`, testError);
+        
+        let errorMessage = "Erro ao conectar com a Evolution API";
+        
+        if (testError.code === 'ECONNREFUSED') {
+          errorMessage = "Conexão recusada. Verifique se a Evolution API está rodando na URL informada.";
+        } else if (testError.code === 'ENOTFOUND') {
+          errorMessage = "URL não encontrada. Verifique se a URL da Evolution API está correta.";
+        } else if (testError.code === 'ETIMEDOUT') {
+          errorMessage = "Timeout na conexão. A Evolution API pode estar lenta ou indisponível.";
+        } else if (testError.message) {
+          errorMessage = testError.message;
+        }
+        
+        res.json({
+          success: false,
+          error: errorMessage,
+          details: {
+            code: testError.code,
+            message: testError.message,
+            url: cleanUrl
+          }
+        });
+      }
+    } catch (error) {
+      console.error("Error testing WhatsApp connection:", error);
+      res.status(500).json({ 
+        success: false, 
+        error: "Erro interno do servidor" 
+      });
     }
   });
 
@@ -1898,6 +2023,234 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error checking WhatsApp instance status:", error);
       res.status(500).json({ message: "Erro ao verificar status da instância" });
+    }
+  });
+
+  // Admin WhatsApp Agents routes
+  app.get("/api/admin/whatsapp-agents", isAuthenticated, async (req: any, res) => {
+    try {
+      console.log('🔍 WhatsApp Agents route called');
+      
+      const userId = getCurrentUserId(req);
+      console.log('👤 User ID:', userId);
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      console.log('👤 User found:', user ? `${user.firstName} ${user.lastName} (${user.role})` : 'null');
+      
+      if (user?.role !== 'franchisor' && user?.role !== 'admin' && user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Admin/Franchisor only" });
+      }
+
+      // Get global prompts from all franchisors for now
+      // This ensures agents are always available regardless of user context
+      let globalPrompts = [];
+      
+      if (user.role === 'super_root') {
+        // Super root can see prompts from all franchisors
+        console.log('🏢 Super root - fetching prompts from all franchisors');
+        const franchisors = await storage.getAllFranchisors();
+        console.log('🏢 Franchisors found:', franchisors.length);
+        
+        for (const franchisor of franchisors) {
+          const prompts = await storage.getGlobalPrompts(franchisor.id);
+          globalPrompts.push(...prompts);
+          console.log(`📋 Prompts from ${franchisor.companyName}: ${prompts.length}`);
+        }
+      } else {
+        // For franchisor and admin users, try to get their specific franchisor
+        const franchisor = await storage.getFranchisorByUserId(userId);
+        console.log('🏢 Franchisor found for user:', franchisor?.companyName, franchisor?.id);
+        
+        if (franchisor) {
+          globalPrompts = await storage.getGlobalPrompts(franchisor.id);
+          console.log('📋 Global prompts found for franchisor:', globalPrompts.length);
+        } else {
+          // If no franchisor found, get prompts from all franchisors as fallback
+          console.log('⚠️ No franchisor found for user, fetching from all franchisors');
+          const franchisors = await storage.getAllFranchisors();
+          for (const f of franchisors) {
+            const prompts = await storage.getGlobalPrompts(f.id);
+            globalPrompts.push(...prompts);
+          }
+        }
+      }
+      
+      console.log('📋 Total global prompts found:', globalPrompts.length);
+      
+      if (globalPrompts.length > 0) {
+        console.log('📋 First prompt sample:', {
+          id: globalPrompts[0].id,
+          name: globalPrompts[0].name,
+          description: globalPrompts[0].description,
+          isActive: globalPrompts[0].isActive,
+          createdAt: globalPrompts[0].createdAt
+        });
+      }
+      
+      console.log('📋 Raw global prompts:', JSON.stringify(globalPrompts, null, 2));
+      
+      // Transform global prompts to agent format
+      const agents = globalPrompts.map(prompt => ({
+        id: prompt.id,
+        name: prompt.name,
+        description: prompt.description,
+        type: 'global',
+        isActive: prompt.isActive,
+        createdAt: prompt.createdAt
+      }));
+
+      console.log('🤖 Agents to return:', agents.length);
+      console.log('🤖 Agents data:', JSON.stringify(agents, null, 2));
+      res.json(agents);
+    } catch (error) {
+      console.error("Error fetching WhatsApp agents:", error);
+      res.status(500).json({ message: "Failed to fetch WhatsApp agents" });
+    }
+  });
+
+  // Admin WhatsApp Instance-Agent Bindings routes
+  app.get("/api/admin/whatsapp-instance-agent-bindings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchisor' && user?.role !== 'admin' && user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Admin/Franchisor only" });
+      }
+
+      const bindings = await storage.getWhatsappInstanceAgentBindings();
+      
+      // Enrich bindings with instance and agent data
+      const enrichedBindings = await Promise.all(
+        bindings.map(async (binding) => {
+          const instance = await storage.getAdminWhatsappInstance(binding.instanceId);
+          const agent = await storage.getGlobalPromptById(binding.agentId);
+          
+          return {
+            ...binding,
+            instance,
+            agent: agent ? {
+              id: agent.id,
+              name: agent.name,
+              description: agent.description,
+              type: 'global',
+              isActive: agent.isActive,
+              createdAt: agent.createdAt
+            } : null
+          };
+        })
+      );
+      
+      res.json(enrichedBindings);
+    } catch (error) {
+      console.error("Error fetching WhatsApp instance-agent bindings:", error);
+      res.status(500).json({ message: "Failed to fetch WhatsApp instance-agent bindings" });
+    }
+  });
+
+  app.post("/api/admin/whatsapp-instance-agent-bindings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchisor' && user?.role !== 'admin' && user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Admin/Franchisor only" });
+      }
+
+      const { instanceId, agentId } = req.body;
+
+      if (!instanceId || !agentId) {
+        return res.status(400).json({ message: "Instance ID and Agent ID are required" });
+      }
+
+      // Check if binding already exists
+      const existingBindings = await storage.getWhatsappInstanceAgentBindings();
+      const existingBinding = existingBindings.find(
+        binding => binding.instanceId === instanceId && binding.isActive
+      );
+
+      if (existingBinding) {
+        return res.status(400).json({ message: "Esta instância já possui um agente vinculado ativo. Desative a vinculação atual primeiro." });
+      }
+
+      // Verify that the agent (global prompt) exists
+      const globalPrompt = await storage.getGlobalPromptById(agentId);
+      if (!globalPrompt) {
+        return res.status(400).json({ message: "Agente (prompt global) não encontrado" });
+      }
+
+      const binding = await storage.createWhatsappInstanceAgentBinding({
+        instanceId,
+        agentId,
+        isActive: true
+      });
+
+      res.json({
+        message: "Binding created successfully",
+        binding
+      });
+    } catch (error) {
+      console.error("Error creating WhatsApp instance-agent binding:", error);
+      res.status(500).json({ message: "Failed to create binding" });
+    }
+  });
+
+  app.put("/api/admin/whatsapp-instance-agent-bindings/:id/toggle", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchisor' && user?.role !== 'admin' && user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Admin/Franchisor only" });
+      }
+
+      const { id } = req.params;
+      const updatedBinding = await storage.toggleWhatsappInstanceAgentBinding(id);
+
+      res.json({
+        message: "Binding status updated successfully",
+        binding: updatedBinding
+      });
+    } catch (error) {
+      console.error("Error toggling WhatsApp instance-agent binding:", error);
+      res.status(500).json({ message: "Failed to update binding" });
+    }
+  });
+
+  app.delete("/api/admin/whatsapp-instance-agent-bindings/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchisor' && user?.role !== 'admin' && user?.role !== 'super_root') {
+        return res.status(403).json({ message: "Access denied - Admin/Franchisor only" });
+      }
+
+      const { id } = req.params;
+      await storage.deleteWhatsappInstanceAgentBinding(id);
+
+      res.json({
+        message: "Binding deleted successfully"
+      });
+    } catch (error) {
+      console.error("Error deleting WhatsApp instance-agent binding:", error);
+      res.status(500).json({ message: "Failed to delete binding" });
     }
   });
 

@@ -21,6 +21,8 @@ import {
   franchiseAgents,
   franchisePrompts,
   globalPrompts,
+  whatsappAgents,
+  whatsappInstanceAgentBindings,
   type User,
   type UpsertUser,
   type Client,
@@ -71,6 +73,10 @@ import {
   type CreateFranchisePrompt,
   type GlobalPrompt,
   type CreateGlobalPrompt,
+  type WhatsappAgent,
+  type InsertWhatsappAgent,
+  type WhatsappInstanceAgentBinding,
+  type InsertWhatsappInstanceAgentBinding,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, count, sum, sql, like, gte, lte, or, between, asc } from "drizzle-orm";
@@ -230,7 +236,21 @@ export interface IStorage {
   createGlobalPrompt(franchisorId: string, promptData: CreateGlobalPrompt): Promise<GlobalPrompt>;
   updateGlobalPrompt(id: string, promptData: Partial<CreateGlobalPrompt>): Promise<GlobalPrompt>;
   deleteGlobalPrompt(id: string): Promise<void>;
+  getGlobalPromptById(id: string): Promise<GlobalPrompt | undefined>;
   testGlobalPrompt(id: string, testMessage: string): Promise<{success: boolean, response?: string, error?: string}>;
+
+  // WhatsApp Agents operations
+  getWhatsappAgents(): Promise<WhatsappAgent[]>;
+  createWhatsappAgent(agentData: InsertWhatsappAgent): Promise<WhatsappAgent>;
+  updateWhatsappAgent(id: string, agentData: Partial<InsertWhatsappAgent>): Promise<WhatsappAgent>;
+  deleteWhatsappAgent(id: string): Promise<void>;
+
+  // WhatsApp Instance Agent Bindings operations
+  getWhatsappInstanceAgentBindings(): Promise<WhatsappInstanceAgentBinding[]>;
+  createWhatsappInstanceAgentBinding(bindingData: InsertWhatsappInstanceAgentBinding): Promise<WhatsappInstanceAgentBinding>;
+  updateWhatsappInstanceAgentBinding(id: string, bindingData: Partial<InsertWhatsappInstanceAgentBinding>): Promise<WhatsappInstanceAgentBinding>;
+  deleteWhatsappInstanceAgentBinding(id: string): Promise<void>;
+  toggleWhatsappInstanceAgentBinding(id: string): Promise<WhatsappInstanceAgentBinding>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2212,6 +2232,16 @@ export class DatabaseStorage implements IStorage {
     await db.delete(globalPrompts).where(eq(globalPrompts.id, id));
   }
 
+  async getGlobalPromptById(id: string): Promise<GlobalPrompt | undefined> {
+    const [prompt] = await db
+      .select()
+      .from(globalPrompts)
+      .where(eq(globalPrompts.id, id))
+      .limit(1);
+    
+    return prompt;
+  }
+
   async testGlobalPrompt(id: string, testMessage: string): Promise<{success: boolean, response?: string, error?: string}> {
     try {
       // Get the prompt details
@@ -2264,6 +2294,165 @@ export class DatabaseStorage implements IStorage {
         success: false,
         error: error.message || "Erro interno do servidor"
       };
+    }
+  }
+
+  // WhatsApp Agents operations
+  async getWhatsappAgents(): Promise<WhatsappAgent[]> {
+    await this.ensureWhatsappAgentsTable();
+    return await db
+      .select()
+      .from(whatsappAgents)
+      .orderBy(desc(whatsappAgents.createdAt));
+  }
+
+  async createWhatsappAgent(agentData: InsertWhatsappAgent): Promise<WhatsappAgent> {
+    await this.ensureWhatsappAgentsTable();
+    await db.insert(whatsappAgents).values(agentData);
+    
+    const [inserted] = await db
+      .select()
+      .from(whatsappAgents)
+      .where(eq(whatsappAgents.name, agentData.name))
+      .orderBy(desc(whatsappAgents.createdAt))
+      .limit(1);
+    
+    return inserted;
+  }
+
+  async updateWhatsappAgent(id: string, agentData: Partial<InsertWhatsappAgent>): Promise<WhatsappAgent> {
+    await this.ensureWhatsappAgentsTable();
+    await db
+      .update(whatsappAgents)
+      .set({ ...agentData, updatedAt: new Date() })
+      .where(eq(whatsappAgents.id, id));
+
+    const [updated] = await db
+      .select()
+      .from(whatsappAgents)
+      .where(eq(whatsappAgents.id, id));
+
+    return updated;
+  }
+
+  async deleteWhatsappAgent(id: string): Promise<void> {
+    await this.ensureWhatsappAgentsTable();
+    await db.delete(whatsappAgents).where(eq(whatsappAgents.id, id));
+  }
+
+  // WhatsApp Instance Agent Bindings operations
+  async getWhatsappInstanceAgentBindings(): Promise<WhatsappInstanceAgentBinding[]> {
+    await this.ensureWhatsappInstanceAgentBindingsTable();
+    return await db
+      .select()
+      .from(whatsappInstanceAgentBindings)
+      .orderBy(desc(whatsappInstanceAgentBindings.createdAt));
+  }
+
+  async createWhatsappInstanceAgentBinding(bindingData: InsertWhatsappInstanceAgentBinding): Promise<WhatsappInstanceAgentBinding> {
+    await this.ensureWhatsappInstanceAgentBindingsTable();
+    await db.insert(whatsappInstanceAgentBindings).values(bindingData);
+    
+    const [inserted] = await db
+      .select()
+      .from(whatsappInstanceAgentBindings)
+      .where(and(
+        eq(whatsappInstanceAgentBindings.instanceId, bindingData.instanceId),
+        eq(whatsappInstanceAgentBindings.agentId, bindingData.agentId)
+      ))
+      .orderBy(desc(whatsappInstanceAgentBindings.createdAt))
+      .limit(1);
+    
+    return inserted;
+  }
+
+  async updateWhatsappInstanceAgentBinding(id: string, bindingData: Partial<InsertWhatsappInstanceAgentBinding>): Promise<WhatsappInstanceAgentBinding> {
+    await this.ensureWhatsappInstanceAgentBindingsTable();
+    await db
+      .update(whatsappInstanceAgentBindings)
+      .set({ ...bindingData, updatedAt: new Date() })
+      .where(eq(whatsappInstanceAgentBindings.id, id));
+
+    const [updated] = await db
+      .select()
+      .from(whatsappInstanceAgentBindings)
+      .where(eq(whatsappInstanceAgentBindings.id, id));
+
+    return updated;
+  }
+
+  async deleteWhatsappInstanceAgentBinding(id: string): Promise<void> {
+    await this.ensureWhatsappInstanceAgentBindingsTable();
+    await db.delete(whatsappInstanceAgentBindings).where(eq(whatsappInstanceAgentBindings.id, id));
+  }
+
+  async toggleWhatsappInstanceAgentBinding(id: string): Promise<WhatsappInstanceAgentBinding> {
+    await this.ensureWhatsappInstanceAgentBindingsTable();
+    
+    // Get current binding
+    const [currentBinding] = await db
+      .select()
+      .from(whatsappInstanceAgentBindings)
+      .where(eq(whatsappInstanceAgentBindings.id, id));
+
+    if (!currentBinding) {
+      throw new Error('Binding not found');
+    }
+
+    // Toggle the isActive status
+    await db
+      .update(whatsappInstanceAgentBindings)
+      .set({ 
+        isActive: !currentBinding.isActive,
+        updatedAt: new Date() 
+      })
+      .where(eq(whatsappInstanceAgentBindings.id, id));
+
+    // Return updated binding
+    const [updated] = await db
+      .select()
+      .from(whatsappInstanceAgentBindings)
+      .where(eq(whatsappInstanceAgentBindings.id, id));
+
+    return updated;
+  }
+
+  private async ensureWhatsappAgentsTable(): Promise<void> {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS whatsapp_agents (
+          id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          type VARCHAR(20) NOT NULL DEFAULT 'global',
+          franchisor_id VARCHAR(36),
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          FOREIGN KEY (franchisor_id) REFERENCES franchisors(id)
+        )
+      `);
+    } catch (error) {
+      console.error("Error ensuring whatsapp_agents table:", error);
+    }
+  }
+
+  private async ensureWhatsappInstanceAgentBindingsTable(): Promise<void> {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS whatsapp_instance_agent_bindings (
+          id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+          instance_id VARCHAR(36) NOT NULL,
+          agent_id VARCHAR(36) NOT NULL,
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          FOREIGN KEY (instance_id) REFERENCES admin_whatsapp_instances(id),
+          FOREIGN KEY (agent_id) REFERENCES whatsapp_agents(id)
+        )
+      `);
+    } catch (error) {
+      console.error("Error ensuring whatsapp_instance_agent_bindings table:", error);
     }
   }
 }

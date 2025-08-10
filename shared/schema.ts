@@ -203,6 +203,28 @@ export const globalPrompts = mysqlTable("global_prompts", {
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
 });
 
+// Agentes WhatsApp (para vinculação com instâncias)
+export const whatsappAgents = mysqlTable("whatsapp_agents", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  type: varchar("type", { length: 20 }).notNull().default("global"), // 'global' ou 'franchise'
+  franchisorId: varchar("franchisor_id", { length: 36 }).references(() => franchisors.id), // Null para agentes globais
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
+// Vinculações entre instâncias WhatsApp e agentes
+export const whatsappInstanceAgentBindings = mysqlTable("whatsapp_instance_agent_bindings", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  instanceId: varchar("instance_id", { length: 36 }).references(() => adminWhatsappInstances.id).notNull(),
+  agentId: varchar("agent_id", { length: 36 }).references(() => whatsappAgents.id).notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
 // Clients table - Agora são clientes finais das franquias
 export const clients = mysqlTable("clients", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
@@ -642,6 +664,16 @@ export const whatsappMessagesRelations = relations(whatsappMessages, ({ one }) =
   conversation: one(whatsappConversations, { fields: [whatsappMessages.conversationId], references: [whatsappConversations.id] }),
 }));
 
+export const whatsappAgentsRelations = relations(whatsappAgents, ({ one, many }) => ({
+  franchisor: one(franchisors, { fields: [whatsappAgents.franchisorId], references: [franchisors.id] }),
+  bindings: many(whatsappInstanceAgentBindings),
+}));
+
+export const whatsappInstanceAgentBindingsRelations = relations(whatsappInstanceAgentBindings, ({ one }) => ({
+  instance: one(adminWhatsappInstances, { fields: [whatsappInstanceAgentBindings.instanceId], references: [adminWhatsappInstances.id] }),
+  agent: one(whatsappAgents, { fields: [whatsappInstanceAgentBindings.agentId], references: [whatsappAgents.id] }),
+}));
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -847,6 +879,14 @@ export type UserRole = typeof userRoles.$inferSelect;
 export type InsertUserRole = z.infer<typeof insertUserRoleSchema>;
 export type CreateRole = z.infer<typeof createRoleSchema>;
 export type AISettings = z.infer<typeof aiSettingsSchema>;
+
+// WhatsApp Agents types
+export type WhatsappAgent = typeof whatsappAgents.$inferSelect;
+export type InsertWhatsappAgent = typeof whatsappAgents.$inferInsert;
+
+// WhatsApp Instance Agent Bindings types
+export type WhatsappInstanceAgentBinding = typeof whatsappInstanceAgentBindings.$inferSelect;
+export type InsertWhatsappInstanceAgentBinding = typeof whatsappInstanceAgentBindings.$inferInsert;
 export type AIConfiguration = typeof aiConfigurations.$inferSelect;
 export type InsertAIConfiguration = z.infer<typeof insertAIConfigurationSchema>;
 export type AIUsage = typeof aiUsage.$inferSelect;

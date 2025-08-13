@@ -216,6 +216,7 @@ export interface IStorage {
   deleteAdminWhatsappInstance(id: string): Promise<void>;
 
   // WhatsApp Conversations operations
+  getWhatsappConversationsByInstance(instanceId: string): Promise<WhatsappConversation[]>;
   createWhatsappConversation(conversation: InsertWhatsappConversation): Promise<WhatsappConversation>;
   updateWhatsappConversation(id: string, conversation: Partial<InsertWhatsappConversation>): Promise<WhatsappConversation>;
   getWhatsappConversationById(id: string): Promise<WhatsappConversation | undefined>;
@@ -241,6 +242,7 @@ export interface IStorage {
 
   // WhatsApp Agents operations
   getWhatsappAgents(): Promise<WhatsappAgent[]>;
+  getWhatsappAgent(id: string): Promise<WhatsappAgent | undefined>;
   createWhatsappAgent(agentData: InsertWhatsappAgent): Promise<WhatsappAgent>;
   updateWhatsappAgent(id: string, agentData: Partial<InsertWhatsappAgent>): Promise<WhatsappAgent>;
   deleteWhatsappAgent(id: string): Promise<void>;
@@ -1993,6 +1995,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   // WhatsApp Conversations operations
+  async getWhatsappConversationsByInstance(instanceId: string): Promise<WhatsappConversation[]> {
+    return await db
+      .select()
+      .from(whatsappConversations)
+      .where(eq(whatsappConversations.instanceId, instanceId))
+      .orderBy(desc(whatsappConversations.lastMessageAt));
+  }
+
   async createWhatsappConversation(conversation: InsertWhatsappConversation): Promise<WhatsappConversation> {
     try {
       const [newConversation] = await db
@@ -2304,6 +2314,16 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(whatsappAgents)
       .orderBy(desc(whatsappAgents.createdAt));
+  }
+
+  async getWhatsappAgent(id: string): Promise<WhatsappAgent | undefined> {
+    await this.ensureWhatsappAgentsTable();
+    const [agent] = await db
+      .select()
+      .from(whatsappAgents)
+      .where(eq(whatsappAgents.id, id));
+    
+    return agent;
   }
 
   async createWhatsappAgent(agentData: InsertWhatsappAgent): Promise<WhatsappAgent> {

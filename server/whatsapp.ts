@@ -220,6 +220,94 @@ export class WhatsAppService {
     }
   }
 
+  async findMessagesFromChats(instanceKey: string, remoteJid: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const apiSettings = await this.getApiSettings();
+      
+      console.log(`🔍 Buscando mensagens via findChats para ${remoteJid} via instância ${instanceKey}`);
+      console.log(`🔗 URL: ${apiSettings.evolutionApiUrl}/chat/findChats/${instanceKey}`);
+
+      const response = await fetch(`${apiSettings.evolutionApiUrl}/chat/findChats/${instanceKey}`, {
+        method: 'POST',
+        headers: {
+          'apikey': apiSettings.globalToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          where: {
+            remoteJid: remoteJid
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Erro ao buscar chats: ${response.status} - ${errorText}`);
+        return { 
+          success: false, 
+          error: `Failed to find chats: ${response.status} - ${errorText}` 
+        };
+      }
+
+      const result = await response.json();
+      console.log(`📋 Resposta da Evolution API:`, {
+        type: typeof result,
+        isArray: Array.isArray(result),
+        keys: typeof result === 'object' ? Object.keys(result) : 'N/A',
+        fullResponse: JSON.stringify(result, null, 2).substring(0, 1000)
+      });
+
+      // Verificar diferentes estruturas de resposta
+      let chats = [];
+      
+      if (Array.isArray(result)) {
+        chats = result;
+      } else if (result.chats && Array.isArray(result.chats)) {
+        chats = result.chats;
+      } else if (result.data && Array.isArray(result.data)) {
+        chats = result.data;
+      } else if (result.records && Array.isArray(result.records)) {
+        chats = result.records;
+      }
+      
+      console.log(`💬 Chats encontrados: ${chats.length}`);
+      
+      if (Array.isArray(chats)) {
+        // Log detalhado dos chats encontrados
+        chats.forEach((chat, index) => {
+          console.log(`📱 Chat ${index + 1}:`, {
+            id: chat.id,
+            remoteJid: chat.remoteJid,
+            hasMessages: !!chat.messages,
+            messagesCount: chat.messages ? chat.messages.length : 0,
+            hasLastMessages: !!chat.lastMessages,
+            lastMessagesCount: chat.lastMessages ? chat.lastMessages.length : 0
+          });
+        });
+        
+        console.log(`✅ Sucesso! ${chats.length} chat(s) encontrado(s)`);
+        
+        return { 
+          success: true,
+          data: chats
+        };
+      } else {
+        console.log(`⚠️ Nenhum chat encontrado para ${remoteJid}`);
+        return { 
+          success: true,
+          data: []
+        };
+      }
+
+    } catch (error: any) {
+      console.error('❌ Erro ao buscar chats:', error);
+      return { 
+        success: false,
+        error: error.message || 'Unknown error finding chats'
+      };
+    }
+  }
+
   async findMessages(instanceKey: string, remoteJid: string, page: number = 1, offset: number = 50): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const apiSettings = await this.getApiSettings();
@@ -383,4 +471,4 @@ export class WhatsAppService {
   }
 }
 
-export const whatsappService = new WhatsAppService(); 
+export const whatsappService = new WhatsAppService();

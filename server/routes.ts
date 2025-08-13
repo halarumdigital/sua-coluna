@@ -11,8 +11,8 @@ import path from "path";
 import fs from "fs/promises";
 import { db } from "./db";
 import { aiUsage } from "@shared/schema";
-import { sum, count, desc, sql } from "drizzle-orm";
-import fetch from "node-fetch";
+import { sum, count, desc, sql, eq, and, ne, asc } from "drizzle-orm";
+import { plans, franchises, franchisePhoneNumbers, franchiseAgents, franchisePrompts, globalPrompts, customAIAgents, createCustomAIAgentSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Serve static files from uploads directory
@@ -122,6 +122,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // Admin plan usage and limits
+  app.get("/api/admin/plan-usage", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin' && user?.role !== 'franchisor') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const franchisor = await storage.getFranchisorByUserId(userId);
+      if (!franchisor) {
+        return res.status(404).json({ message: "Dados do franqueador não encontrados" });
+      }
+
+      const [plan] = await db.select().from(plans).where(eq(plans.id, franchisor.planId));
+      if (!plan) {
+        return res.status(404).json({ message: "Plano não encontrado" });
+      }
+
+      const [franchiseCountRow] = await db
+        .select({ value: count() })
+        .from(franchises)
+        .where(eq(franchises.franchisorId, franchisor.id));
+
+      const [phoneNumbersCountRow] = await db
+        .select({ value: count() })
+        .from(franchisePhoneNumbers)
+        .innerJoin(franchises, eq(franchisePhoneNumbers.franchiseId, franchises.id))
+        .where(eq(franchises.franchisorId, franchisor.id));
+
+      const [agentsCountRow] = await db
+        .select({ value: count() })
+        .from(franchiseAgents)
+        .innerJoin(franchises, eq(franchiseAgents.franchiseId, franchises.id))
+        .where(eq(franchises.franchisorId, franchisor.id));
+
+      const [franchisePromptsCountRow] = await db
+        .select({ value: count() })
+        .from(franchisePrompts)
+        .innerJoin(franchises, eq(franchisePrompts.franchiseId, franchises.id))
+        .where(eq(franchises.franchisorId, franchisor.id));
+
+      const [globalPromptsCountRow] = await db
+        .select({ value: count() })
+        .from(globalPrompts)
+        .where(eq(globalPrompts.franchisorId, franchisor.id));
+
+      res.json({
+        plan: {
+          id: plan.id,
+          name: plan.name,
+          maxFranchises: plan.maxFranchises,
+          maxPhoneNumbers: plan.maxPhoneNumbers,
+          maxAgents: plan.maxAgents,
+          maxPrompts: plan.maxPrompts,
+        },
+        usage: {
+          franchisesCount: Number(franchiseCountRow?.value || 0),
+          phoneNumbersCount: Number(phoneNumbersCountRow?.value || 0),
+          agentsCount: Number(agentsCountRow?.value || 0),
+          franchisePromptsCount: Number(franchisePromptsCountRow?.value || 0),
+          globalPromptsCount: Number(globalPromptsCountRow?.value || 0),
+        }
+      });
+    } catch (error) {
+      console.error("Error fetching plan usage:", error);
+      res.status(500).json({ message: "Erro ao buscar limites do plano" });
     }
   });
 
@@ -512,142 +586,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied - Super Root only" });
       }
 
-      console.log("📝 Dados recebidos para salvar configurações WhatsApp:", req.body);
-      
       const { whatsappApiSettingsSchema } = await import("@shared/schema");
-      
-      try {
-        const validatedData = whatsappApiSettingsSchema.parse(req.body);
-        console.log("✅ Dados validados com sucesso:", validatedData);
-        
-        const settings = await storage.saveWhatsappApiSettings(validatedData, userId);
-        console.log("✅ Configurações salvas com sucesso:", settings);
-        
-        res.json(settings);
-      } catch (validationError) {
-        console.error("❌ Erro de validação:", validationError);
-        throw validationError;
-      }
+      const validatedData = whatsappApiSettingsSchema.parse(req.body);
+
+      const settings = await storage.saveWhatsappApiSettings(validatedData, userId);
+
+      res.json(settings);
     } catch (error) {
       console.error("Error saving WhatsApp settings:", error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to save WhatsApp settings" });
-    }
-  });
-
-  app.post("/api/super-root/whatsapp-test", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = getCurrentUserId(req);
-      if (!userId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-
-      const user = await storage.getUser(userId);
-      if (user?.role !== 'super_root') {
-        return res.status(403).json({ message: "Access denied - Super Root only" });
-      }
-
-      const { evolutionApiUrl, globalToken } = req.body;
-
-      if (!evolutionApiUrl || !globalToken) {
-        return res.status(400).json({ 
-          success: false, 
-          error: "URL da Evolution API e Token Global são obrigatórios" 
-        });
-      }
-
-      // Validar formato da URL
-      try {
-        new URL(evolutionApiUrl);
-      } catch (urlError) {
-        return res.status(400).json({
-          success: false,
-          error: "URL da Evolution API inválida. Use o formato: http://localhost:8080 ou https://api.exemplo.com"
-        });
-      }
-
-      // Remover barra final da URL se existir
-      const cleanUrl = evolutionApiUrl.replace(/\/$/, '');
-
-      try {
-        // Testar conexão com a Evolution API
-        console.log(`🔍 Testando conexão com Evolution API:`);
-        console.log(`   URL Original: ${evolutionApiUrl}`);
-        console.log(`   URL Limpa: ${cleanUrl}`);
-        console.log(`   Token: ${globalToken?.substring(0, 20)}...`);
-        
-        const testUrl = `${cleanUrl}/instance/fetchInstances`;
-        console.log(`   URL Final: ${testUrl}`);
-        
-        const response = await fetch(testUrl, {
-          method: 'GET',
-          headers: {
-            'apikey': globalToken,
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000 // 10 segundos de timeout
-        });
-
-        console.log(`📋 Status da resposta: ${response.status}`);
-        console.log(`📋 Headers da resposta:`, Object.fromEntries(response.headers.entries()));
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log(`✅ Conexão bem-sucedida. Instâncias encontradas: ${Array.isArray(data) ? data.length : 'N/A'}`);
-          
-          res.json({
-            success: true,
-            message: "Conexão com Evolution API estabelecida com sucesso",
-            instanceCount: Array.isArray(data) ? data.length : 0,
-            url: cleanUrl
-          });
-        } else {
-          const errorText = await response.text();
-          console.error(`❌ Erro na API: ${response.status} - ${errorText}`);
-          
-          res.json({
-            success: false,
-            error: `Erro na API: ${response.status} - ${errorText || 'Resposta vazia'}`,
-            details: {
-              status: response.status,
-              statusText: response.statusText,
-              url: testUrl
-            }
-          });
-        }
-      } catch (testError: any) {
-        console.error(`❌ Erro ao testar conexão:`, testError);
-        
-        let errorMessage = "Erro ao conectar com a Evolution API";
-        
-        if (testError.code === 'ECONNREFUSED') {
-          errorMessage = "Conexão recusada. Verifique se a Evolution API está rodando na URL informada.";
-        } else if (testError.code === 'ENOTFOUND') {
-          errorMessage = "URL não encontrada. Verifique se a URL da Evolution API está correta.";
-        } else if (testError.code === 'ETIMEDOUT') {
-          errorMessage = "Timeout na conexão. A Evolution API pode estar lenta ou indisponível.";
-        } else if (testError.message) {
-          errorMessage = testError.message;
-        }
-        
-        res.json({
-          success: false,
-          error: errorMessage,
-          details: {
-            code: testError.code,
-            message: testError.message,
-            url: cleanUrl
-          }
-        });
-      }
-    } catch (error) {
-      console.error("Error testing WhatsApp connection:", error);
-      res.status(500).json({ 
-        success: false, 
-        error: "Erro interno do servidor" 
-      });
     }
   });
 
@@ -1111,6 +1061,143 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Client routes for custom AI agents
+  app.get("/api/client/custom-agents", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const agents = await db
+        .select()
+        .from(customAIAgents)
+        .where(eq(customAIAgents.userId, userId))
+        .orderBy(desc(customAIAgents.createdAt));
+
+      res.json(agents);
+    } catch (error) {
+      console.error("Error fetching custom AI agents:", error);
+      res.status(500).json({ message: "Failed to fetch custom AI agents" });
+    }
+  });
+
+  app.post("/api/client/custom-agents", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const validatedData = createCustomAIAgentSchema.parse(req.body);
+
+      const result = await db
+        .insert(customAIAgents)
+        .values({
+          ...validatedData,
+          userId,
+        });
+
+      // Buscar o agente criado mais recente para este usuário
+      const createdAgent = await db
+        .select()
+        .from(customAIAgents)
+        .where(eq(customAIAgents.userId, userId))
+        .orderBy(desc(customAIAgents.createdAt))
+        .limit(1);
+
+      res.status(201).json(createdAgent[0]);
+    } catch (error) {
+      console.error("Error creating custom AI agent:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Dados inválidos", 
+          errors: error.errors 
+        });
+      }
+      res.status(500).json({ message: "Failed to create custom AI agent" });
+    }
+  });
+
+  app.put("/api/client/custom-agents/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const { id } = req.params;
+      const validatedData = createCustomAIAgentSchema.parse(req.body);
+
+      // Verificar se o agente pertence ao usuário
+      const existingAgent = await db
+        .select()
+        .from(customAIAgents)
+        .where(and(eq(customAIAgents.id, id), eq(customAIAgents.userId, userId)))
+        .limit(1);
+
+      if (!existingAgent.length) {
+        return res.status(404).json({ message: "Agente não encontrado" });
+      }
+
+      await db
+        .update(customAIAgents)
+        .set({
+          ...validatedData,
+          updatedAt: new Date(),
+        })
+        .where(eq(customAIAgents.id, id));
+
+      const updatedAgent = await db
+        .select()
+        .from(customAIAgents)
+        .where(eq(customAIAgents.id, id))
+        .limit(1);
+
+      res.json(updatedAgent[0]);
+    } catch (error) {
+      console.error("Error updating custom AI agent:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Dados inválidos", 
+          errors: error.errors 
+        });
+      }
+      res.status(500).json({ message: "Failed to update custom AI agent" });
+    }
+  });
+
+  app.delete("/api/client/custom-agents/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const { id } = req.params;
+
+      // Verificar se o agente pertence ao usuário
+      const existingAgent = await db
+        .select()
+        .from(customAIAgents)
+        .where(and(eq(customAIAgents.id, id), eq(customAIAgents.userId, userId)))
+        .limit(1);
+
+      if (!existingAgent.length) {
+        return res.status(404).json({ message: "Agente não encontrado" });
+      }
+
+      await db
+        .delete(customAIAgents)
+        .where(eq(customAIAgents.id, id));
+
+      res.json({ message: "Agente deletado com sucesso" });
+    } catch (error) {
+      console.error("Error deleting custom AI agent:", error);
+      res.status(500).json({ message: "Failed to delete custom AI agent" });
+    }
+  });
+
   // Admin/Franchisor routes for managing franchises
   app.get("/api/admin/franchises", isAuthenticated, async (req: any, res) => {
     try {
@@ -1152,6 +1239,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const franchisor = await storage.getFranchisorByUserId(userId);
       if (!franchisor) {
         return res.status(404).json({ message: "Dados do franqueador não encontrados" });
+      }
+
+      // Limite de franquias por plano
+      const [plan] = await db.select().from(plans).where(eq(plans.id, franchisor.planId));
+      if (!plan) {
+        return res.status(404).json({ message: "Plano não encontrado" });
+      }
+      const [franchiseCountRow] = await db
+        .select({ value: count() })
+        .from(franchises)
+        .where(eq(franchises.franchisorId, franchisor.id));
+      const currentFranchises = Number(franchiseCountRow?.value || 0);
+      if (currentFranchises >= Number(plan.maxFranchises)) {
+        return res.status(403).json({
+          message: `Limite de franquias atingido para o plano (${plan.maxFranchises}). Atualize seu plano para criar mais franquias.`,
+          code: 'LIMIT_REACHED',
+          limit: Number(plan.maxFranchises),
+          current: currentFranchises,
+        });
       }
 
       const { createFranchiseSchema } = await import("@shared/schema");
@@ -1330,6 +1436,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const franchisor = await storage.getFranchisorByUserId(userId);
       if (!franchisor) {
         return res.status(404).json({ message: "Dados do franqueador não encontrados" });
+      }
+
+      // Limite de prompts por plano (globais + de franquias)
+      const [plan] = await db.select().from(plans).where(eq(plans.id, franchisor.planId));
+      if (!plan) {
+        return res.status(404).json({ message: "Plano não encontrado" });
+      }
+      const [franchisePromptsCountRow] = await db
+        .select({ value: count() })
+        .from(franchisePrompts)
+        .innerJoin(franchises, eq(franchisePrompts.franchiseId, franchises.id))
+        .where(eq(franchises.franchisorId, franchisor.id));
+      const [globalPromptsCountRow] = await db
+        .select({ value: count() })
+        .from(globalPrompts)
+        .where(eq(globalPrompts.franchisorId, franchisor.id));
+      const totalPrompts = Number(franchisePromptsCountRow?.value || 0) + Number(globalPromptsCountRow?.value || 0);
+      if (totalPrompts >= Number(plan.maxPrompts)) {
+        return res.status(403).json({
+          message: `Limite de prompts atingido para o plano (${plan.maxPrompts}). Atualize seu plano para criar mais prompts.`,
+          code: 'LIMIT_REACHED',
+          limit: Number(plan.maxPrompts),
+          current: totalPrompts,
+        });
       }
 
       const { createGlobalPromptSchema } = await import("@shared/schema");
@@ -1869,6 +1999,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Check admin WhatsApp instance status
+  app.get("/api/admin/whatsapp-instances/:instanceKey/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin' && user?.role !== 'franchisor') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { instanceKey } = req.params;
+      
+      // Get admin WhatsApp settings
+      const adminSettings = await storage.getWhatsappApiSettings();
+      if (!adminSettings) {
+        return res.status(400).json({ message: "Configurações da API WhatsApp não encontradas" });
+      }
+      
+      // Find instance by instanceKey
+      const instance = await storage.getAdminWhatsappInstanceByKey(instanceKey);
+      if (!instance) {
+        return res.status(404).json({ message: "Instância não encontrada" });
+      }
+      
+      try {
+        // Check status via Evolution API
+        const evolutionResponse = await fetch(`${adminSettings.evolutionApiUrl}/instance/connectionState/${instanceKey}`, {
+          method: 'GET',
+          headers: {
+            'apikey': adminSettings.globalToken,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!evolutionResponse.ok) {
+          console.error(`Evolution API error for ${instanceKey}:`, evolutionResponse.status);
+          return res.json({ 
+            status: 'error',
+            message: 'Erro ao verificar status na Evolution API',
+            instanceKey 
+          });
+        }
+        
+        const evolutionData = await evolutionResponse.json();
+        let status = evolutionData.instance?.state || 'disconnected';
+        
+        // Map Evolution API status to our system
+        if (status === 'open') {
+          status = 'connected';
+        } else if (status === 'close' || status === 'closed') {
+          status = 'disconnected';
+        }
+        
+        // Update instance status in database
+        const updateData: any = { 
+          status,
+          lastStatusCheck: new Date()
+        };
+        
+        if (status === 'connected' && evolutionData.instance?.profilePictureUrl) {
+          updateData.lastConnection = new Date();
+        }
+        
+        await storage.updateAdminWhatsappInstance(instance.id, updateData);
+        
+        res.json({ 
+          status,
+          instanceKey,
+          lastCheck: new Date().toISOString(),
+          evolutionData: evolutionData.instance
+        });
+        
+      } catch (evolutionError) {
+        console.error(`Error checking Evolution API for ${instanceKey}:`, evolutionError);
+        res.json({ 
+          status: 'error',
+          message: 'Erro ao conectar com a Evolution API',
+          instanceKey 
+        });
+      }
+      
+    } catch (error) {
+      console.error("Error checking admin WhatsApp instance status:", error);
+      res.status(500).json({ message: "Erro ao verificar status da instância" });
+    }
+  });
+
   // Update admin WhatsApp instance status
   app.put("/api/admin/whatsapp-instances/:id/status", isAuthenticated, async (req: any, res) => {
     try {
@@ -1973,8 +2193,565 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Check admin WhatsApp instance status
-  app.get("/api/admin/whatsapp-instances/:instanceKey/status", isAuthenticated, async (req: any, res) => {
+  // Rotas para WhatsApp dos Franqueadores
+  app.post('/api/franchisor/whatsapp/instances', async (req, res) => {
+    try {
+      const { franchisorId, instanceName, instanceKey, webhook, phoneNumber } = req.body;
+      
+      if (!franchisorId || !instanceName || !instanceKey) {
+        return res.status(400).json({ error: 'Dados obrigatórios não fornecidos' });
+      }
+
+      // Verificar se a instance key já existe
+      const existingInstance = await storage.getAdminWhatsappInstanceByKey(instanceKey);
+
+      if (existingInstance) {
+        return res.status(400).json({ error: 'Instance key já existe' });
+      }
+
+      // Criar nova instância
+      await storage.createAdminWhatsappInstance({
+        instanceName,
+        instanceKey,
+        phoneNumber,
+        status: 'disconnected',
+        isActive: true
+      });
+
+      res.status(201).json({ 
+        message: 'Instância criada com sucesso'
+      });
+
+    } catch (error) {
+      console.error('Erro ao criar instância WhatsApp:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  app.get('/api/franchisor/:franchisorId/whatsapp/instances', async (req, res) => {
+    try {
+      const { franchisorId } = req.params;
+      
+      const instances = await storage.getAdminWhatsappInstances();
+
+      res.json(instances);
+
+    } catch (error) {
+      console.error('Erro ao buscar instâncias WhatsApp:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  app.put('/api/franchisor/whatsapp/instances/:instanceId', async (req, res) => {
+    try {
+      const { instanceId } = req.params;
+      const { instanceName, webhook, phoneNumber, isActive } = req.body;
+      
+      await storage.updateAdminWhatsappInstance(instanceId, {
+        instanceName,
+        phoneNumber,
+        isActive
+      });
+
+      res.json({ message: 'Instância atualizada com sucesso' });
+
+    } catch (error) {
+      console.error('Erro ao atualizar instância WhatsApp:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  app.delete('/api/franchisor/whatsapp/instances/:instanceId', async (req, res) => {
+    try {
+      const { instanceId } = req.params;
+      
+      await storage.deleteAdminWhatsappInstance(instanceId);
+
+      res.json({ message: 'Instância removida com sucesso' });
+
+    } catch (error) {
+      console.error('Erro ao remover instância WhatsApp:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  // Rotas para números de telefone dos franqueadores
+  app.post('/api/franchisor/phone-numbers', async (req, res) => {
+    try {
+      const { franchisorId, phoneNumber, whatsappInstanceId, isPrimary } = req.body;
+      
+      if (!franchisorId || !phoneNumber) {
+        return res.status(400).json({ error: 'Dados obrigatórios não fornecidos' });
+      }
+
+      // Se for número primário, desativar outros números primários
+      if (isPrimary) {
+        await db.update(franchisePhoneNumbers)
+          .set({ isPrimary: false })
+          .where(and(
+            eq(franchisePhoneNumbers.franchiseId, franchisorId),
+            eq(franchisePhoneNumbers.isPrimary, true)
+          ));
+      }
+
+      // Criar novo número
+      const newPhoneNumber = await db.insert(franchisePhoneNumbers).values({
+        franchiseId: franchisorId,
+        phoneNumber,
+        whatsappInstanceId,
+        isPrimary: isPrimary || false,
+        isActive: true
+      });
+
+      res.status(201).json({ 
+        message: 'Número de telefone adicionado com sucesso'
+      });
+
+    } catch (error) {
+      console.error('Erro ao adicionar número de telefone:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  app.get('/api/franchisor/:franchisorId/phone-numbers', async (req, res) => {
+    try {
+      const { franchisorId } = req.params;
+      
+      const phoneNumbers = await db.query.franchisePhoneNumbers.findMany({
+        where: eq(franchisePhoneNumbers.franchiseId, franchisorId),
+        orderBy: [desc(franchisePhoneNumbers.createdAt)]
+      });
+
+      res.json(phoneNumbers);
+
+    } catch (error) {
+      console.error('Erro ao buscar números de telefone:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  app.put('/api/franchisor/phone-numbers/:phoneNumberId', async (req, res) => {
+    try {
+      const { phoneNumberId } = req.params;
+      const { phoneNumber, whatsappInstanceId, isPrimary, isActive } = req.body;
+      
+      const phoneNumberRecord = await db.query.franchisePhoneNumbers.findFirst({
+        where: eq(franchisePhoneNumbers.id, phoneNumberId)
+      });
+
+      if (!phoneNumberRecord) {
+        return res.status(404).json({ error: 'Número de telefone não encontrado' });
+      }
+
+      // Se for número primário, desativar outros números primários
+      if (isPrimary) {
+        await db.update(franchisePhoneNumbers)
+          .set({ isPrimary: false })
+          .where(and(
+            eq(franchisePhoneNumbers.franchiseId, phoneNumberRecord.franchiseId),
+            eq(franchisePhoneNumbers.isPrimary, true),
+            ne(franchisePhoneNumbers.id, phoneNumberId)
+          ));
+      }
+
+      // Atualizar número
+      await db.update(franchisePhoneNumbers)
+        .set({
+          phoneNumber,
+          whatsappInstanceId,
+          isPrimary,
+          isActive,
+          updatedAt: new Date()
+        })
+        .where(eq(franchisePhoneNumbers.id, phoneNumberId));
+
+      res.json({ message: 'Número de telefone atualizado com sucesso' });
+
+    } catch (error) {
+      console.error('Erro ao atualizar número de telefone:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  app.delete('/api/franchisor/phone-numbers/:phoneNumberId', async (req, res) => {
+    try {
+      const { phoneNumberId } = req.params;
+      
+      await db.delete(franchisePhoneNumbers)
+        .where(eq(franchisePhoneNumbers.id, phoneNumberId));
+
+      res.json({ message: 'Número de telefone removido com sucesso' });
+
+    } catch (error) {
+      console.error('Erro ao remover número de telefone:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  // Rotas para mapeamento de prompts
+  app.post('/api/franchisor/phone-prompt-mapping', async (req, res) => {
+    try {
+      const { phoneNumberId, phoneNumberType, promptId, promptType, priority } = req.body;
+      
+      if (!phoneNumberId || !phoneNumberType || !promptId || !promptType) {
+        return res.status(400).json({ error: 'Dados obrigatórios não fornecidos' });
+      }
+
+      // Verificar se o número de telefone existe
+      const phoneNumber = await db.query.franchisePhoneNumbers.findFirst({
+        where: eq(franchisePhoneNumbers.id, phoneNumberId)
+      });
+
+      if (!phoneNumber) {
+        return res.status(404).json({ error: 'Número de telefone não encontrado' });
+      }
+
+      // Verificar se o prompt existe
+      const promptExists = await db.query.franchisePrompts.findFirst({
+        where: eq(franchisePrompts.id, promptId)
+      });
+
+      if (!promptExists) {
+        return res.status(404).json({ error: 'Prompt não encontrado' });
+      }
+
+      // Criar mapeamento
+      const newMapping = await db.insert(franchisePrompts).values({
+        franchiseId: phoneNumberId,
+        name: `Prompt para ${phoneNumberId}`,
+        description: `Prompt associado ao número ${phoneNumberId}`,
+        prompt: promptId,
+        isActive: true
+      });
+
+      res.status(201).json({ 
+        message: 'Mapeamento criado com sucesso'
+      });
+
+    } catch (error) {
+      console.error('Erro ao criar mapeamento de prompt:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  app.get('/api/franchisor/phone-prompt-mapping/:phoneNumberId', async (req, res) => {
+    try {
+      const { phoneNumberId } = req.params;
+      
+      const mappings = await db.query.franchisePrompts.findMany({
+        where: eq(franchisePrompts.franchiseId, phoneNumberId),
+        orderBy: [desc(franchisePrompts.createdAt)]
+      });
+
+      res.json(mappings);
+
+    } catch (error) {
+      console.error('Erro ao buscar mapeamentos de prompt:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  app.put('/api/franchisor/phone-prompt-mapping/:mappingId', async (req, res) => {
+    try {
+      const { mappingId } = req.params;
+      const { priority, isActive } = req.body;
+      
+      await db.update(franchisePrompts)
+        .set({
+          isActive,
+          updatedAt: new Date()
+        })
+        .where(eq(franchisePrompts.id, mappingId));
+
+      res.json({ message: 'Mapeamento atualizado com sucesso' });
+
+    } catch (error) {
+      console.error('Erro ao atualizar mapeamento de prompt:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  app.delete('/api/franchisor/phone-prompt-mapping/:mappingId', async (req, res) => {
+    try {
+      const { mappingId } = req.params;
+      
+      await db.delete(franchisePrompts)
+        .where(eq(franchisePrompts.id, mappingId));
+
+      res.json({ message: 'Mapeamento removido com sucesso' });
+
+    } catch (error) {
+      console.error('Erro ao remover mapeamento de prompt:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  // Rota para obter prompt baseado no número de telefone
+  app.get('/api/franchisor/prompt-by-phone/:phoneNumber', async (req, res) => {
+    try {
+      const { phoneNumber } = req.params;
+      
+      // Buscar o número de telefone
+      const phoneNumberRecord = await db.query.franchisePhoneNumbers.findFirst({
+        where: eq(franchisePhoneNumbers.phoneNumber, phoneNumber)
+      });
+
+      if (!phoneNumberRecord) {
+        return res.status(404).json({ error: 'Número de telefone não encontrado' });
+      }
+
+      // Buscar mapeamentos ativos ordenados por prioridade
+      // Buscar mapeamentos ativos ordenados por prioridade
+      const mappings = await db.query.franchisePrompts.findMany({
+        where: and(
+          eq(franchisePrompts.franchiseId, phoneNumberRecord.franchiseId),
+          eq(franchisePrompts.isActive, true)
+        ),
+        orderBy: asc(franchisePrompts.createdAt)
+      });
+
+      if (mappings.length === 0) {
+        return res.status(404).json({ error: 'Nenhum prompt configurado para este número' });
+      }
+
+      // Buscar os prompts baseados nos mapeamentos
+      const prompts = [];
+      for (const mapping of mappings) {
+        prompts.push({
+          ...mapping,
+          mappingType: 'franchise'
+        });
+      }
+
+      // Ordenar por data de criação
+      prompts.sort((a, b) => new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime());
+
+      res.json({
+        phoneNumber: phoneNumberRecord.phoneNumber,
+        whatsappInstanceId: phoneNumberRecord.whatsappInstanceId,
+        prompts
+      });
+
+    } catch (error) {
+      console.error('Erro ao buscar prompt por número:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  // Rota para buscar agentes WhatsApp (da tabela global_prompts)
+  app.get('/api/admin/whatsapp-agents', isAuthenticated, async (req: any, res) => {
+    try {
+      // Verificar se o usuário é admin
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== 'admin' && user.role !== 'franchisor' && user.role !== 'super_root')) {
+        return res.status(403).json({ error: 'Acesso negado' });
+      }
+
+      // Buscar franqueador do usuário
+      const franchisor = await storage.getFranchisorByUserId(user.id);
+      if (!franchisor) {
+        return res.status(404).json({ error: 'Franqueador não encontrado' });
+      }
+
+      // Buscar prompts globais como agentes
+      const prompts = await storage.getGlobalPrompts(franchisor.id);
+      
+      // Transformar prompts em formato de agentes
+      const agents = prompts.map(prompt => ({
+        id: prompt.id,
+        name: prompt.name,
+        description: prompt.description,
+        type: 'global',
+        isActive: prompt.isActive,
+        createdAt: prompt.createdAt
+      }));
+
+      res.json(agents);
+
+    } catch (error) {
+      console.error('Erro ao buscar agentes WhatsApp:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  // Admin WhatsApp webhook endpoint for AI processing
+  app.post("/api/admin/whatsapp-webhook/:instanceKey", async (req: any, res) => {
+    try {
+      const { instanceKey } = req.params;
+      const webhookData = req.body;
+      
+      console.log(`📨 Admin WhatsApp webhook received for instance: ${instanceKey}`);
+      console.log('📋 Webhook data:', JSON.stringify(webhookData, null, 2));
+      
+      // Find the instance
+      const instance = await storage.getAdminWhatsappInstanceByKey(instanceKey);
+      if (!instance) {
+        console.log(`❌ Instance not found: ${instanceKey}`);
+        return res.status(404).json({ message: "Instance not found" });
+      }
+      
+      // Process the webhook with AI handler
+      await whatsappAIHandler.handleAdminWebhook(instanceKey, webhookData);
+      
+      res.status(200).json({ message: "Webhook processed successfully" });
+    } catch (error) {
+      console.error("❌ Error processing admin WhatsApp webhook:", error);
+      res.status(500).json({ message: "Error processing webhook" });
+    }
+  });
+
+  // Rotas para vinculações de WhatsApp Instance-Agent
+  app.get('/api/admin/whatsapp-instance-agent-bindings', isAuthenticated, async (req: any, res) => {
+    try {
+      // Verificar se o usuário é admin
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== 'admin' && user.role !== 'franchisor' && user.role !== 'super_root')) {
+        return res.status(403).json({ error: 'Acesso negado' });
+      }
+
+      // Buscar todas as vinculações
+      const bindings = await storage.getWhatsappInstanceAgentBindings();
+
+      // Enriquecer vinculações com dados da instância e agente
+      const enrichedBindings = await Promise.all(
+        bindings.map(async (binding) => {
+          const instance = await storage.getAdminWhatsappInstance(binding.instanceId);
+          const agent = await storage.getWhatsappAgent(binding.agentId);
+          
+          return {
+            ...binding,
+            instance,
+            agent: agent ? {
+              id: agent.id,
+              name: agent.name,
+              description: agent.description,
+              type: agent.type,
+              isActive: agent.isActive,
+              createdAt: agent.createdAt
+            } : null
+          };
+        })
+      );
+
+      res.json(enrichedBindings);
+
+    } catch (error) {
+      console.error('Erro ao buscar vinculações de WhatsApp:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  app.post('/api/admin/whatsapp-instance-agent-bindings', isAuthenticated, async (req: any, res) => {
+    try {
+      // Verificar se o usuário é admin
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== 'admin' && user.role !== 'franchisor' && user.role !== 'super_root')) {
+        return res.status(403).json({ error: 'Acesso negado' });
+      }
+
+      const { instanceId, agentId } = req.body;
+      
+      if (!instanceId || !agentId) {
+        return res.status(400).json({ error: 'Dados obrigatórios não fornecidos' });
+      }
+
+      // Verificar se a instância existe
+      const instance = await storage.getAdminWhatsappInstance(instanceId);
+      if (!instance) {
+        return res.status(404).json({ error: 'Instância de WhatsApp não encontrada' });
+      }
+
+      // Verificar se o agente existe (buscar na tabela global_prompts)
+      const agent = await storage.getGlobalPromptById(agentId);
+      if (!agent) {
+        return res.status(404).json({ error: 'Agente WhatsApp não encontrado' });
+      }
+
+      // Criar vinculação
+      const binding = await storage.createWhatsappInstanceAgentBinding({
+        instanceId,
+        agentId,
+        isActive: true
+      });
+
+      res.status(201).json(binding);
+
+    } catch (error) {
+      console.error('Erro ao criar vinculação de WhatsApp:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  app.put('/api/admin/whatsapp-instance-agent-bindings/:bindingId', isAuthenticated, async (req: any, res) => {
+    try {
+      // Verificar se o usuário é admin
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== 'admin' && user.role !== 'franchisor' && user.role !== 'super_root')) {
+        return res.status(403).json({ error: 'Acesso negado' });
+      }
+
+      const { bindingId } = req.params;
+      const { isActive } = req.body;
+
+      // Atualizar vinculação
+      const binding = await storage.updateWhatsappInstanceAgentBinding(bindingId, { isActive });
+
+      res.json(binding);
+
+    } catch (error) {
+      console.error('Erro ao atualizar vinculação de WhatsApp:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  app.delete('/api/admin/whatsapp-instance-agent-bindings/:bindingId', isAuthenticated, async (req: any, res) => {
+    try {
+      // Verificar se o usuário é admin
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== 'admin' && user.role !== 'franchisor' && user.role !== 'super_root')) {
+        return res.status(403).json({ error: 'Acesso negado' });
+      }
+
+      const { bindingId } = req.params;
+
+      // Remover vinculação
+      await storage.deleteWhatsappInstanceAgentBinding(bindingId);
+
+      res.json({ message: 'Vinculação removida com sucesso' });
+
+    } catch (error) {
+      console.error('Erro ao remover vinculação de WhatsApp:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  });
+
+  // Get conversations from Evolution API for admin WhatsApp instance
+  app.get("/api/admin/whatsapp-instances/:instanceKey/chats", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -1988,273 +2765,204 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const { instanceKey } = req.params;
       
-      // Check if instance exists in database
+      // Get admin WhatsApp settings
+      const adminSettings = await storage.getWhatsappApiSettings();
+      if (!adminSettings || !adminSettings.isActive) {
+        return res.status(400).json({ message: "Configurações da API WhatsApp não encontradas ou inativas" });
+      }
+      
+      // Find instance to verify it exists
       const instance = await storage.getAdminWhatsappInstanceByKey(instanceKey);
       if (!instance) {
         return res.status(404).json({ message: "Instância não encontrada" });
       }
-
-      // Import WhatsApp service
-      const { whatsappService } = await import("./whatsapp");
       
-      // Get status from Evolution API
-      const statusResult = await whatsappService.getInstanceStatus(instanceKey);
+      // Make request to Evolution API to find chats
+      const evolutionResponse = await fetch(`${adminSettings.evolutionApiUrl}/chat/findChats/${instanceKey}`, {
+        method: 'POST',
+        headers: {
+          'apikey': adminSettings.globalToken,
+          'Content-Type': 'application/json'
+        }
+      });
       
-      if (!statusResult.success) {
-        return res.status(500).json({ 
-          message: "Erro ao verificar status da instância",
-          error: statusResult.error 
+      if (!evolutionResponse.ok) {
+        let errorData;
+        try {
+          errorData = await evolutionResponse.json();
+        } catch {
+          errorData = await evolutionResponse.text();
+        }
+        return res.status(400).json({ 
+          message: "Falha ao buscar conversas na Evolution API", 
+          details: errorData 
         });
       }
-
-      // Update status in database if different
-      if (instance.status !== statusResult.status) {
-        await storage.updateAdminWhatsappInstance(instance.id, { 
-          status: statusResult.status,
-          updatedAt: new Date()
-        });
-      }
-
+      
+      const chatsData = await evolutionResponse.json();
+      
       res.json({
-        instanceKey: instanceKey,
-        status: statusResult.status,
-        lastChecked: new Date().toISOString()
+        message: "Conversas obtidas com sucesso",
+        chats: chatsData
       });
     } catch (error) {
-      console.error("Error checking WhatsApp instance status:", error);
-      res.status(500).json({ message: "Erro ao verificar status da instância" });
+      console.error("Error fetching chats from Evolution API:", error);
+      res.status(500).json({ message: "Erro ao buscar conversas" });
     }
   });
 
-  // Admin WhatsApp Agents routes
-  app.get("/api/admin/whatsapp-agents", isAuthenticated, async (req: any, res) => {
+  // Get conversations for admin WhatsApp instance
+  app.get("/api/admin/whatsapp-instances/:instanceId/conversations", isAuthenticated, async (req: any, res) => {
     try {
-      console.log('🔍 WhatsApp Agents route called');
-      
       const userId = getCurrentUserId(req);
-      console.log('👤 User ID:', userId);
-      
       if (!userId) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-
+      
       const user = await storage.getUser(userId);
-      console.log('👤 User found:', user ? `${user.firstName} ${user.lastName} (${user.role})` : 'null');
-      
-      if (user?.role !== 'franchisor' && user?.role !== 'admin' && user?.role !== 'super_root') {
-        return res.status(403).json({ message: "Access denied - Admin/Franchisor only" });
+      if (user?.role !== 'admin' && user?.role !== 'franchisor') {
+        return res.status(403).json({ message: "Access denied" });
       }
-
-      // Get global prompts from all franchisors for now
-      // This ensures agents are always available regardless of user context
-      let globalPrompts = [];
       
-      if (user.role === 'super_root') {
-        // Super root can see prompts from all franchisors
-        console.log('🏢 Super root - fetching prompts from all franchisors');
-        const franchisors = await storage.getAllFranchisors();
-        console.log('🏢 Franchisors found:', franchisors.length);
-        
-        for (const franchisor of franchisors) {
-          const prompts = await storage.getGlobalPrompts(franchisor.id);
-          globalPrompts.push(...prompts);
-          console.log(`📋 Prompts from ${franchisor.companyName}: ${prompts.length}`);
-        }
-      } else {
-        // For franchisor and admin users, try to get their specific franchisor
-        const franchisor = await storage.getFranchisorByUserId(userId);
-        console.log('🏢 Franchisor found for user:', franchisor?.companyName, franchisor?.id);
-        
-        if (franchisor) {
-          globalPrompts = await storage.getGlobalPrompts(franchisor.id);
-          console.log('📋 Global prompts found for franchisor:', globalPrompts.length);
-        } else {
-          // If no franchisor found, get prompts from all franchisors as fallback
-          console.log('⚠️ No franchisor found for user, fetching from all franchisors');
-          const franchisors = await storage.getAllFranchisors();
-          for (const f of franchisors) {
-            const prompts = await storage.getGlobalPrompts(f.id);
-            globalPrompts.push(...prompts);
+      const { instanceId } = req.params;
+      
+      // Find instance
+      const instance = await storage.getAdminWhatsappInstance(instanceId);
+      if (!instance) {
+        return res.status(404).json({ message: "Instância não encontrada" });
+      }
+      
+      // Get conversations for this instance
+      const conversations = await storage.getWhatsappConversationsByInstance(instanceId);
+      
+      res.json(conversations);
+    } catch (error) {
+      console.error("Error fetching admin WhatsApp conversations:", error);
+      res.status(500).json({ message: "Failed to fetch conversations" });
+    }
+  });
+
+  // Get messages for admin WhatsApp conversation
+  app.get("/api/admin/whatsapp-conversations/:conversationId/messages", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin' && user?.role !== 'franchisor') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { conversationId } = req.params;
+      
+      // Get conversation to verify it exists and get chatId
+      const conversation = await storage.getWhatsappConversationById(conversationId);
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversa não encontrada" });
+      }
+      
+      // Get instance to get instanceKey
+      const instance = await storage.getAdminWhatsappInstance(conversation.instanceId);
+      if (!instance) {
+        return res.status(404).json({ message: "Instância não encontrada" });
+      }
+      
+      console.log(`🔍 Buscando mensagens para conversa ${conversationId}`);
+      console.log(`📱 Instância: ${instance.instanceKey}`);
+      console.log(`💬 Chat ID: ${conversation.chatId}`);
+      
+      // Import whatsappService and fetch messages using the correct endpoint
+      const { whatsappService } = await import('./whatsapp');
+      const evolutionResult = await whatsappService.findMessagesFromChats(instance.instanceKey, conversation.chatId);
+      
+      if (!evolutionResult.success) {
+        console.error("Error fetching chats from Evolution API:", evolutionResult.error);
+        return res.status(500).json({ 
+          message: "Falha ao buscar chats da Evolution API", 
+          details: evolutionResult.error 
+        });
+      }
+      
+      let chats: any[] = [];
+      let messages: any[] = [];
+      
+      // Handle different response formats from Evolution API
+      if (Array.isArray(evolutionResult.data)) {
+        chats = evolutionResult.data;
+      } else if (evolutionResult.data && Array.isArray(evolutionResult.data.chats)) {
+        chats = evolutionResult.data.chats;
+      } else if (evolutionResult.data && typeof evolutionResult.data === 'object') {
+        // Try to extract chats from any array property
+        const dataKeys = Object.keys(evolutionResult.data);
+        for (const key of dataKeys) {
+          if (Array.isArray(evolutionResult.data[key])) {
+            chats = evolutionResult.data[key];
+            break;
           }
         }
       }
       
-      console.log('📋 Total global prompts found:', globalPrompts.length);
+      // Find the specific chat and extract messages
+      const targetChat = chats.find(chat => chat.id === conversation.chatId || chat.remoteJid === conversation.chatId);
       
-      if (globalPrompts.length > 0) {
-        console.log('📋 First prompt sample:', {
-          id: globalPrompts[0].id,
-          name: globalPrompts[0].name,
-          description: globalPrompts[0].description,
-          isActive: globalPrompts[0].isActive,
-          createdAt: globalPrompts[0].createdAt
-        });
+      if (targetChat && targetChat.messages && Array.isArray(targetChat.messages)) {
+        messages = targetChat.messages;
+      } else if (targetChat && targetChat.lastMessages && Array.isArray(targetChat.lastMessages)) {
+        messages = targetChat.lastMessages;
       }
       
-      console.log('📋 Raw global prompts:', JSON.stringify(globalPrompts, null, 2));
+      console.log(`📬 Mensagens encontradas: ${messages.length}`);
       
-      // Transform global prompts to agent format
-      const agents = globalPrompts.map(prompt => ({
-        id: prompt.id,
-        name: prompt.name,
-        description: prompt.description,
-        type: 'global',
-        isActive: prompt.isActive,
-        createdAt: prompt.createdAt
-      }));
-
-      console.log('🤖 Agents to return:', agents.length);
-      console.log('🤖 Agents data:', JSON.stringify(agents, null, 2));
-      res.json(agents);
-    } catch (error) {
-      console.error("Error fetching WhatsApp agents:", error);
-      res.status(500).json({ message: "Failed to fetch WhatsApp agents" });
-    }
-  });
-
-  // Admin WhatsApp Instance-Agent Bindings routes
-  app.get("/api/admin/whatsapp-instance-agent-bindings", isAuthenticated, async (req: any, res) => {
-    try {
-      console.log('🔗 WhatsApp Instance-Agent Bindings route called');
-      
-      const userId = getCurrentUserId(req);
-      if (!userId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-
-      const user = await storage.getUser(userId);
-      if (user?.role !== 'franchisor' && user?.role !== 'admin' && user?.role !== 'super_root') {
-        return res.status(403).json({ message: "Access denied - Admin/Franchisor only" });
-      }
-
-      console.log('🔗 Fetching bindings from database...');
-      const bindings = await storage.getWhatsappInstanceAgentBindings();
-      console.log('🔗 Raw bindings found:', bindings.length);
-      
-      // Enrich bindings with instance and agent data
-      const enrichedBindings = await Promise.all(
-        bindings.map(async (binding) => {
-          const instance = await storage.getAdminWhatsappInstance(binding.instanceId);
-          const agent = await storage.getGlobalPromptById(binding.agentId);
-          
-          return {
-            ...binding,
-            instance,
-            agent: agent ? {
-              id: agent.id,
-              name: agent.name,
-              description: agent.description,
-              type: 'global',
-              isActive: agent.isActive,
-              createdAt: agent.createdAt
-            } : null
-          };
-        })
-      );
-      
-      res.json(enrichedBindings);
-    } catch (error) {
-      console.error("Error fetching WhatsApp instance-agent bindings:", error);
-      res.status(500).json({ message: "Failed to fetch WhatsApp instance-agent bindings" });
-    }
-  });
-
-  app.post("/api/admin/whatsapp-instance-agent-bindings", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = getCurrentUserId(req);
-      if (!userId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-
-      const user = await storage.getUser(userId);
-      if (user?.role !== 'franchisor' && user?.role !== 'admin' && user?.role !== 'super_root') {
-        return res.status(403).json({ message: "Access denied - Admin/Franchisor only" });
-      }
-
-      const { instanceId, agentId } = req.body;
-
-      if (!instanceId || !agentId) {
-        return res.status(400).json({ message: "Instance ID and Agent ID are required" });
-      }
-
-      // Check if binding already exists
-      const existingBindings = await storage.getWhatsappInstanceAgentBindings();
-      const existingBinding = existingBindings.find(
-        binding => binding.instanceId === instanceId && binding.isActive
-      );
-
-      if (existingBinding) {
-        return res.status(400).json({ message: "Esta instância já possui um agente vinculado ativo. Desative a vinculação atual primeiro." });
-      }
-
-      // Verify that the agent (global prompt) exists
-      const globalPrompt = await storage.getGlobalPromptById(agentId);
-      if (!globalPrompt) {
-        return res.status(400).json({ message: "Agente (prompt global) não encontrado" });
-      }
-
-      const binding = await storage.createWhatsappInstanceAgentBinding({
-        instanceId,
-        agentId,
-        isActive: true
+      // Format messages for frontend
+      const formattedMessages = messages.map(msg => {
+        // Extract message content from different possible structures
+        let content = '';
+        if (msg.message?.conversation) {
+          content = msg.message.conversation;
+        } else if (msg.message?.extendedTextMessage?.text) {
+          content = msg.message.extendedTextMessage.text;
+        } else if (msg.message?.text) {
+          content = msg.message.text;
+        } else if (msg.content) {
+          content = msg.content;
+        } else if (typeof msg.message === 'string') {
+          content = msg.message;
+        } else {
+          content = '[Mensagem sem texto]';
+        }
+        
+        // Extract timestamp
+        let timestamp = new Date().toISOString();
+        if (msg.messageTimestamp) {
+          timestamp = new Date(msg.messageTimestamp * 1000).toISOString();
+        } else if (msg.timestamp) {
+          timestamp = new Date(msg.timestamp).toISOString();
+        }
+        
+        return {
+          id: msg.key?.id || msg.id || `msg_${Date.now()}_${Math.random()}`,
+          messageId: msg.key?.id || msg.id || '',
+          conversationId: conversationId,
+          senderPhone: msg.key?.participant || msg.key?.remoteJid?.split('@')[0] || '',
+          senderName: msg.pushName || '',
+          content: content,
+          messageType: 'text',
+          direction: msg.key?.fromMe ? 'outgoing' : 'incoming',
+          status: msg.status || 'sent',
+          timestamp: timestamp,
+          isAiResponse: false,
+          aiModel: undefined
+        };
       });
-
-      res.json({
-        message: "Binding created successfully",
-        binding
-      });
+      
+      console.log(`✅ ${formattedMessages.length} mensagens formatadas para o frontend`);
+      
+      res.json(formattedMessages);
     } catch (error) {
-      console.error("Error creating WhatsApp instance-agent binding:", error);
-      res.status(500).json({ message: "Failed to create binding" });
-    }
-  });
-
-  app.put("/api/admin/whatsapp-instance-agent-bindings/:id/toggle", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = getCurrentUserId(req);
-      if (!userId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-
-      const user = await storage.getUser(userId);
-      if (user?.role !== 'franchisor' && user?.role !== 'admin' && user?.role !== 'super_root') {
-        return res.status(403).json({ message: "Access denied - Admin/Franchisor only" });
-      }
-
-      const { id } = req.params;
-      const updatedBinding = await storage.toggleWhatsappInstanceAgentBinding(id);
-
-      res.json({
-        message: "Binding status updated successfully",
-        binding: updatedBinding
-      });
-    } catch (error) {
-      console.error("Error toggling WhatsApp instance-agent binding:", error);
-      res.status(500).json({ message: "Failed to update binding" });
-    }
-  });
-
-  app.delete("/api/admin/whatsapp-instance-agent-bindings/:id", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = getCurrentUserId(req);
-      if (!userId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-
-      const user = await storage.getUser(userId);
-      if (user?.role !== 'franchisor' && user?.role !== 'admin' && user?.role !== 'super_root') {
-        return res.status(403).json({ message: "Access denied - Admin/Franchisor only" });
-      }
-
-      const { id } = req.params;
-      await storage.deleteWhatsappInstanceAgentBinding(id);
-
-      res.json({
-        message: "Binding deleted successfully"
-      });
-    } catch (error) {
-      console.error("Error deleting WhatsApp instance-agent binding:", error);
-      res.status(500).json({ message: "Failed to delete binding" });
+      console.error("Error fetching admin WhatsApp messages:", error);
+      res.status(500).json({ message: "Failed to fetch messages" });
     }
   });
 

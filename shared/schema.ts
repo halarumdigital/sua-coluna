@@ -434,6 +434,23 @@ export const aiUsage = mysqlTable("ai_usage", {
   index("idx_ai_usage_model").on(table.model),
 ]);
 
+// Agentes personalizados de IA dos clientes
+export const customAIAgents = mysqlTable("custom_ai_agents", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  systemPrompt: text("system_prompt").notNull(),
+  temperature: decimal("temperature", { precision: 3, scale: 2 }).notNull().default("0.7"),
+  maxTokens: int("max_tokens").notNull().default(1000),
+  isActive: boolean("is_active").notNull().default(true),
+  userId: varchar("user_id", { length: 36 }).references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_custom_ai_agents_user").on(table.userId),
+  index("idx_custom_ai_agents_active").on(table.isActive),
+]);
+
 // Configurações da API WhatsApp
 export const whatsappApiSettings = mysqlTable("whatsapp_api_settings", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
@@ -650,6 +667,10 @@ export const aiUsageRelations = relations(aiUsage, ({ one }) => ({
   user: one(users, { fields: [aiUsage.userId], references: [users.id] }),
 }));
 
+export const customAIAgentsRelations = relations(customAIAgents, ({ one }) => ({
+  user: one(users, { fields: [customAIAgents.userId], references: [users.id] }),
+}));
+
 export const whatsappInstancesRelations = relations(whatsappInstances, ({ one, many }) => ({
   client: one(clients, { fields: [whatsappInstances.clientId], references: [clients.id] }),
   conversations: many(whatsappConversations),
@@ -761,6 +782,21 @@ export const insertAIConfigurationSchema = createInsertSchema(aiConfigurations).
 export const insertAIUsageSchema = createInsertSchema(aiUsage).omit({
   id: true,
   createdAt: true,
+});
+
+export const insertCustomAIAgentSchema = createInsertSchema(customAIAgents).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const createCustomAIAgentSchema = z.object({
+  name: z.string().min(1, "Nome do agente é obrigatório").max(255, "Nome muito longo"),
+  description: z.string().optional(),
+  systemPrompt: z.string().min(1, "Prompt do sistema é obrigatório"),
+  temperature: z.number().min(0).max(2).default(0.7),
+  maxTokens: z.number().min(1).max(4000).default(1000),
+  isActive: z.boolean().default(true),
 });
 
 export const insertWhatsappApiSettingsSchema = createInsertSchema(whatsappApiSettings).omit({
@@ -891,6 +927,9 @@ export type AIConfiguration = typeof aiConfigurations.$inferSelect;
 export type InsertAIConfiguration = z.infer<typeof insertAIConfigurationSchema>;
 export type AIUsage = typeof aiUsage.$inferSelect;
 export type InsertAIUsage = z.infer<typeof insertAIUsageSchema>;
+export type CustomAIAgent = typeof customAIAgents.$inferSelect;
+export type InsertCustomAIAgent = typeof customAIAgents.$inferInsert;
+export type CreateCustomAIAgent = z.infer<typeof createCustomAIAgentSchema>;
 
 // Schema para configurações da API WhatsApp
 export const whatsappApiSettingsSchema = z.object({

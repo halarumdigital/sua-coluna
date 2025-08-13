@@ -3010,11 +3010,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Not authenticated" });
       }
       
-      const user = await storage.getUser(userId);
-      if (user?.role !== 'client') {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      
+      // Get WhatsApp settings from super-root level (whatsapp_api_settings table)
       const settings = await storage.getWhatsappApiSettings();
       res.json(settings);
     } catch (error) {
@@ -3226,16 +3222,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Configure webhook in Evolution API
       const webhookConfig = {
         webhook: {
+          enabled: true,
           url: webhookUrl,
+          headers: {
+            "autorization": `Bearer ${adminSettings.globalToken}`,
+            "Content-Type": "application/json"
+          },
+          byEvents: false,
+          base64: true,
           events: [
             "MESSAGES_UPSERT",
-            "MESSAGES_UPDATE", 
+            "MESSAGES_UPDATE",
             "MESSAGES_DELETE",
             "SEND_MESSAGE",
-            "CONNECTION_UPDATE",
-            "CALL",
-            "TYPEBOT_START",
-            "TYPEBOT_CHANGE_STATUS"
+            "CHATS_SET",
+            "CHATS_UPSERT",
+            "CHATS_UPDATE",
+            "CHATS_DELETE"
           ]
         }
       };

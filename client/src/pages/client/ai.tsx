@@ -8,83 +8,97 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, Brain, Thermometer, Hash, MessageSquare, Send, Loader2, Settings, CheckCircle } from "lucide-react";
-
-interface AISettings {
-  systemPrompt?: string;
-  maxTokens?: number;
-  temperature?: number;
-}
+import { Bot, Plus, Edit, Trash2, Loader2 } from "lucide-react";
 
 export default function ClientAIPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [formData, setFormData] = useState<AISettings>({
+  // Estados para agentes personalizados
+  const [isCreatingAgent, setIsCreatingAgent] = useState(false);
+  const [editingAgent, setEditingAgent] = useState<any>(null);
+  const [agentForm, setAgentForm] = useState({
+    name: "",
+    description: "",
     systemPrompt: "",
-    maxTokens: undefined,
-    temperature: undefined,
+    temperature: 0.7,
+    maxTokens: 1000,
+    isActive: true
   });
 
-  const [testMessage, setTestMessage] = useState("");
-  const [testResponse, setTestResponse] = useState("");
-  const [isTestingAgent, setIsTestingAgent] = useState(false);
-
-  // Fetch current AI settings from admin
-  const { data: adminSettings, isLoading } = useQuery({
-    queryKey: ["/api/admin/ai-settings"],
+  // Fetch custom agents
+  const { data: agents, isLoading: agentsLoading, error: agentsError } = useQuery({
+    queryKey: ["/api/client/custom-agents"],
     queryFn: async () => {
-      const response = await fetch("/api/admin/ai-settings", {
+      const response = await fetch("/api/client/custom-agents", {
         credentials: "include",
       });
+      
       if (!response.ok) {
-        throw new Error("Failed to fetch AI settings");
+        // Se for 404, retornar array vazio (API não implementada ainda)
+        if (response.status === 404) {
+          console.warn('API /api/client/custom-agents não encontrada, retornando array vazio');
+          return [];
+        }
+        throw new Error(`Erro ao buscar agentes: ${response.status} ${response.statusText}`);
       }
       return response.json();
     },
+    // Retry menos vezes para APIs que podem não existir
+    retry: 1,
   });
 
-  // Fetch client's custom AI settings
-  const { data: clientSettings } = useQuery({
-    queryKey: ["/api/client/ai-settings"],
-    queryFn: async () => {
-      const response = await fetch("/api/client/ai-settings", {
-        credentials: "include",
-      });
-      if (!response.ok) {
-        // If no custom settings exist, return empty object
-        return {};
-      }
-      return response.json();
-    },
-  });
+  // Create/Update custom agent mutation
+  const saveAgentMutation = useMutation({
+    mutationFn: async (agentData: any) => {
+      const url = editingAgent 
+        ? `/api/client/custom-agents/${editingAgent.id}`
+        : "/api/client/custom-agents";
+      const method = editingAgent ? "PUT" : "POST";
 
-  // Update form data when settings are loaded
-  React.useEffect(() => {
-    if (clientSettings) {
-      setFormData({
-        systemPrompt: clientSettings.systemPrompt || "",
-        maxTokens: clientSettings.maxTokens || undefined,
-        temperature: clientSettings.temperature || undefined,
-      });
-    }
-  }, [clientSettings]);
+      console.log('Sending request to:', url, 'with method:', method);
+      console.log('Agent data:', agentData);
 
-  // Save client AI settings mutation
-  const saveSettingsMutation = useMutation({
-    mutationFn: async (data: AISettings) => {
-      const response = await fetch("/api/client/ai-settings", {
-        method: "POST",
+      const response = await fetch(url, {
+        method,
         headers: {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify(data),
+        body: JSON.stringify(agentData),
       });
 
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Erro ao salvar configurações");
+        let errorMessage = "Erro ao salvar agente";
+        
+        // Verificar o content-type para decidir como ler a resposta
+        const contentType = response.headers.get('content-type');
+        
+        try {
+          if (contentType && contentType.includes('application/json')) {
+            const error = await response.json();
+            errorMessage = error.message || `Erro HTTP ${response.status}`;
+          } else {
+            const textError = await response.text();
+            console.error('Response text:', textError);
+            
+            if (response.status === 404) {
+              errorMessage = `API não encontrada. A rota ${url} não está implementada no backend.`;
+            } else if (textError.includes('<html>')) {
+              errorMessage = `Erro do servidor (${response.status}). Verifique os logs do backend.`;
+            } else {
+              errorMessage = `Erro HTTP ${response.status}: ${response.statusText}`;
+            }
+          }
+        } catch (readError) {
+          console.error('Erro ao ler resposta:', readError);
+          errorMessage = `Erro HTTP ${response.status}: ${response.statusText}`;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       return response.json();
@@ -92,9 +106,19 @@ export default function ClientAIPage() {
     onSuccess: () => {
       toast({
         title: "Sucesso",
-        description: "Configurações de IA salvas com sucesso!",
+        description: editingAgent ? "Agente atualizado com sucesso!" : "Agente criado com sucesso!",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/client/ai-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/client/custom-agents"] });
+      setIsCreatingAgent(false);
+      setEditingAgent(null);
+      setAgentForm({
+        name: "",
+        description: "",
+        systemPrompt: "",
+        temperature: 0.7,
+        maxTokens: 1000,
+        isActive: true
+      });
     },
     onError: (error: Error) => {
       toast({
@@ -105,97 +129,85 @@ export default function ClientAIPage() {
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    saveSettingsMutation.mutate(formData);
-  };
-
-  const handleInputChange = (field: keyof AISettings, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  const handleTestAgent = async () => {
-    if (!testMessage.trim()) return;
-
-    setIsTestingAgent(true);
-    setTestResponse("");
-
-    try {
-      const response = await fetch("/api/client/ai-chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+  // Delete custom agent mutation
+  const deleteAgentMutation = useMutation({
+    mutationFn: async (agentId: string) => {
+      const response = await fetch(`/api/client/custom-agents/${agentId}`, {
+        method: "DELETE",
         credentials: "include",
-        body: JSON.stringify({
-          message: testMessage,
-          settings: formData
-        }),
       });
-
-      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || data.error || "Erro ao testar agente");
+        const error = await response.json();
+        throw new Error(error.message || "Erro ao deletar agente");
       }
 
-      if (!data.success) {
-        throw new Error(data.error || "Falha ao processar resposta do agente");
-      }
-
-      if (!data.response) {
-        throw new Error("Nenhuma resposta foi gerada pelo agente");
-      }
-
-      setTestResponse(data.response);
-
+      return response.json();
+    },
+    onSuccess: () => {
       toast({
-        title: "Teste Realizado",
-        description: "Agente testado com sucesso!",
+        title: "Sucesso",
+        description: "Agente deletado com sucesso!",
       });
-
-    } catch (error: any) {
-      console.error("Test error:", error);
-      
-      let errorMessage = "Erro desconhecido ao testar agente";
-      
-      if (error.message) {
-        errorMessage = error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
-
-      setTestResponse(`Erro: ${errorMessage}`);
-
+      queryClient.invalidateQueries({ queryKey: ["/api/client/custom-agents"] });
+    },
+    onError: (error: Error) => {
       toast({
-        title: "Erro no Teste",
-        description: errorMessage,
+        title: "Erro",
+        description: error.message,
         variant: "destructive",
       });
-    } finally {
-      setIsTestingAgent(false);
+    },
+  });
+
+  // Funções para gerenciar agentes personalizados
+  const handleCreateAgent = () => {
+    setIsCreatingAgent(true);
+    setEditingAgent(null);
+    setAgentForm({
+      name: "",
+      description: "",
+      systemPrompt: "",
+      temperature: 0.7,
+      maxTokens: 1000,
+      isActive: true
+    });
+  };
+
+  const handleEditAgent = (agent: any) => {
+    setEditingAgent(agent);
+    setIsCreatingAgent(true);
+    setAgentForm({
+      name: agent.name,
+      description: agent.description,
+      systemPrompt: agent.systemPrompt,
+      temperature: agent.temperature,
+      maxTokens: agent.maxTokens,
+      isActive: agent.isActive
+    });
+  };
+
+  const handleDeleteAgent = (agentId: string) => {
+    if (confirm("Tem certeza que deseja deletar este agente?")) {
+      deleteAgentMutation.mutate(agentId);
     }
   };
 
-  // Get effective settings (client settings override admin settings)
-  const getEffectiveSettings = () => {
-    if (!adminSettings) return {};
-    
-    return {
-      systemPrompt: formData.systemPrompt || adminSettings.systemPrompt,
-      maxTokens: formData.maxTokens || adminSettings.maxTokens,
-      temperature: formData.temperature !== undefined ? formData.temperature : adminSettings.temperature,
-    };
+  const handleSaveAgent = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveAgentMutation.mutate(agentForm);
   };
 
-  const effectiveSettings = getEffectiveSettings();
+  const handleAgentFormChange = (field: string, value: any) => {
+    setAgentForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
 
-  if (isLoading) {
+  if (agentsLoading) {
     return (
-      <Layout title="Configurações de IA">
+      <Layout title="Agentes de IA">
         <div className="space-y-6">
           <div className="h-32 bg-gray-200 rounded-xl animate-pulse" />
           <div className="h-64 bg-gray-200 rounded-xl animate-pulse" />
@@ -205,215 +217,251 @@ export default function ClientAIPage() {
   }
 
   return (
-    <Layout title="Configurações de IA">
+    <Layout title="Agentes de IA">
       <div className="space-y-8">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
-            <Bot className="w-6 h-6" />
-            Configurações de Inteligência Artificial
-          </h2>
-          <p className="text-gray-600">
-            Personalize as configurações do agente de IA. Deixe os campos vazios para usar as configurações padrão do administrador.
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
+              <Bot className="w-6 h-6" />
+              Agentes Personalizados
+            </h2>
+            <p className="text-gray-600">
+              Crie e gerencie agentes de IA com prompts específicos para suas necessidades
+            </p>
+          </div>
+          <Button onClick={handleCreateAgent} className="flex items-center gap-2">
+            <Plus className="w-4 h-4" />
+            Novo Agente
+          </Button>
         </div>
 
-        {/* Removido o card de Configurações Atuais */}
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* System Prompt */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="w-5 h-5" />
-                Prompt do Agente
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <Label htmlFor="systemPrompt">
-                  Prompt personalizado do agente
-                  {adminSettings?.systemPrompt && (
-                    <span className="text-sm text-gray-500 ml-2">
-                      (Deixe vazio para usar: "{adminSettings.systemPrompt}")
-                    </span>
-                  )}
-                </Label>
-                <Textarea
-                  id="systemPrompt"
-                  rows={4}
-                  placeholder="Digite um prompt personalizado para o agente..."
-                  value={formData.systemPrompt || ""}
-                  onChange={(e) => handleInputChange("systemPrompt", e.target.value)}
-                />
-                <p className="text-sm text-gray-500">
-                  Define o comportamento e personalidade do agente de IA. Deixe vazio para usar a configuração do administrador.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Max Tokens */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Hash className="w-5 h-5" />
-                Quantidade Máxima de Tokens
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <Label htmlFor="maxTokens">
-                  Tokens máximos
-                  {adminSettings?.maxTokens && (
-                    <span className="text-sm text-gray-500 ml-2">
-                      (Deixe vazio para usar: {adminSettings.maxTokens})
-                    </span>
-                  )}
-                </Label>
-                <Input
-                  id="maxTokens"
-                  type="number"
-                  min="1"
-                  max="4000"
-                  placeholder="Ex: 1000"
-                  value={formData.maxTokens || ""}
-                  onChange={(e) => handleInputChange("maxTokens", e.target.value ? parseInt(e.target.value) : undefined)}
-                />
-                <p className="text-sm text-gray-500">
-                  Define o tamanho máximo das respostas (1-4000 tokens). Deixe vazio para usar a configuração do administrador.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Temperature */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Thermometer className="w-5 h-5" />
-                Temperatura do Agente
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="temperature">
-                    Temperatura
-                    {adminSettings?.temperature !== undefined && (
-                      <span className="text-sm text-gray-500 ml-2">
-                        (Deixe vazio para usar: {adminSettings.temperature})
-                      </span>
-                    )}
-                  </Label>
-                  <span className="text-sm font-medium bg-gray-100 px-2 py-1 rounded">
-                    {formData.temperature !== undefined ? formData.temperature : "Padrão"}
-                  </span>
+        {/* Aviso se a API não estiver implementada */}
+        {agentsError && (
+          <Card className="border-orange-200 bg-orange-50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3 text-orange-800">
+                <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <Bot className="w-4 h-4" />
                 </div>
-                <Slider
-                  id="temperature"
-                  min={0}
-                  max={2}
-                  step={0.1}
-                  value={formData.temperature !== undefined ? [formData.temperature] : [0.7]}
-                  onValueChange={(value) => handleInputChange("temperature", value[0])}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-xs text-gray-500">
-                  <span>Mais Focado (0)</span>
-                  <span>Mais Criativo (2)</span>
+                <div>
+                  <h3 className="font-medium">Backend API Necessária</h3>
+                  <p className="text-sm mt-1">
+                    A rota <code className="bg-orange-100 px-1 rounded">/api/client/custom-agents</code> não foi encontrada. 
+                    É necessário implementar as rotas da API no backend para que esta funcionalidade funcione.
+                  </p>
+                  <p className="text-xs mt-2 text-orange-600">
+                    Status: {agentsError.message}
+                  </p>
                 </div>
-                <p className="text-sm text-gray-500">
-                  Controla a criatividade das respostas. Valores baixos são mais focados, valores altos são mais criativos. Deixe vazio para usar a configuração do administrador.
-                </p>
               </div>
             </CardContent>
           </Card>
+        )}
 
-          {/* Agent Test */}
+        {/* Formulário de criação/edição */}
+        {isCreatingAgent && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Bot className="w-5 h-5" />
-                Testar Agente
+                {editingAgent ? "Editar Agente" : "Criar Novo Agente"}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="testMessage">Mensagem de Teste</Label>
-                  <div className="flex gap-2">
-                    <Textarea
-                      id="testMessage"
-                      rows={3}
-                      placeholder="Digite uma mensagem para testar o agente..."
-                      value={testMessage}
-                      onChange={(e) => setTestMessage(e.target.value)}
-                      disabled={isTestingAgent}
-                    />
-                    <Button
-                      type="button"
-                      onClick={handleTestAgent}
-                      disabled={!testMessage.trim() || isTestingAgent}
-                      className="min-w-24"
-                    >
-                      {isTestingAgent ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Send className="w-4 h-4" />
-                      )}
-                    </Button>
-                  </div>
-                  <p className="text-sm text-gray-500">
-                    Teste o comportamento do agente com suas configurações personalizadas
-                  </p>
+              <form onSubmit={handleSaveAgent} className="space-y-4">
+                <div>
+                  <Label htmlFor="agentName">Nome do Agente</Label>
+                  <Input
+                    id="agentName"
+                    value={agentForm.name}
+                    onChange={(e) => handleAgentFormChange("name", e.target.value)}
+                    placeholder="Ex: Assistente de Vendas"
+                    required
+                  />
                 </div>
 
-                {testResponse && (
-                  <div className="space-y-2">
-                    <Label>Resposta do Agente</Label>
-                    <div className="p-4 bg-gray-50 rounded-lg border">
-                      <div className="flex items-start gap-3">
-                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                          <Bot className="w-4 h-4 text-blue-600" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm text-gray-900 whitespace-pre-wrap">
-                            {testResponse}
-                          </p>
-                        </div>
-                      </div>
+                <div>
+                  <Label htmlFor="agentDescription">Descrição</Label>
+                  <Input
+                    id="agentDescription"
+                    value={agentForm.description}
+                    onChange={(e) => handleAgentFormChange("description", e.target.value)}
+                    placeholder="Breve descrição do propósito do agente"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="agentPrompt">Prompt do Sistema</Label>
+                  <Textarea
+                    id="agentPrompt"
+                    rows={6}
+                    value={agentForm.systemPrompt}
+                    onChange={(e) => handleAgentFormChange("systemPrompt", e.target.value)}
+                    placeholder="Defina o comportamento e personalidade do agente..."
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="agentTemperature">Temperatura: {agentForm.temperature}</Label>
+                    <Slider
+                      id="agentTemperature"
+                      min={0}
+                      max={2}
+                      step={0.1}
+                      value={[agentForm.temperature]}
+                      onValueChange={(value) => handleAgentFormChange("temperature", value[0])}
+                      className="mt-2"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                      <span>Mais Focado (0)</span>
+                      <span>Mais Criativo (2)</span>
                     </div>
-                    <div className="flex justify-end">
+                  </div>
+                  <div>
+                    <Label htmlFor="agentMaxTokens">Tokens Máximos</Label>
+                    <Input
+                      id="agentMaxTokens"
+                      type="number"
+                      min="1"
+                      max="4000"
+                      value={agentForm.maxTokens}
+                      onChange={(e) => handleAgentFormChange("maxTokens", parseInt(e.target.value))}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-4">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="agentActive"
+                      checked={agentForm.isActive}
+                      onChange={(e) => handleAgentFormChange("isActive", e.target.checked)}
+                      className="rounded"
+                    />
+                    <Label htmlFor="agentActive">Agente ativo</Label>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsCreatingAgent(false)}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={saveAgentMutation.isPending}
+                    >
+                      {saveAgentMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      ) : (
+                        <Bot className="w-4 h-4 mr-2" />
+                      )}
+                      {editingAgent ? "Atualizar" : "Criar"} Agente
+                    </Button>
+                  </div>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Lista de agentes */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {agentsLoading ? (
+            Array.from({ length: 3 }).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-6">
+                  <div className="animate-pulse space-y-3">
+                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                    <div className="h-3 bg-gray-200 rounded w-full"></div>
+                    <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          ) : agents && agents.length > 0 ? (
+            agents.map((agent: any) => (
+              <Card key={agent.id} className="relative hover:shadow-lg transition-shadow">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Bot className="w-5 h-5 text-purple-600" />
+                      <h4 className="font-semibold text-gray-900">{agent.name}</h4>
+                    </div>
+                    <div className="flex gap-1">
                       <Button
-                        type="button"
-                        variant="ghost"
                         size="sm"
-                        onClick={() => {
-                          setTestMessage("");
-                          setTestResponse("");
-                        }}
+                        variant="ghost"
+                        onClick={() => handleEditAgent(agent)}
+                        className="h-8 w-8 p-0"
                       >
-                        Limpar Teste
+                        <Edit className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeleteAgent(agent.id)}
+                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="w-3 h-3" />
                       </Button>
                     </div>
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                  
+                  {agent.description && (
+                    <p className="text-sm text-gray-600 mb-3">{agent.description}</p>
+                  )}
+                  
+                  <div className="space-y-2 text-xs text-gray-500 mb-4">
+                    <div className="flex justify-between">
+                      <span>Temperatura:</span>
+                      <span className="font-medium">{agent.temperature}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Max Tokens:</span>
+                      <span className="font-medium">{agent.maxTokens}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Status:</span>
+                      <span className={`font-medium ${agent.isActive ? 'text-green-600' : 'text-red-600'}`}>
+                        {agent.isActive ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </div>
+                  </div>
 
-          {/* Save Button */}
-          <div className="flex justify-end">
-            <Button
-              type="submit"
-              disabled={saveSettingsMutation.isPending}
-              className="min-w-32"
-            >
-              {saveSettingsMutation.isPending ? "Salvando..." : "Salvar Configurações"}
-            </Button>
-          </div>
-        </form>
+                  <div className="pt-3 border-t">
+                    <p className="text-xs text-gray-500 line-clamp-3">
+                      {agent.systemPrompt}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            <div className="col-span-full">
+              <Card>
+                <CardContent className="p-12 text-center">
+                  <Bot className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    Nenhum agente personalizado
+                  </h3>
+                  <p className="text-gray-600 mb-4">
+                    Crie seu primeiro agente com prompt personalizado
+                  </p>
+                  <Button onClick={handleCreateAgent}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Criar Primeiro Agente
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </div>
       </div>
     </Layout>
   );
-} 
+}

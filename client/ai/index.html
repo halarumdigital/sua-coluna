@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciador de Agentes IA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
+    <style>
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .tab-button.active { 
+            background-color: #3b82f6; 
+            color: white; 
+        }
+        .line-clamp-3 {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <div class="flex items-center space-x-3 mb-4">
+                <div class="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg">
+                    <i class="fas fa-robot text-white text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-900">Gerenciador de Agentes IA</h1>
+                    <p class="text-gray-600">Configure e gerencie agentes de IA com prompts personalizados</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs Navigation -->
+        <div class="mb-6">
+            <div class="border-b border-gray-200">
+                <nav class="-mb-px flex space-x-8">
+                    <button 
+                        class="tab-button active py-2 px-1 border-b-2 border-blue-500 font-medium text-sm text-blue-600"
+                        onclick="switchTab('agents')"
+                    >
+                        <i class="fas fa-robot mr-2"></i>
+                        Agentes Personalizados
+                    </button>
+                    <button 
+                        class="tab-button py-2 px-1 border-b-2 border-transparent font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                        onclick="switchTab('settings')"
+                    >
+                        <i class="fas fa-cog mr-2"></i>
+                        Configurações Globais
+                    </button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Tab Content: Agentes Personalizados -->
+        <div id="agents-tab" class="tab-content active">
+            <div class="space-y-6">
+                <!-- Header da aba -->
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-semibold text-gray-900">Agentes Personalizados</h2>
+                        <p class="text-gray-600">Crie e gerencie agentes de IA com prompts específicos</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <div class="relative">
+                            <button 
+                                onclick="toggleActionsMenu()"
+                                class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                            >
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <div id="actions-menu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border z-10">
+                                <button onclick="exportAgents()" class="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2">
+                                    <i class="fas fa-download text-blue-600"></i>
+                                    Exportar Agentes
+                                </button>
+                                <button onclick="importAgents()" class="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2">
+                                    <i class="fas fa-upload text-green-600"></i>
+                                    Importar Agentes
+                                </button>
+                                <button onclick="loadExamples()" class="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2">
+                                    <i class="fas fa-star text-yellow-600"></i>
+                                    Carregar Exemplos
+                                </button>
+                            </div>
+                        </div>
+                        <button 
+                            onclick="showCreateForm()"
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                        >
+                            <i class="fas fa-plus"></i>
+                            Novo Agente
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Formulário de criação/edição -->
+                <div id="agent-form" class="hidden bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                            <i class="fas fa-robot text-blue-600"></i>
+                            <span id="form-title">Criar Novo Agente</span>
+                        </h3>
+                        <button onclick="hideCreateForm()" class="text-gray-400 hover:text-gray-600">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <form id="agentForm" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Nome do Agente</label>
+                                <input 
+                                    type="text" 
+                                    id="agentName"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Ex: Assistente de Vendas"
+                                    required
+                                >
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Modelo</label>
+                                <select 
+                                    id="agentModel"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                                    <option value="gpt-4">GPT-4</option>
+                                    <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                                    <option value="gpt-4o">GPT-4o</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+                            <input 
+                                type="text" 
+                                id="agentDescription"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Breve descrição do propósito do agente"
+                            >
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Prompt do Sistema</label>
+                            <textarea 
+                                id="agentPrompt"
+                                rows="6"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Defina o comportamento e personalidade do agente..."
+                                required
+                            ></textarea>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    Temperatura: <span id="temperatureValue">0.7</span>
+                                </label>
+                                <input 
+                                    type="range" 
+                                    id="agentTemperature"
+                                    min="0" 
+                                    max="2" 
+                                    step="0.1" 
+                                    value="0.7"
+                                    class="w-full"
+                                    oninput="updateTemperatureValue(this.value)"
+                                >
+                                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                    <span>Mais Focado (0)</span>
+                                    <span>Mais Criativo (2)</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Tokens Máximos</label>
+                                <input 
+                                    type="number" 
+                                    id="agentMaxTokens"
+                                    min="1" 
+                                    max="4000" 
+                                    value="1000"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between pt-4 border-t">
+                            <div class="flex items-center space-x-2">
+                                <input type="checkbox" id="agentActive" checked class="rounded">
+                                <label for="agentActive" class="text-sm text-gray-700">Agente ativo</label>
+                            </div>
+                            <div class="flex gap-2">
+                                <button 
+                                    type="button" 
+                                    onclick="hideCreateForm()"
+                                    class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    type="submit"
+                                    class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2"
+                                >
+                                    <i class="fas fa-robot"></i>
+                                    <span id="submit-text">Criar Agente</span>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Lista de agentes -->
+                <div id="agents-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Agentes serão carregados aqui -->
+                </div>
+
+                <!-- Estado vazio -->
+                <div id="empty-state" class="text-center py-12 bg-white rounded-lg shadow-md">
+                    <i class="fas fa-robot text-4xl text-gray-400 mb-4"></i>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2">Nenhum agente personalizado</h3>
+                    <p class="text-gray-600 mb-4">Crie seu primeiro agente com prompt personalizado</p>
+                    <button 
+                        onclick="showCreateForm()"
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 mx-auto transition-colors"
+                    >
+                        <i class="fas fa-plus"></i>
+                        Criar Primeiro Agente
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content: Configurações Globais -->
+        <div id="settings-tab" class="tab-content">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-semibold text-gray-900 mb-4">Configurações Globais de IA</h2>
+                <p class="text-gray-600 mb-6">Configure as opções de Inteligência Artificial para todo o sistema</p>
+                
+                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+                    <div class="flex items-center space-x-2">
+                        <i class="fas fa-robot text-purple-600"></i>
+                        <h3 class="font-medium text-purple-900">Configuração Global de IA</h3>
+                    </div>
+                    <p class="text-sm text-purple-700 mt-1">
+                        Estas configurações de IA serão utilizadas por todos os franqueadores e franquias do sistema.
+                        Configure a API do OpenAI e personalize o comportamento do agente de IA.
+                    </p>
+                </div>
+
+                <form class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Chave da API OpenAI</label>
+                        <input 
+                            type="password" 
+                            placeholder="sk-..."
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                        <p class="text-sm text-gray-500 mt-1">Chave da API do OpenAI para habilitar IA em todo o sistema</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Modelo Padrão</label>
+                        <select class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                            <option value="gpt-4">GPT-4</option>
+                            <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                            <option value="gpt-4o">GPT-4o</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Prompt Global do Sistema</label>
+                        <textarea 
+                            rows="6"
+                            placeholder="Você é um assistente útil e prestativo..."
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        ></textarea>
+                        <p class="text-sm text-gray-500 mt-1">Define o comportamento padrão da IA para todos os usuários do sistema</p>
+                    </div>
+
+                    <button 
+                        type="submit"
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                    >
+                        <i class="fas fa-save"></i>
+                        Salvar Configurações
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

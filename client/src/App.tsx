@@ -25,6 +25,7 @@ import FranchisesPage from "@/pages/admin/franchises";
 import AdminSettings from "@/pages/admin/settings";
 import AIPage from "@/pages/admin/ai";
 import WhatsAppPage from "@/pages/admin/whatsapp";
+import AdminMessages from "@/pages/admin/messages"; // Nova importação
 
 // Client Pages
 import ClientDashboard from "@/pages/client/dashboard";
@@ -130,6 +131,7 @@ function Router() {
           <Route path="/admin/franchises/new" component={FranchisesPage} />
           <Route path="/admin/ai" component={AIPage} />
           <Route path="/admin/whatsapp" component={WhatsAppPage} />
+          <Route path="/admin/messages" component={AdminMessages} /> {/* Nova rota */}
           <Route path="/admin/settings" component={AdminSettings} />
 
           <Route path="/admin/reports">

@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, Key, Thermometer, Hash, Brain, MessageSquare, DollarSign, Activity, Calendar, CheckCircle, RefreshCw, Send, Loader2, Crown, AlertCircle } from "lucide-react";
+import { Bot, Key, Thermometer, Hash, Brain, MessageSquare, DollarSign, Activity, Calendar, CheckCircle, RefreshCw, Send, Loader2, Crown } from "lucide-react";
 import type { AISettings } from "@shared/schema";
 
 export default function SuperRootAI() {
@@ -208,7 +208,7 @@ export default function SuperRootAI() {
 
         } catch (error: any) {
             let errorMessage = "Erro desconhecido ao testar agente";
-            
+
             if (error.message) {
                 errorMessage = error.message;
             } else if (typeof error === 'string') {
@@ -302,7 +302,7 @@ export default function SuperRootAI() {
                                         {usageLoading ? (
                                             <span className="animate-pulse">...</span>
                                         ) : (
-                                            `$${(usageStats?.totalCost || 0).toFixed(4)}`
+                                            `${(usageStats?.totalCost || 0).toFixed(4)}`
                                         )}
                                     </p>
                                     {!usageLoading && usageStats?.totalCost > 0 && (
@@ -470,13 +470,13 @@ export default function SuperRootAI() {
                                                 {model.name}
                                             </SelectItem>
                                         )) || (
-                                            <>
-                                                <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
-                                                <SelectItem value="gpt-4">GPT-4</SelectItem>
-                                                <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
-                                                <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                                            </>
-                                        )}
+                                                <>
+                                                    <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
+                                                    <SelectItem value="gpt-4">GPT-4</SelectItem>
+                                                    <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
+                                                    <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+                                                </>
+                                            )}
                                     </SelectContent>
                                 </Select>
                                 <p className="text-sm text-gray-500">
@@ -617,17 +617,8 @@ export default function SuperRootAI() {
                                 {testResponse && (
                                     <div className="space-y-2">
                                         <Label>Resposta da IA</Label>
-                                        <div className="p-4 bg-gray-50 rounded-lg border">
-                                            <div className="flex items-start gap-3">
-                                                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                                    <Bot className="w-4 h-4 text-blue-600" />
-                                                </div>
-                                                <div className="flex-1">
-                                                    <p className="text-sm text-gray-900 whitespace-pre-wrap">
-                                                        {testResponse}
-                                                    </p>
-                                                </div>
-                                            </div>
+                                        <div className="p-3 bg-gray-50 rounded-md border">
+                                            <pre className="whitespace-pre-wrap text-sm">{testResponse}</pre>
                                         </div>
                                     </div>
                                 )}
@@ -635,15 +626,7 @@ export default function SuperRootAI() {
                         </CardContent>
                     </Card>
 
-                    {/* Save Button */}
-                    <div className="flex justify-end space-x-4">
-                        <Button 
-                            type="button" 
-                            variant="outline"
-                            onClick={() => window.location.reload()}
-                        >
-                            Cancelar
-                        </Button>
+                    <div className="flex justify-end">
                         <Button
                             type="submit"
                             disabled={saveSettingsMutation.isPending}

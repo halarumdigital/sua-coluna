@@ -118,6 +118,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       href: "/admin/whatsapp",
       icon: MessageCircle,
     },
+    {
+      title: "Mensagens", // Novo item
+      href: "/admin/messages",
+      icon: MessageCircle,
+    },
   ];
 
   const clientMenuItems = [
@@ -130,21 +135,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       title: "Clientes",
       href: "/client/clients",
       icon: Users,
-    },
-    {
-      title: "Números",
-      href: "/client/phone-numbers",
-      icon: MessageCircle,
-    },
-    {
-      title: "Agentes",
-      href: "/client/agents",
-      icon: Users,
-    },
-    {
-      title: "Prompts",
-      href: "/client/prompts",
-      icon: MessageCircle,
     },
     {
       title: "IA",

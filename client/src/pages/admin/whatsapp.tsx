@@ -455,8 +455,9 @@ export default function AdminWhatsApp() {
 
       const result = await response.json();
       
+      // A resposta da API já vem com os dados enriquecidos
       const newBindingData: InstanceAgentBinding = {
-        ...result.binding,
+        ...result,
         instance: instances?.find((i: AdminWhatsAppInstance) => i.id === newBinding.instanceId),
         agent: agents.find(a => a.id === newBinding.agentId)
       };
@@ -469,7 +470,7 @@ export default function AdminWhatsApp() {
       
       toast({
         title: "Sucesso",
-        description: result.message || "Vinculação criada com sucesso"
+        description: "Vinculação criada com sucesso"
       });
     } catch (error) {
       toast({
@@ -482,11 +483,16 @@ export default function AdminWhatsApp() {
 
   const handleToggleBinding = async (bindingId: string) => {
     try {
-      const response = await fetch(`/api/admin/whatsapp-instance-agent-bindings/${bindingId}/toggle`, {
+      // Buscar a vinculação atual para obter o status
+      const currentBinding = instanceAgentBindings.find(b => b.id === bindingId);
+      if (!currentBinding) return;
+
+      const response = await fetch(`/api/admin/whatsapp-instance-agent-bindings/${bindingId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ isActive: !currentBinding.isActive }),
       });
 
       if (!response.ok) {
@@ -505,7 +511,7 @@ export default function AdminWhatsApp() {
       
       toast({
         title: "Sucesso",
-        description: result.message || "Status da vinculação atualizado"
+        description: "Status da vinculação atualizado"
       });
     } catch (error) {
       toast({
@@ -537,7 +543,7 @@ export default function AdminWhatsApp() {
       
       toast({
         title: "Sucesso",
-        description: result.message || "Vinculação removida com sucesso"
+        description: "Vinculação removida com sucesso"
       });
     } catch (error) {
       toast({

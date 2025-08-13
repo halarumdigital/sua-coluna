@@ -128,6 +128,46 @@ Responda de forma natural e útil, como um assistente virtual. Mantenha a respos
     }
   }
 
+  async handleClientWebhook(instanceKey: string, webhookData: any): Promise<void> {
+    try {
+      console.log(`📨 Processing client webhook for instance: ${instanceKey}`);
+      
+      // Check if this is a message event
+      if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT') {
+        const messages = webhookData.data?.messages || webhookData.messages || [];
+        
+        for (const message of messages) {
+          // Only process incoming messages (not sent by us)
+          if (!message.key?.fromMe && message.message) {
+            await this.handleIncomingMessage(instanceKey, message);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error processing client webhook:', error);
+    }
+  }
+
+  async handleAdminWebhook(instanceKey: string, webhookData: any): Promise<void> {
+    try {
+      console.log(`📨 Processing admin webhook for instance: ${instanceKey}`);
+      
+      // Check if this is a message event
+      if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT') {
+        const messages = webhookData.data?.messages || webhookData.messages || [];
+        
+        for (const message of messages) {
+          // Only process incoming messages (not sent by us)
+          if (!message.key?.fromMe && message.message) {
+            await this.handleIncomingMessage(instanceKey, message);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error processing admin webhook:', error);
+    }
+  }
+
   private async saveConversationAndMessage(instanceKey: string, phoneNumber: string, messageText: string, messageObj: any): Promise<void> {
     try {
       // Encontrar a instância

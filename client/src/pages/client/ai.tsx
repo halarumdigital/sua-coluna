@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import Layout from "@/components/layout/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,11 +9,19 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { Bot, Plus, Edit, Trash2, Loader2 } from "lucide-react";
 
 export default function ClientAIPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [location] = useLocation();
+  const { user } = useAuth();
+
+  // Early return se não deveria renderizar esta página
+  if (location !== '/client/ai' || user?.role === 'super_root' || (!user?.role || (user?.role !== 'client' && user?.role !== 'franchise'))) {
+    return null;
+  }
 
   // Estados para agentes personalizados
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
@@ -26,13 +35,37 @@ export default function ClientAIPage() {
     isActive: true
   });
 
+  // Determinar se deve executar a query
+  const shouldFetchAgents = location === '/client/ai' && 
+                           typeof window !== 'undefined' && 
+                           user?.role !== 'super_root' &&
+                           (user?.role === 'client' || user?.role === 'franchise');
+
+  // Debug logs
+  console.log('Debug ClientAIPage:', {
+    location,
+    userRole: user?.role,
+    shouldFetchAgents,
+    windowDefined: typeof window !== 'undefined'
+  });
+
   // Fetch custom agents
   const { data: agents, isLoading: agentsLoading, error: agentsError } = useQuery({
     queryKey: ["/api/client/custom-agents"],
     queryFn: async () => {
+      console.log('Query executando, shouldFetchAgents:', shouldFetchAgents);
+      
+      if (!shouldFetchAgents) {
+        console.log('Query cancelada por shouldFetchAgents = false');
+        return [];
+      }
+      
+      console.log('Fazendo requisição para /api/client/custom-agents');
       const response = await fetch("/api/client/custom-agents", {
         credentials: "include",
       });
+      
+      console.log('Resposta recebida:', response.status, response.statusText);
       
       if (!response.ok) {
         // Se for 404, retornar array vazio (API não implementada ainda)
@@ -40,12 +73,23 @@ export default function ClientAIPage() {
           console.warn('API /api/client/custom-agents não encontrada, retornando array vazio');
           return [];
         }
+        // Se for 403, usuário não tem permissão (provavelmente super_root)
+        if (response.status === 403) {
+          console.warn('Usuário não tem permissão para acessar custom-agents');
+          return [];
+        }
         throw new Error(`Erro ao buscar agentes: ${response.status} ${response.statusText}`);
       }
-      return response.json();
+      
+      const data = await response.json();
+      console.log('Dados recebidos:', data);
+      return data;
     },
     // Retry menos vezes para APIs que podem não existir
     retry: 1,
+    enabled: shouldFetchAgents,
+    staleTime: 5 * 60 * 1000, // 5 minutos
+    cacheTime: 10 * 60 * 1000, // 10 minutos
   });
 
   // Create/Update custom agent mutation
@@ -371,6 +415,12 @@ export default function ClientAIPage() {
 
         {/* Lista de agentes */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {(() => {
+            console.log('Renderização - agentsLoading:', agentsLoading);
+            console.log('Renderização - agents:', agents);
+            console.log('Renderização - agentsError:', agentsError);
+            return null;
+          })()}
           {agentsLoading ? (
             Array.from({ length: 3 }).map((_, i) => (
               <Card key={i}>

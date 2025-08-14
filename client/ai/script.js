@@ -15,7 +15,7 @@ function setupClickOutside() {
         const actionsMenu = document.getElementById('actions-menu');
         const actionsButton = e.target.closest('button[onclick="toggleActionsMenu()"]');
         
-        if (!actionsButton && !actionsMenu.contains(e.target)) {
+        if (actionsMenu && !actionsButton && !actionsMenu.contains(e.target)) {
             actionsMenu.classList.add('hidden');
         }
     });
@@ -24,7 +24,9 @@ function setupClickOutside() {
 // Controlar menu de ações
 function toggleActionsMenu() {
     const menu = document.getElementById('actions-menu');
-    menu.classList.toggle('hidden');
+    if (menu) {
+        menu.classList.toggle('hidden');
+    }
 }
 
 // Gerenciamento de tabs
@@ -41,53 +43,146 @@ function switchTab(tabName) {
     
     // Add active class to selected tab
     const activeButton = event.target.closest('.tab-button');
-    activeButton.classList.add('active', 'border-blue-500', 'text-blue-600');
-    activeButton.classList.remove('border-transparent', 'text-gray-500');
+    if (activeButton) {
+        activeButton.classList.add('active', 'border-blue-500', 'text-blue-600');
+        activeButton.classList.remove('border-transparent', 'text-gray-500');
+    }
     
-    document.getElementById(tabName + '-tab').classList.add('active');
+    const targetTab = document.getElementById(tabName + '-tab');
+    if (targetTab) {
+        targetTab.classList.add('active');
+    }
 }
 
 // Gerenciamento do formulário
 function showCreateForm() {
-    document.getElementById('agent-form').classList.remove('hidden');
-    document.getElementById('form-title').textContent = 'Criar Novo Agente';
-    document.getElementById('submit-text').textContent = 'Criar Agente';
-    clearForm();
-    editingAgent = null;
+    const form = document.getElementById('agent-form');
+    const title = document.getElementById('form-title');
+    const submitText = document.getElementById('submit-text');
+    
+    if (form && title && submitText) {
+        form.classList.remove('hidden');
+        title.textContent = 'Criar Novo Agente';
+        submitText.textContent = 'Criar Agente';
+        clearForm();
+        editingAgent = null;
+    }
 }
 
 function hideCreateForm() {
-    document.getElementById('agent-form').classList.add('hidden');
+    const form = document.getElementById('agent-form');
+    if (form) {
+        form.classList.add('hidden');
+    }
     clearForm();
     editingAgent = null;
 }
 
 function clearForm() {
-    document.getElementById('agentForm').reset();
-    document.getElementById('temperatureValue').textContent = '0.7';
-    document.getElementById('agentTemperature').value = '0.7';
-    document.getElementById('agentMaxTokens').value = '1000';
-    document.getElementById('agentActive').checked = true;
+    const form = document.getElementById('agentForm');
+    const temperatureValue = document.getElementById('temperatureValue');
+    const agentTemperature = document.getElementById('agentTemperature');
+    const agentMaxTokens = document.getElementById('agentMaxTokens');
+    const agentActive = document.getElementById('agentActive');
+    const agentModel = document.getElementById('agentModel');
+    
+    if (form) {
+        form.reset();
+    }
+    
+    if (temperatureValue) {
+        temperatureValue.textContent = '0.7';
+    }
+    
+    if (agentTemperature) {
+        agentTemperature.value = '0.7';
+    }
+    
+    if (agentMaxTokens) {
+        agentMaxTokens.value = '1000';
+    }
+    
+    if (agentActive) {
+        agentActive.checked = true;
+    }
+    
+    if (agentModel) {
+        agentModel.value = 'gpt-3.5-turbo';
+    }
 }
 
 function updateTemperatureValue(value) {
-    document.getElementById('temperatureValue').textContent = value;
+    const temperatureValue = document.getElementById('temperatureValue');
+    if (temperatureValue) {
+        temperatureValue.textContent = value;
+    }
 }
 
 // Configuração do formulário
 function setupFormSubmission() {
-    document.getElementById('agentForm').addEventListener('submit', function(e) {
+    const form = document.getElementById('agentForm');
+    if (!form) {
+        console.error('Formulário não encontrado');
+        return;
+    }
+    
+    form.addEventListener('submit', function(e) {
         e.preventDefault();
+        
+        // Obter elementos do formulário
+        const nameElement = document.getElementById('agentName');
+        const descriptionElement = document.getElementById('agentDescription');
+        const systemPromptElement = document.getElementById('agentPrompt');
+        const modelElement = document.getElementById('agentModel');
+        const temperatureElement = document.getElementById('agentTemperature');
+        const maxTokensElement = document.getElementById('agentMaxTokens');
+        const isActiveElement = document.getElementById('agentActive');
+        
+        // Verificar se todos os elementos existem
+        if (!nameElement || !systemPromptElement || !modelElement || !temperatureElement || !maxTokensElement || !isActiveElement) {
+            showNotification('Erro: Elementos do formulário não encontrados', 'error');
+            return;
+        }
+        
+        // Validação dos dados antes de enviar
+        const name = nameElement.value.trim();
+        const description = descriptionElement ? descriptionElement.value.trim() : '';
+        const systemPrompt = systemPromptElement.value.trim();
+        const model = modelElement.value;
+        const temperature = parseFloat(temperatureElement.value);
+        const maxTokens = parseInt(maxTokensElement.value);
+        const isActive = isActiveElement.checked;
+        
+        // Validações básicas
+        if (!name) {
+            showNotification('Nome do agente é obrigatório', 'error');
+            return;
+        }
+        
+        if (!systemPrompt) {
+            showNotification('Prompt do sistema é obrigatório', 'error');
+            return;
+        }
+        
+        if (isNaN(temperature) || temperature < 0 || temperature > 2) {
+            showNotification('Temperatura deve estar entre 0 e 2', 'error');
+            return;
+        }
+        
+        if (isNaN(maxTokens) || maxTokens < 1 || maxTokens > 4000) {
+            showNotification('Tokens máximos deve estar entre 1 e 4000', 'error');
+            return;
+        }
         
         const formData = {
             id: editingAgent ? editingAgent.id : Date.now().toString(),
-            name: document.getElementById('agentName').value,
-            description: document.getElementById('agentDescription').value,
-            systemPrompt: document.getElementById('agentPrompt').value,
-            model: document.getElementById('agentModel').value,
-            temperature: parseFloat(document.getElementById('agentTemperature').value),
-            maxTokens: parseInt(document.getElementById('agentMaxTokens').value),
-            isActive: document.getElementById('agentActive').checked,
+            name: name,
+            description: description,
+            systemPrompt: systemPrompt,
+            model: model,
+            temperature: temperature,
+            maxTokens: maxTokens,
+            isActive: isActive,
             createdAt: editingAgent ? editingAgent.createdAt : new Date().toISOString()
         };
         
@@ -103,61 +198,155 @@ function setupFormSubmission() {
 
 // CRUD Operations
 function createAgent(agentData) {
-    agents.push(agentData);
-    saveAgents();
-    renderAgents();
-    showNotification('Agente criado com sucesso!', 'success');
+    try {
+        if (!agentData || typeof agentData !== 'object') {
+            throw new Error('Dados do agente inválidos');
+        }
+        
+        // Validar dados obrigatórios
+        if (!agentData.name || !agentData.systemPrompt) {
+            throw new Error('Nome e prompt do sistema são obrigatórios');
+        }
+        
+        agents.push(agentData);
+        saveAgents();
+        renderAgents();
+        showNotification('Agente criado com sucesso!', 'success');
+    } catch (error) {
+        console.error('Erro ao criar agente:', error);
+        showNotification(`Erro ao criar agente: ${error.message}`, 'error');
+    }
 }
 
 function updateAgent(agentData) {
-    const index = agents.findIndex(agent => agent.id === agentData.id);
-    if (index !== -1) {
-        agents[index] = agentData;
-        saveAgents();
-        renderAgents();
-        showNotification('Agente atualizado com sucesso!', 'success');
+    try {
+        if (!agentData || typeof agentData !== 'object') {
+            throw new Error('Dados do agente inválidos');
+        }
+        
+        // Validar dados obrigatórios
+        if (!agentData.name || !agentData.systemPrompt) {
+            throw new Error('Nome e prompt do sistema são obrigatórios');
+        }
+        
+        const index = agents.findIndex(agent => agent.id === agentData.id);
+        if (index !== -1) {
+            agents[index] = agentData;
+            saveAgents();
+            renderAgents();
+            showNotification('Agente atualizado com sucesso!', 'success');
+        } else {
+            throw new Error('Agente não encontrado');
+        }
+    } catch (error) {
+        console.error('Erro ao atualizar agente:', error);
+        showNotification(`Erro ao atualizar agente: ${error.message}`, 'error');
     }
 }
 
 function deleteAgent(agentId) {
-    if (confirm('Tem certeza que deseja deletar este agente?')) {
-        agents = agents.filter(agent => agent.id !== agentId);
-        saveAgents();
-        renderAgents();
-        showNotification('Agente deletado com sucesso!', 'success');
+    try {
+        if (!agentId) {
+            throw new Error('ID do agente é obrigatório');
+        }
+        
+        if (confirm('Tem certeza que deseja deletar este agente?')) {
+            const initialLength = agents.length;
+            agents = agents.filter(agent => agent.id !== agentId);
+            
+            if (agents.length === initialLength) {
+                throw new Error('Agente não encontrado');
+            }
+            
+            saveAgents();
+            renderAgents();
+            showNotification('Agente deletado com sucesso!', 'success');
+        }
+    } catch (error) {
+        console.error('Erro ao deletar agente:', error);
+        showNotification(`Erro ao deletar agente: ${error.message}`, 'error');
     }
 }
 
 function editAgent(agentId) {
     editingAgent = agents.find(agent => agent.id === agentId);
     if (editingAgent) {
-        // Preencher formulário com dados do agente
-        document.getElementById('agentName').value = editingAgent.name;
-        document.getElementById('agentDescription').value = editingAgent.description || '';
-        document.getElementById('agentPrompt').value = editingAgent.systemPrompt;
-        document.getElementById('agentModel').value = editingAgent.model;
-        document.getElementById('agentTemperature').value = editingAgent.temperature;
-        document.getElementById('agentMaxTokens').value = editingAgent.maxTokens;
-        document.getElementById('agentActive').checked = editingAgent.isActive;
+        // Validar e garantir tipos corretos dos dados
+        const validatedAgent = {
+            ...editingAgent,
+            name: editingAgent.name || '',
+            description: editingAgent.description || '',
+            systemPrompt: editingAgent.systemPrompt || '',
+            model: editingAgent.model || 'gpt-3.5-turbo',
+            temperature: parseFloat(editingAgent.temperature) || 0.7,
+            maxTokens: parseInt(editingAgent.maxTokens) || 1000,
+            isActive: Boolean(editingAgent.isActive)
+        };
         
-        updateTemperatureValue(editingAgent.temperature);
+        // Obter elementos do formulário
+        const nameElement = document.getElementById('agentName');
+        const descriptionElement = document.getElementById('agentDescription');
+        const systemPromptElement = document.getElementById('agentPrompt');
+        const modelElement = document.getElementById('agentModel');
+        const temperatureElement = document.getElementById('agentTemperature');
+        const maxTokensElement = document.getElementById('agentMaxTokens');
+        const isActiveElement = document.getElementById('agentActive');
+        const titleElement = document.getElementById('form-title');
+        const submitTextElement = document.getElementById('submit-text');
+        const formElement = document.getElementById('agent-form');
         
-        document.getElementById('form-title').textContent = 'Editar Agente';
-        document.getElementById('submit-text').textContent = 'Atualizar Agente';
-        document.getElementById('agent-form').classList.remove('hidden');
+        // Verificar se todos os elementos existem
+        if (!nameElement || !systemPromptElement || !modelElement || !temperatureElement || !maxTokensElement || !isActiveElement || !titleElement || !submitTextElement || !formElement) {
+            showNotification('Erro: Elementos do formulário não encontrados', 'error');
+            return;
+        }
+        
+        // Preencher formulário com dados validados
+        nameElement.value = validatedAgent.name;
+        if (descriptionElement) {
+            descriptionElement.value = validatedAgent.description;
+        }
+        systemPromptElement.value = validatedAgent.systemPrompt;
+        modelElement.value = validatedAgent.model;
+        temperatureElement.value = validatedAgent.temperature;
+        maxTokensElement.value = validatedAgent.maxTokens;
+        isActiveElement.checked = validatedAgent.isActive;
+        
+        updateTemperatureValue(validatedAgent.temperature);
+        
+        titleElement.textContent = 'Editar Agente';
+        submitTextElement.textContent = 'Atualizar Agente';
+        formElement.classList.remove('hidden');
     }
 }
 
 function duplicateAgent(agentId) {
-    const agent = agents.find(agent => agent.id === agentId);
-    if (agent) {
-        const duplicatedAgent = {
-            ...agent,
-            id: Date.now().toString(),
-            name: agent.name + ' (Cópia)',
-            createdAt: new Date().toISOString()
-        };
-        createAgent(duplicatedAgent);
+    try {
+        if (!agentId) {
+            throw new Error('ID do agente é obrigatório');
+        }
+        
+        const agent = agents.find(agent => agent.id === agentId);
+        if (agent) {
+            const duplicatedAgent = {
+                ...agent,
+                id: Date.now().toString(),
+                name: (agent.name || 'Agente Sem Nome') + ' (Cópia)',
+                description: agent.description || '',
+                systemPrompt: agent.systemPrompt || 'Você é um assistente útil.',
+                model: agent.model || 'gpt-3.5-turbo',
+                temperature: parseFloat(agent.temperature) || 0.7,
+                maxTokens: parseInt(agent.maxTokens) || 1000,
+                isActive: Boolean(agent.isActive),
+                createdAt: new Date().toISOString()
+            };
+            createAgent(duplicatedAgent);
+        } else {
+            throw new Error('Agente não encontrado');
+        }
+    } catch (error) {
+        console.error('Erro ao duplicar agente:', error);
+        showNotification(`Erro ao duplicar agente: ${error.message}`, 'error');
     }
 }
 
@@ -166,7 +355,12 @@ function renderAgents() {
     const grid = document.getElementById('agents-grid');
     const emptyState = document.getElementById('empty-state');
     
-    if (agents.length === 0) {
+    if (!grid || !emptyState) {
+        console.error('Elementos de renderização não encontrados');
+        return;
+    }
+    
+    if (!agents || agents.length === 0) {
         grid.innerHTML = '';
         emptyState.classList.remove('hidden');
         return;
@@ -174,30 +368,43 @@ function renderAgents() {
     
     emptyState.classList.add('hidden');
     
-    grid.innerHTML = agents.map(agent => `
+    grid.innerHTML = agents.map(agent => {
+        // Garantir que todos os campos existam para evitar erros de renderização
+        const safeAgent = {
+            id: agent.id || 'unknown',
+            name: agent.name || 'Agente Sem Nome',
+            description: agent.description || '',
+            systemPrompt: agent.systemPrompt || 'Você é um assistente útil.',
+            model: agent.model || 'gpt-3.5-turbo',
+            temperature: agent.temperature || 0.7,
+            maxTokens: agent.maxTokens || 1000,
+            isActive: Boolean(agent.isActive)
+        };
+        
+        return `
         <div class="bg-white rounded-lg shadow-md p-6 relative">
             <div class="flex items-start justify-between mb-3">
                 <div class="flex items-center gap-2">
                     <i class="fas fa-robot text-purple-600"></i>
-                    <h4 class="font-semibold text-gray-900">${agent.name}</h4>
+                    <h4 class="font-semibold text-gray-900">${safeAgent.name}</h4>
                 </div>
                 <div class="flex gap-1">
                     <button 
-                        onclick="editAgent('${agent.id}')"
+                        onclick="editAgent('${safeAgent.id}')"
                         class="p-1 text-gray-400 hover:text-blue-600 transition-colors"
                         title="Editar"
                     >
                         <i class="fas fa-edit text-sm"></i>
                     </button>
                     <button 
-                        onclick="duplicateAgent('${agent.id}')"
+                        onclick="duplicateAgent('${safeAgent.id}')"
                         class="p-1 text-gray-400 hover:text-green-600 transition-colors"
                         title="Duplicar"
                     >
                         <i class="fas fa-copy text-sm"></i>
                     </button>
                     <button 
-                        onclick="deleteAgent('${agent.id}')"
+                        onclick="deleteAgent('${safeAgent.id}')"
                         class="p-1 text-gray-400 hover:text-red-600 transition-colors"
                         title="Deletar"
                     >
@@ -206,55 +413,56 @@ function renderAgents() {
                 </div>
             </div>
             
-            ${agent.description ? `<p class="text-sm text-gray-600 mb-3">${agent.description}</p>` : ''}
+            ${safeAgent.description ? `<p class="text-sm text-gray-600 mb-3">${safeAgent.description}</p>` : ''}
             
             <div class="space-y-2 text-xs text-gray-500 mb-4">
                 <div class="flex justify-between">
                     <span>Modelo:</span>
-                    <span class="font-medium">${agent.model}</span>
+                    <span class="font-medium">${safeAgent.model}</span>
                 </div>
                 <div class="flex justify-between">
                     <span>Temperatura:</span>
-                    <span class="font-medium">${agent.temperature}</span>
+                    <span class="font-medium">${safeAgent.temperature}</span>
                 </div>
                 <div class="flex justify-between">
                     <span>Max Tokens:</span>
-                    <span class="font-medium">${agent.maxTokens}</span>
+                    <span class="font-medium">${safeAgent.maxTokens}</span>
                 </div>
                 <div class="flex justify-between">
                     <span>Status:</span>
-                    <span class="font-medium ${agent.isActive ? 'text-green-600' : 'text-red-600'}">
-                        ${agent.isActive ? 'Ativo' : 'Inativo'}
+                    <span class="font-medium ${safeAgent.isActive ? 'text-green-600' : 'text-red-600'}">
+                        ${safeAgent.isActive ? 'Ativo' : 'Inativo'}
                     </span>
                 </div>
             </div>
 
             <div class="pt-3 border-t">
                 <p class="text-xs text-gray-500 line-clamp-3">
-                    ${agent.systemPrompt}
+                    ${safeAgent.systemPrompt}
                 </p>
             </div>
             
             <div class="mt-4 flex gap-2">
                 <button 
-                    onclick="testAgent('${agent.id}')"
+                    onclick="testAgent('${safeAgent.id}')"
                     class="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-2 rounded text-sm transition-colors"
                 >
                     <i class="fas fa-play mr-1"></i>
                     Testar
                 </button>
                 <button 
-                    onclick="toggleAgentStatus('${agent.id}')"
-                    class="px-3 py-2 rounded text-sm transition-colors ${agent.isActive 
+                    onclick="toggleAgentStatus('${safeAgent.id}')"
+                    class="px-3 py-2 rounded text-sm transition-colors ${safeAgent.isActive 
                         ? 'bg-red-50 hover:bg-red-100 text-red-600' 
                         : 'bg-green-50 hover:bg-green-100 text-green-600'}"
                 >
-                    <i class="fas fa-${agent.isActive ? 'pause' : 'play'} mr-1"></i>
-                    ${agent.isActive ? 'Desativar' : 'Ativar'}
+                    <i class="fas fa-${safeAgent.isActive ? 'pause' : 'play'} mr-1"></i>
+                    ${safeAgent.isActive ? 'Desativar' : 'Ativar'}
                 </button>
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 // Funcionalidades adicionais
@@ -263,31 +471,72 @@ function testAgent(agentId) {
     if (agent) {
         const testMessage = prompt('Digite uma mensagem para testar o agente:');
         if (testMessage) {
-            showNotification(`Testando agente "${agent.name}" com a mensagem: "${testMessage}"`, 'info');
+            const agentName = agent.name || 'Agente Sem Nome';
+            showNotification(`Testando agente "${agentName}" com a mensagem: "${testMessage}"`, 'info');
             // Aqui você implementaria a chamada real para a API
         }
     }
 }
 
 function toggleAgentStatus(agentId) {
-    const agent = agents.find(agent => agent.id === agentId);
-    if (agent) {
-        agent.isActive = !agent.isActive;
-        saveAgents();
-        renderAgents();
-        showNotification(`Agente ${agent.isActive ? 'ativado' : 'desativado'} com sucesso!`, 'success');
+    try {
+        if (!agentId) {
+            throw new Error('ID do agente é obrigatório');
+        }
+        
+        const agent = agents.find(agent => agent.id === agentId);
+        if (agent) {
+            agent.isActive = !agent.isActive;
+            saveAgents();
+            renderAgents();
+            showNotification(`Agente ${agent.isActive ? 'ativado' : 'desativado'} com sucesso!`, 'success');
+        } else {
+            throw new Error('Agente não encontrado');
+        }
+    } catch (error) {
+        console.error('Erro ao alterar status do agente:', error);
+        showNotification(`Erro ao alterar status: ${error.message}`, 'error');
     }
 }
 
 // Persistência de dados (localStorage)
 function saveAgents() {
-    localStorage.setItem('ai-agents', JSON.stringify(agents));
+    try {
+        // Garantir que os dados sejam válidos antes de salvar
+        const validAgents = agents.filter(agent => agent && typeof agent === 'object');
+        localStorage.setItem('ai-agents', JSON.stringify(validAgents));
+    } catch (error) {
+        console.error('Erro ao salvar agentes:', error);
+        showNotification('Erro ao salvar agentes', 'error');
+    }
 }
 
 function loadAgents() {
     const saved = localStorage.getItem('ai-agents');
     if (saved) {
-        agents = JSON.parse(saved);
+        try {
+            const parsedAgents = JSON.parse(saved);
+            if (Array.isArray(parsedAgents)) {
+                // Validar e garantir tipos corretos dos dados
+                agents = parsedAgents.map(agent => ({
+                    ...agent,
+                    id: agent.id || Date.now().toString(),
+                    name: agent.name || 'Agente Sem Nome',
+                    description: agent.description || '',
+                    systemPrompt: agent.systemPrompt || 'Você é um assistente útil.',
+                    model: agent.model || 'gpt-3.5-turbo',
+                    temperature: parseFloat(agent.temperature) || 0.7,
+                    maxTokens: parseInt(agent.maxTokens) || 1000,
+                    isActive: Boolean(agent.isActive),
+                    createdAt: agent.createdAt || new Date().toISOString()
+                }));
+            } else {
+                agents = [];
+            }
+        } catch (error) {
+            console.error('Erro ao carregar agentes do localStorage:', error);
+            agents = [];
+        }
     } else {
         // Dados de exemplo
         agents = [
@@ -321,56 +570,93 @@ function loadAgents() {
 
 // Sistema de notificações
 function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${
-        type === 'success' ? 'bg-green-500 text-white' :
-        type === 'error' ? 'bg-red-500 text-white' :
-        'bg-blue-500 text-white'
-    }`;
-    notification.innerHTML = `
-        <div class="flex items-center gap-2">
-            <i class="fas fa-${type === 'success' ? 'check' : type === 'error' ? 'exclamation' : 'info'}-circle"></i>
-            <span>${message}</span>
-        </div>
-    `;
-    
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-        notification.remove();
-    }, 3000);
+    try {
+        const notification = document.createElement('div');
+        notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${
+            type === 'success' ? 'bg-green-500 text-white' :
+            type === 'error' ? 'bg-red-500 text-white' :
+            'bg-blue-500 text-white'
+        }`;
+        
+        const iconClass = type === 'success' ? 'check' : type === 'error' ? 'exclamation' : 'info';
+        notification.innerHTML = `
+            <div class="flex items-center gap-2">
+                <i class="fas fa-${iconClass}-circle"></i>
+                <span>${message}</span>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            if (notification && notification.parentNode) {
+                notification.remove();
+            }
+        }, 3000);
+    } catch (error) {
+        console.error('Erro ao mostrar notificação:', error);
+        // Fallback para alert simples
+        alert(`${type.toUpperCase()}: ${message}`);
+    }
 }
 
 // Funcionalidades de exportação/importação
 function exportAgents() {
-    const exportData = {
-        agents: agents,
-        exportedAt: new Date().toISOString(),
-        version: "1.0.0"
-    };
-    const dataStr = JSON.stringify(exportData, null, 2);
-    const dataBlob = new Blob([dataStr], {type: 'application/json'});
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `agentes-ia-${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-    showNotification('Agentes exportados com sucesso!', 'success');
+    try {
+        const exportData = {
+            agents: agents.filter(agent => agent && typeof agent === 'object'),
+            exportedAt: new Date().toISOString(),
+            version: "1.0.0"
+        };
+        const dataStr = JSON.stringify(exportData, null, 2);
+        const dataBlob = new Blob([dataStr], {type: 'application/json'});
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `agentes-ia-${new Date().toISOString().split('T')[0]}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        showNotification('Agentes exportados com sucesso!', 'success');
+    } catch (error) {
+        console.error('Erro ao exportar agentes:', error);
+        showNotification('Erro ao exportar agentes', 'error');
+    }
 }
 
 function loadExamples() {
     if (confirm('Isso irá substituir todos os agentes atuais pelos exemplos. Deseja continuar?')) {
         fetch('examples.json')
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                return response.json();
+            })
             .then(data => {
-                agents = data.agents;
+                if (!data || !Array.isArray(data.agents)) {
+                    throw new Error('Formato de dados inválido');
+                }
+                
+                // Validar e garantir tipos corretos dos dados
+                agents = data.agents.map(agent => ({
+                    ...agent,
+                    id: agent.id || Date.now().toString(),
+                    name: agent.name || 'Agente Sem Nome',
+                    description: agent.description || '',
+                    systemPrompt: agent.systemPrompt || 'Você é um assistente útil.',
+                    model: agent.model || 'gpt-3.5-turbo',
+                    temperature: parseFloat(agent.temperature) || 0.7,
+                    maxTokens: parseInt(agent.maxTokens) || 1000,
+                    isActive: Boolean(agent.isActive),
+                    createdAt: agent.createdAt || new Date().toISOString()
+                }));
                 saveAgents();
                 renderAgents();
                 showNotification('Exemplos carregados com sucesso!', 'success');
             })
             .catch(error => {
-                showNotification('Erro ao carregar exemplos. Verifique se o arquivo examples.json existe.', 'error');
+                console.error('Erro ao carregar exemplos:', error);
+                showNotification(`Erro ao carregar exemplos: ${error.message}`, 'error');
             });
     }
 }
@@ -386,17 +672,33 @@ function importAgents() {
             reader.onload = function(e) {
                 try {
                     const importedAgents = JSON.parse(e.target.result);
-                    if (Array.isArray(importedAgents)) {
-                        agents = importedAgents;
-                        saveAgents();
-                        renderAgents();
-                        showNotification('Agentes importados com sucesso!', 'success');
-                    } else {
-                        throw new Error('Formato inválido');
+                    if (!Array.isArray(importedAgents)) {
+                        throw new Error('Formato de dados inválido - deve ser um array');
                     }
+                    
+                    // Validar e garantir tipos corretos dos dados
+                    agents = importedAgents.map(agent => ({
+                        ...agent,
+                        id: agent.id || Date.now().toString(),
+                        name: agent.name || 'Agente Sem Nome',
+                        description: agent.description || '',
+                        systemPrompt: agent.systemPrompt || 'Você é um assistente útil.',
+                        model: agent.model || 'gpt-3.5-turbo',
+                        temperature: parseFloat(agent.temperature) || 0.7,
+                        maxTokens: parseInt(agent.maxTokens) || 1000,
+                        isActive: Boolean(agent.isActive),
+                        createdAt: agent.createdAt || new Date().toISOString()
+                    }));
+                    saveAgents();
+                    renderAgents();
+                    showNotification('Agentes importados com sucesso!', 'success');
                 } catch (error) {
-                    showNotification('Erro ao importar agentes. Verifique o formato do arquivo.', 'error');
+                    console.error('Erro ao importar agentes:', error);
+                    showNotification(`Erro ao importar agentes: ${error.message}`, 'error');
                 }
+            };
+            reader.onerror = function() {
+                showNotification('Erro ao ler arquivo', 'error');
             };
             reader.readAsText(file);
         }

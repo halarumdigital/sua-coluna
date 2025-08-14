@@ -1,10 +1,10 @@
-const { drizzle } = require('drizzle-orm/mysql2');
 const mysql = require('mysql2/promise');
+const { drizzle } = require('drizzle-orm/mysql2');
 const { sql } = require('drizzle-orm');
 require('dotenv').config();
 
 async function createBindingsTable() {
-  console.log('🚀 Criando tabela de vinculações...');
+  console.log('🚀 Criando tabelas de vinculações...');
 
   let connection;
   try {
@@ -19,7 +19,7 @@ async function createBindingsTable() {
 
     const db = drizzle(connection);
 
-    // Create whatsapp_instance_agent_bindings table
+    // Create whatsapp_instance_agent_bindings table (for admin)
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS whatsapp_instance_agent_bindings (
         id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
@@ -36,33 +36,43 @@ async function createBindingsTable() {
 
     console.log('✅ Tabela whatsapp_instance_agent_bindings criada com sucesso');
 
-    // Check if table was created
+    // Create client_whatsapp_instance_agent_bindings table (for clients)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS client_whatsapp_instance_agent_bindings (
+        id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+        instance_id VARCHAR(36) NOT NULL,
+        agent_id VARCHAR(36) NOT NULL,
+        user_id VARCHAR(36) NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (instance_id) REFERENCES whatsapp_instances(id) ON DELETE CASCADE,
+        FOREIGN KEY (agent_id) REFERENCES custom_ai_agents(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_active_instance (instance_id, is_active)
+      )
+    `);
+
+    console.log('✅ Tabela client_whatsapp_instance_agent_bindings criada com sucesso');
+
+    // Check if tables were created
     const [tables] = await connection.execute(`
       SELECT TABLE_NAME 
       FROM INFORMATION_SCHEMA.TABLES 
-      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'whatsapp_instance_agent_bindings'
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN ('whatsapp_instance_agent_bindings', 'client_whatsapp_instance_agent_bindings')
     `, [process.env.MYSQL_DATABASE]);
 
     if (tables.length > 0) {
-      console.log('✅ Tabela confirmada no banco de dados');
-      
-      // Show table structure
-      const [columns] = await connection.execute(`
-        SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT
-        FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'whatsapp_instance_agent_bindings'
-        ORDER BY ORDINAL_POSITION
-      `, [process.env.MYSQL_DATABASE]);
-
-      console.log('\n📋 Estrutura da tabela:');
-      columns.forEach(col => {
-        console.log(`   • ${col.COLUMN_NAME}: ${col.DATA_TYPE} ${col.IS_NULLABLE === 'NO' ? '(NOT NULL)' : '(NULL)'}`);
+      console.log('📋 Tabelas encontradas:');
+      tables.forEach(table => {
+        console.log(`   - ${table.TABLE_NAME}`);
       });
+    } else {
+      console.log('❌ Nenhuma tabela foi criada');
     }
 
   } catch (error) {
-    console.error('❌ Erro ao criar tabela:', error);
-    throw error;
+    console.error('❌ Erro ao criar tabelas:', error);
   } finally {
     if (connection) {
       await connection.end();
@@ -70,5 +80,4 @@ async function createBindingsTable() {
   }
 }
 
-// Run the script
-createBindingsTable().catch(console.error);
+createBindingsTable();

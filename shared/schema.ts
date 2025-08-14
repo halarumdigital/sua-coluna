@@ -215,11 +215,22 @@ export const whatsappAgents = mysqlTable("whatsapp_agents", {
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
 });
 
-// Vinculações entre instâncias WhatsApp e agentes
+// Vinculações entre instâncias WhatsApp de admin e agentes
 export const whatsappInstanceAgentBindings = mysqlTable("whatsapp_instance_agent_bindings", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
   instanceId: varchar("instance_id", { length: 36 }).references(() => adminWhatsappInstances.id).notNull(),
-  agentId: varchar("agent_id", { length: 36 }).references(() => whatsappAgents.id).notNull(),
+  agentId: varchar("agent_id", { length: 36 }).references(() => globalPrompts.id).notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+});
+
+// Vinculações entre instâncias WhatsApp de clientes e agentes
+export const clientWhatsappInstanceAgentBindings = mysqlTable("client_whatsapp_instance_agent_bindings", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  instanceId: varchar("instance_id", { length: 36 }).references(() => whatsappInstances.id).notNull(),
+  agentId: varchar("agent_id", { length: 36 }).references(() => customAIAgents.id).notNull(),
+  userId: varchar("user_id", { length: 36 }).references(() => users.id).notNull(),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
@@ -465,10 +476,10 @@ export const whatsappApiSettings = mysqlTable("whatsapp_api_settings", {
   index("idx_whatsapp_api_active").on(table.isActive),
 ]);
 
-// Instâncias WhatsApp dos clientes
+// Instâncias WhatsApp das franquias
 export const whatsappInstances = mysqlTable("whatsapp_instances", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
-  clientId: varchar("client_id", { length: 36 }).references(() => clients.id).notNull(),
+  franchiseId: varchar("franchise_id", { length: 36 }).references(() => franchises.id).notNull(),
   instanceName: varchar("instance_name", { length: 100 }).notNull(),
   instanceKey: varchar("instance_key", { length: 100 }).unique().notNull(),
   webhook: varchar("webhook", { length: 500 }),
@@ -480,7 +491,7 @@ export const whatsappInstances = mysqlTable("whatsapp_instances", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
 }, (table) => [
-  index("idx_whatsapp_instances_client").on(table.clientId),
+  index("idx_whatsapp_instances_franchise").on(table.franchiseId),
   index("idx_whatsapp_instances_status").on(table.status),
   index("idx_whatsapp_instances_active").on(table.isActive),
 ]);
@@ -554,7 +565,7 @@ export const adminWhatsappInstances = mysqlTable("admin_whatsapp_instances", {
 
 // Relations
 export const usersRelations = relations(users, ({ one }) => ({
-  client: one(clients, { fields: [users.id], references: [clients.userId] }),
+  // client: one(clients, { fields: [users.id], references: [clients.userId] }), // Comentado - não usar mais clients
   teamMember: one(teamMembers, { fields: [users.id], references: [teamMembers.userId] }),
   franchisor: one(franchisors, { fields: [users.id], references: [franchisors.userId] }),
   franchise: one(franchises, { fields: [users.id], references: [franchises.userId] }),
@@ -574,7 +585,7 @@ export const franchisorsRelations = relations(franchisors, ({ one, many }) => ({
 export const franchisesRelations = relations(franchises, ({ one, many }) => ({
   user: one(users, { fields: [franchises.userId], references: [users.id] }),
   franchisor: one(franchisors, { fields: [franchises.franchisorId], references: [franchisors.id] }),
-  clients: many(clients),
+  // clients: many(clients), // Comentado - não usar mais clients
   phoneNumbers: many(franchisePhoneNumbers),
   agents: many(franchiseAgents),
   prompts: many(franchisePrompts),
@@ -597,46 +608,46 @@ export const globalPromptsRelations = relations(globalPrompts, ({ one }) => ({
   franchisor: one(franchisors, { fields: [globalPrompts.franchisorId], references: [franchisors.id] }),
 }));
 
-export const clientsRelations = relations(clients, ({ one, many }) => ({
-  franchise: one(franchises, { fields: [clients.franchiseId], references: [franchises.id] }),
-  invoices: many(invoices),
-  projects: many(projects),
-  contacts: many(clientContacts),
-  plans: many(clientPlans),
-  communications: many(clientCommunications),
-  portalAccess: many(clientPortalAccess),
-  monthlyGoals: many(clientMonthlyGoals),
-  meetingNotes: many(meetingNotes),
-  whatsappInstances: many(whatsappInstances),
-}));
+// export const clientsRelations = relations(clients, ({ one, many }) => ({
+//   franchise: one(franchises, { fields: [clients.franchiseId], references: [franchises.id] }),
+//   invoices: many(invoices),
+//   projects: many(projects),
+//   contacts: many(clientContacts),
+//   plans: many(clientPlans),
+//   communications: many(clientCommunications),
+//   portalAccess: many(clientPortalAccess),
+//   monthlyGoals: many(clientMonthlyGoals),
+//   meetingNotes: many(meetingNotes),
+//   whatsappInstances: many(whatsappInstances),
+// }));
 
-export const clientContactsRelations = relations(clientContacts, ({ one }) => ({
-  client: one(clients, { fields: [clientContacts.clientId], references: [clients.id] }),
-}));
+// export const clientContactsRelations = relations(clientContacts, ({ one }) => ({
+//   client: one(clients, { fields: [clientContacts.clientId], references: [clients.id] }),
+// }));
 
-export const clientPlansRelations = relations(clientPlans, ({ one }) => ({
-  client: one(clients, { fields: [clientPlans.clientId], references: [clients.id] }),
-}));
+// export const clientPlansRelations = relations(clientPlans, ({ one }) => ({
+//   client: one(clients, { fields: [clientPlans.clientId], references: [clients.id] }),
+// }));
 
-export const clientCommunicationsRelations = relations(clientCommunications, ({ one }) => ({
-  client: one(clients, { fields: [clientCommunications.clientId], references: [clients.id] }),
-  user: one(users, { fields: [clientCommunications.userId], references: [users.id] }),
-}));
+// export const clientCommunicationsRelations = relations(clientCommunications, ({ one }) => ({
+//   client: one(clients, { fields: [clientCommunications.clientId], references: [clients.id] }),
+//   user: one(users, { fields: [clientCommunications.userId], references: [users.id] }),
+// }));
 
-export const clientPortalAccessRelations = relations(clientPortalAccess, ({ one }) => ({
-  client: one(clients, { fields: [clientPortalAccess.clientId], references: [clients.id] }),
-  user: one(users, { fields: [clientPortalAccess.userId], references: [users.id] }),
-}));
+// export const clientPortalAccessRelations = relations(clientPortalAccess, ({ one }) => ({
+//   client: one(clients, { fields: [clientPortalAccess.clientId], references: [clients.id] }),
+//   user: one(users, { fields: [clientPortalAccess.userId], references: [users.id] }),
+// }));
 
-export const clientMonthlyGoalsRelations = relations(clientMonthlyGoals, ({ one }) => ({
-  client: one(clients, { fields: [clientMonthlyGoals.clientId], references: [clients.id] }),
-}));
+// export const clientMonthlyGoalsRelations = relations(clientMonthlyGoals, ({ one }) => ({
+//   client: one(clients, { fields: [clientMonthlyGoals.clientId], references: [clients.id] }),
+// }));
 
-export const meetingNotesRelations = relations(meetingNotes, ({ one }) => ({
-  client: one(clients, { fields: [meetingNotes.clientId], references: [clients.id] }),
-  user: one(users, { fields: [meetingNotes.userId], references: [users.id] }),
-  project: one(projects, { fields: [meetingNotes.projectId], references: [projects.id] }),
-}));
+// export const meetingNotesRelations = relations(meetingNotes, ({ one }) => ({
+//   client: one(clients, { fields: [meetingNotes.clientId], references: [clients.id] }),
+//   user: one(users, { fields: [meetingNotes.userId], references: [users.id] }),
+//   project: one(projects, { fields: [meetingNotes.projectId], references: [projects.id] }),
+// }));
 
 export const teamMembersRelations = relations(teamMembers, ({ one, many }) => ({
   user: one(users, { fields: [teamMembers.userId], references: [users.id] }),
@@ -644,7 +655,7 @@ export const teamMembersRelations = relations(teamMembers, ({ one, many }) => ({
 }));
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
-  client: one(clients, { fields: [projects.clientId], references: [clients.id] }),
+  // client: one(clients, { fields: [projects.clientId], references: [clients.id] }), // Comentado - não usar mais clients
   assignments: many(projectAssignments),
   invoices: many(invoices),
 }));
@@ -655,7 +666,7 @@ export const projectAssignmentsRelations = relations(projectAssignments, ({ one 
 }));
 
 export const invoicesRelations = relations(invoices, ({ one }) => ({
-  client: one(clients, { fields: [invoices.clientId], references: [clients.id] }),
+  // client: one(clients, { fields: [invoices.clientId], references: [clients.id] }), // Comentado - não usar mais clients
   project: one(projects, { fields: [invoices.projectId], references: [projects.id] }),
 }));
 
@@ -672,7 +683,7 @@ export const customAIAgentsRelations = relations(customAIAgents, ({ one }) => ({
 }));
 
 export const whatsappInstancesRelations = relations(whatsappInstances, ({ one, many }) => ({
-  client: one(clients, { fields: [whatsappInstances.clientId], references: [clients.id] }),
+  franchise: one(franchises, { fields: [whatsappInstances.franchiseId], references: [franchises.id] }),
   conversations: many(whatsappConversations),
 }));
 
@@ -923,6 +934,8 @@ export type InsertWhatsappAgent = typeof whatsappAgents.$inferInsert;
 // WhatsApp Instance Agent Bindings types
 export type WhatsappInstanceAgentBinding = typeof whatsappInstanceAgentBindings.$inferSelect;
 export type InsertWhatsappInstanceAgentBinding = typeof whatsappInstanceAgentBindings.$inferInsert;
+export type ClientWhatsappInstanceAgentBinding = typeof clientWhatsappInstanceAgentBindings.$inferSelect;
+export type InsertClientWhatsappInstanceAgentBinding = typeof clientWhatsappInstanceAgentBindings.$inferInsert;
 export type AIConfiguration = typeof aiConfigurations.$inferSelect;
 export type InsertAIConfiguration = z.infer<typeof insertAIConfigurationSchema>;
 export type AIUsage = typeof aiUsage.$inferSelect;

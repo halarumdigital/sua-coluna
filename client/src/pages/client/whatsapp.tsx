@@ -7,7 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Dialog,
   DialogContent,
@@ -28,7 +31,8 @@ import {
   Trash2,
   RefreshCw,
   ExternalLink,
-  Copy
+  Copy,
+  Link
 } from "lucide-react";
 
 interface WhatsAppInstance {
@@ -51,9 +55,31 @@ interface AdminWhatsAppSettings {
   isActive: boolean;
 }
 
+interface CustomAgent {
+  id: string;
+  name: string;
+  description?: string;
+  systemPrompt: string;
+  temperature: number;
+  maxTokens: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+interface InstanceAgentBinding {
+  id: string;
+  instanceId: string;
+  agentId: string;
+  isActive: boolean;
+  createdAt: string;
+  instance?: WhatsAppInstance;
+  agent?: CustomAgent;
+}
+
 export default function ClientWhatsAppPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [isCreating, setIsCreating] = useState(false);
   const [showInstanceModal, setShowInstanceModal] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
@@ -82,11 +108,18 @@ export default function ClientWhatsAppPage() {
     readStatus: true
   });
 
+  // Estados para vincular agentes
+  const [activeTab, setActiveTab] = useState("instances");
+  const [showBindingModal, setShowBindingModal] = useState(false);
+  const [selectedInstance, setSelectedInstance] = useState<string>("");
+  const [selectedAgent, setSelectedAgent] = useState<string>("");
+  const [isCreatingBinding, setIsCreatingBinding] = useState(false);
+
   // Fetch admin WhatsApp settings to get URL and token
   const { data: adminSettings, isLoading: settingsLoading } = useQuery({
     queryKey: ["admin-whatsapp-settings"],
     queryFn: async () => {
-      const response = await fetch("/api/client/whatsapp-settings", {
+      const response = await fetch("/api/franchise/whatsapp-settings", {
         credentials: "include",
       });
       
@@ -102,7 +135,8 @@ export default function ClientWhatsAppPage() {
   const { data: instances, isLoading: instancesLoading } = useQuery({
     queryKey: ["whatsapp-instances"],
     queryFn: async () => {
-      const response = await fetch("/api/client/whatsapp-instances", {
+      // Usar sempre a rota de franquia
+      const response = await fetch("/api/franchise/whatsapp-instances", {
         credentials: "include",
       });
       
@@ -111,6 +145,45 @@ export default function ClientWhatsAppPage() {
       }
       
       return response.json() as Promise<WhatsAppInstance[]>;
+    },
+    enabled: !!user, // Só executar quando o usuário estiver carregado
+  });
+
+  // Fetch custom agents
+  const { data: customAgents, isLoading: agentsLoading } = useQuery({
+    queryKey: ["custom-agents"],
+    queryFn: async () => {
+      const response = await fetch("/api/franchise/custom-agents", {
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          return [];
+        }
+        throw new Error("Falha ao carregar agentes personalizados");
+      }
+      
+      return response.json() as Promise<CustomAgent[]>;
+    },
+  });
+
+  // Fetch instance-agent bindings
+  const { data: bindings, isLoading: bindingsLoading } = useQuery({
+    queryKey: ["instance-agent-bindings"],
+    queryFn: async () => {
+      const response = await fetch("/api/franchise/instance-agent-bindings", {
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          return [];
+        }
+        throw new Error("Falha ao carregar vinculações");
+      }
+      
+      return response.json() as Promise<InstanceAgentBinding[]>;
     },
   });
 
@@ -149,6 +222,75 @@ export default function ClientWhatsAppPage() {
       toast({
         title: "Erro",
         description: error.message || "Erro ao criar instância",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Create binding mutation
+  const createBindingMutation = useMutation({
+    mutationFn: async (data: { instanceId: string; agentId: string }) => {
+      const response = await fetch("/api/client/instance-agent-bindings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Falha ao criar vinculação");
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Vinculação Criada",
+        description: "Instância vinculada ao agente com sucesso!",
+      });
+      queryClient.invalidateQueries({ queryKey: ["instance-agent-bindings"] });
+      setShowBindingModal(false);
+      setSelectedInstance("");
+      setSelectedAgent("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao criar vinculação",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete binding mutation
+  const deleteBindingMutation = useMutation({
+    mutationFn: async (bindingId: string) => {
+      const response = await fetch(`/api/client/instance-agent-bindings/${bindingId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Falha ao deletar vinculação");
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Vinculação Removida",
+        description: "Vinculação removida com sucesso!",
+      });
+      queryClient.invalidateQueries({ queryKey: ["instance-agent-bindings"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao remover vinculação",
         variant: "destructive",
       });
     },
@@ -562,6 +704,49 @@ export default function ClientWhatsAppPage() {
     }
   };
 
+  // Funções para vincular agentes
+  const handleCreateBinding = () => {
+    if (!selectedInstance || !selectedAgent) {
+      toast({
+        title: "Erro",
+        description: "Selecione uma instância e um agente",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Verificar se já existe uma vinculação para esta instância
+    const existingBinding = bindings?.find(b => b.instanceId === selectedInstance);
+    if (existingBinding) {
+      toast({
+        title: "Erro",
+        description: "Esta instância já está vinculada a um agente",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsCreatingBinding(true);
+    createBindingMutation.mutate({
+      instanceId: selectedInstance,
+      agentId: selectedAgent
+    });
+  };
+
+  const handleDeleteBinding = (bindingId: string) => {
+    deleteBindingMutation.mutate(bindingId);
+  };
+
+  const getInstanceName = (instanceId: string) => {
+    const instance = instances?.find(i => i.id === instanceId);
+    return instance ? instance.instanceName : 'Instância não encontrada';
+  };
+
+  const getAgentName = (agentId: string) => {
+    const agent = customAgents?.find(a => a.id === agentId);
+    return agent ? agent.name : 'Agente não encontrado';
+  };
+
   // Handler para confirmar exclusão
   const handleDeleteInstance = (instance: WhatsAppInstance) => {
     setInstanceToDelete(instance);
@@ -764,47 +949,86 @@ export default function ClientWhatsAppPage() {
     <Layout>
       {/* Modal de Confirmação de Exclusão */}
       <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Trash2 className="h-5 w-5 text-red-600" />
+        <DialogContent className="max-w-2xl sm:max-w-lg">
+          <DialogHeader className="space-y-3">
+            <DialogTitle className="flex items-center gap-3 text-xl">
+              <div className="p-2 bg-red-100 rounded-full">
+                <Trash2 className="h-6 w-6 text-red-600" />
+              </div>
               Excluir Instância
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-base text-gray-600">
               Esta ação não pode ser desfeita. A instância será removida permanentemente.
             </DialogDescription>
           </DialogHeader>
 
           {instanceToDelete && (
-            <div className="space-y-4">
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                <h3 className="font-semibold text-red-900 mb-2">
+            <div className="space-y-6">
+              {/* Detalhes da Instância */}
+              <div className="p-5 bg-red-50 border border-red-200 rounded-xl">
+                <h3 className="font-bold text-red-900 text-lg mb-4 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-red-500 rounded-full"></span>
                   {instanceToDelete.instanceName}
                 </h3>
-                <div className="text-sm text-red-700 space-y-1">
-                  <p>📞 <strong>Telefone:</strong> {instanceToDelete.phoneNumber}</p>
-                  <p>🔑 <strong>Instance Key:</strong> {instanceToDelete.instanceKey}</p>
-                  <p>📊 <strong>Status:</strong> {instanceToDelete.status}</p>
+                <div className="grid gap-3 text-sm text-red-700">
+                  <div className="flex items-center gap-3 p-3 bg-white/50 rounded-lg">
+                    <span className="text-pink-500">📞</span>
+                    <div>
+                      <span className="font-semibold">Telefone:</span>
+                      <span className="ml-2 font-mono">{instanceToDelete.phoneNumber}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-white/50 rounded-lg">
+                    <span className="text-yellow-500">🔑</span>
+                    <div>
+                      <span className="font-semibold">Instance Key:</span>
+                      <span className="ml-2 font-mono text-xs break-all">{instanceToDelete.instanceKey}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-white/50 rounded-lg">
+                    <span className="text-green-500">📊</span>
+                    <div>
+                      <span className="font-semibold">Status:</span>
+                      <span className="ml-2 font-mono">{instanceToDelete.status}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
               
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <p className="text-sm text-yellow-800">
-                  ⚠️ <strong>Atenção:</strong> Esta ação irá:
-                </p>
-                <ul className="text-sm text-yellow-700 mt-2 space-y-1 ml-4">
-                  <li>• Remover a instância da Evolution API</li>
-                  <li>• Excluir todos os dados do banco</li>
-                  <li>• Parar qualquer monitoramento ativo</li>
-                  <li>• Desconectar o WhatsApp vinculado</li>
+              {/* Consequências da Ação */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-yellow-100 rounded-full">
+                    <span className="text-yellow-600 text-lg">⚠️</span>
+                  </div>
+                  <h4 className="font-bold text-yellow-800 text-lg">Atenção: Esta ação irá:</h4>
+                </div>
+                <ul className="space-y-3 text-sm text-yellow-700">
+                  <li className="flex items-start gap-3">
+                    <span className="text-yellow-600 mt-1">•</span>
+                    <span>Remover a instância da Evolution API</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <span className="text-yellow-600 mt-1">•</span>
+                    <span>Excluir todos os dados do banco</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <span className="text-yellow-600 mt-1">•</span>
+                    <span>Parar qualquer monitoramento ativo</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <span className="text-yellow-600 mt-1">•</span>
+                    <span>Desconectar o WhatsApp vinculado</span>
+                  </li>
                 </ul>
               </div>
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-3 pt-6">
             <Button 
               variant="outline" 
+              className="w-full sm:w-auto order-2 sm:order-1"
               onClick={() => {
                 setShowDeleteModal(false);
                 setInstanceToDelete(null);
@@ -814,6 +1038,7 @@ export default function ClientWhatsAppPage() {
             </Button>
             <Button 
               variant="destructive"
+              className="w-full sm:w-auto order-1 sm:order-2"
               onClick={confirmDeleteInstance}
             >
               <Trash2 className="h-4 w-4 mr-2" />
@@ -1228,22 +1453,37 @@ export default function ClientWhatsAppPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="max-w-2xl mx-auto p-6">
-        {/* Main Card */}
-        <Card className="bg-white rounded-lg shadow-lg">
-          <CardContent className="p-8">
-            {/* Header */}
-            <div className="flex items-center mb-6">
-              <Smartphone className="mr-3 h-6 w-6 text-gray-600" />
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  Instâncias do WhatsApp
-                </h1>
-                <p className="text-gray-600 text-sm">
-                  Gerencie suas instâncias de WhatsApp para envio de mensagens automáticas.
-                </p>
-              </div>
-            </div>
+      <div className="max-w-4xl mx-auto p-6">
+        {/* Header */}
+        <div className="flex items-center mb-6">
+          <Smartphone className="mr-3 h-6 w-6 text-gray-600" />
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              WhatsApp
+            </h1>
+            <p className="text-gray-600 text-sm">
+              Gerencie suas instâncias de WhatsApp e vincule agentes personalizados.
+            </p>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="instances" className="flex items-center gap-2">
+              <Smartphone className="w-4 h-4" />
+              Instâncias
+            </TabsTrigger>
+            <TabsTrigger value="bindings" className="flex items-center gap-2">
+              <Link className="w-4 h-4" />
+              Vincular Agentes
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Tab Content - Instâncias */}
+          <TabsContent value="instances" className="mt-6">
+            <Card className="bg-white rounded-lg shadow-lg">
+              <CardContent className="p-8">
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -1295,31 +1535,28 @@ export default function ClientWhatsAppPage() {
                 </Button>
               </div>
             </form>
-          </CardContent>
-        </Card>
 
-        {/* Instances List */}
-        {instances && instances.length > 0 && (
-          <Card className="mt-6">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="flex items-center">
-                <MessageCircle className="mr-2 h-5 w-5" />
-                Instâncias Configuradas
-              </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] })}
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Atualizar Status
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-gray-600 mb-4">
-                Lista de todas as instâncias WhatsApp configuradas para sua empresa.
-              </p>
-              <div className="space-y-4">
+            {/* Instances List */}
+            {instances && instances.length > 0 && (
+              <div className="mt-6">
+                <div className="flex flex-row items-center justify-between mb-4">
+                  <h3 className="flex items-center font-medium text-lg">
+                    <MessageCircle className="mr-2 h-5 w-5" />
+                    Instâncias Configuradas
+                  </h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] })}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Atualizar Status
+                  </Button>
+                </div>
+                <p className="text-sm text-gray-600 mb-4">
+                  Lista de todas as instâncias WhatsApp configuradas para sua empresa.
+                </p>
+                <div className="space-y-4">
                 {instances.map((instance) => (
                   <div
                     key={instance.id}
@@ -1433,33 +1670,222 @@ export default function ClientWhatsAppPage() {
                     </div>
                   </div>
                 ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Error Message if no admin settings */}
-        {!adminSettings?.evolutionApiUrl || !adminSettings?.globalToken || !adminSettings?.isActive ? (
-          <Card className="mt-6 border-yellow-200 bg-yellow-50">
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <MessageCircle className="mr-2 h-5 w-5 text-yellow-600" />
-                <div>
-                  <h3 className="font-medium text-yellow-800">
-                    Configurações não encontradas
-                  </h3>
-                  <p className="text-sm text-yellow-700">
-                    {!adminSettings?.evolutionApiUrl || !adminSettings?.globalToken 
-                      ? "As configurações da API WhatsApp não foram configuradas pelo administrador."
-                      : "As configurações da API WhatsApp estão inativas. Entre em contato com o administrador."
-                    }
-                  </p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        ) : null}
+            )}
+
+            {/* Error Message if no admin settings */}
+            {!adminSettings?.evolutionApiUrl || !adminSettings?.globalToken || !adminSettings?.isActive ? (
+              <Card className="mt-6 border-yellow-200 bg-yellow-50">
+                <CardContent className="p-4">
+                  <div className="flex items-center">
+                    <MessageCircle className="mr-2 h-5 w-5 text-yellow-600" />
+                    <div>
+                      <h3 className="font-medium text-yellow-800">
+                        Configurações não encontradas
+                      </h3>
+                      <p className="text-sm text-yellow-700">
+                        {!adminSettings?.evolutionApiUrl || !adminSettings?.globalToken 
+                          ? "As configurações da API WhatsApp não foram configuradas pelo administrador."
+                          : "As configurações da API WhatsApp estão inativas. Entre em contato com o administrador."
+                        }
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+          </CardContent>
+        </Card>
+          </TabsContent>
+
+          {/* Tab Content - Vincular Agentes */}
+          <TabsContent value="bindings" className="mt-6">
+            <Card className="bg-white rounded-lg shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Link className="w-5 h-5" />
+                  Vincular Agentes a Instâncias
+                </CardTitle>
+                <p className="text-sm text-gray-600">
+                  Conecte suas instâncias do WhatsApp a agentes personalizados para automatizar respostas.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Botão para criar nova vinculação */}
+                <div className="flex justify-end">
+                  <Button
+                    onClick={() => setShowBindingModal(true)}
+                    disabled={!instances?.length || !customAgents?.length}
+                    className="flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Nova Vinculação
+                  </Button>
+                </div>
+
+                {/* Lista de vinculações existentes */}
+                {bindingsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <span className="ml-2">Carregando vinculações...</span>
+                  </div>
+                ) : bindings && bindings.length > 0 ? (
+                  <div className="space-y-4">
+                    <h3 className="font-medium text-gray-900">Vinculações Ativas</h3>
+                    {bindings.map((binding) => (
+                      <div key={binding.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-4">
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {getInstanceName(binding.instanceId)}
+                              </p>
+                              <p className="text-sm text-gray-500">Instância</p>
+                            </div>
+                            <div className="flex items-center">
+                              <Link className="w-4 h-4 text-gray-400 mx-2" />
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {getAgentName(binding.agentId)}
+                              </p>
+                              <p className="text-sm text-gray-500">Agente</p>
+                            </div>
+                          </div>
+                          <div className="mt-2">
+                            <Badge variant={binding.isActive ? "default" : "secondary"}>
+                              {binding.isActive ? "Ativo" : "Inativo"}
+                            </Badge>
+                          </div>
+                        </div>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteBinding(binding.id)}
+                          disabled={deleteBindingMutation.isPending}
+                        >
+                          {deleteBindingMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Link className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="font-medium text-gray-900 mb-2">Nenhuma vinculação encontrada</h3>
+                    <p className="text-sm text-gray-500 mb-4">
+                      Crie uma vinculação para conectar suas instâncias aos agentes personalizados.
+                    </p>
+                    {(!instances?.length || !customAgents?.length) && (
+                      <div className="text-sm text-yellow-600 bg-yellow-50 p-3 rounded-lg">
+                        {!instances?.length && "Você precisa criar pelo menos uma instância. "}
+                        {!customAgents?.length && "Você precisa criar pelo menos um agente personalizado na aba IA."}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* Modal para criar vinculação */}
+        <Dialog open={showBindingModal} onOpenChange={setShowBindingModal}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Link className="w-5 h-5" />
+                Nova Vinculação
+              </DialogTitle>
+              <DialogDescription>
+                Selecione uma instância e um agente para criar uma vinculação.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              {/* Seleção de Instância */}
+              <div className="space-y-2">
+                <Label htmlFor="instance-select">Instância do WhatsApp</Label>
+                <Select value={selectedInstance} onValueChange={setSelectedInstance}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma instância" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {instances?.filter(instance => {
+                      // Filtrar instâncias que já não estão vinculadas
+                      return !bindings?.some(binding => binding.instanceId === instance.id);
+                    }).map((instance) => (
+                      <SelectItem key={instance.id} value={instance.id}>
+                        <div className="flex items-center gap-2">
+                          <Smartphone className="w-4 h-4" />
+                          <span>{instance.instanceName}</span>
+                          <Badge variant="outline" className="ml-auto">
+                            {instance.status === 'connected' ? 'Conectado' : 'Desconectado'}
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Seleção de Agente */}
+              <div className="space-y-2">
+                <Label htmlFor="agent-select">Agente Personalizado</Label>
+                <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um agente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customAgents?.filter(agent => agent.isActive).map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>
+                        <div className="flex items-center gap-2">
+                          <Bot className="w-4 h-4" />
+                          <div>
+                            <span className="font-medium">{agent.name}</span>
+                            {agent.description && (
+                              <p className="text-xs text-gray-500">{agent.description}</p>
+                            )}
+                          </div>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowBindingModal(false);
+                  setSelectedInstance("");
+                  setSelectedAgent("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCreateBinding}
+                disabled={!selectedInstance || !selectedAgent || createBindingMutation.isPending}
+              >
+                {createBindingMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Link className="w-4 h-4 mr-2" />
+                )}
+                Criar Vinculação
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
-} 
+}

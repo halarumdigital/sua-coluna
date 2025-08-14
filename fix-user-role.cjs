@@ -1,68 +1,65 @@
 const mysql = require('mysql2/promise');
-require('dotenv').config();
 
 async function fixUserRole() {
   let connection;
   
   try {
-    // Create connection
+    // Conectar ao banco de dados
     connection = await mysql.createConnection({
-      host: process.env.MYSQL_HOST,
-      user: process.env.MYSQL_USER,
-      password: process.env.MYSQL_PASSWORD,
-      database: process.env.MYSQL_DATABASE,
-      port: process.env.MYSQL_PORT || 3306
+      host: 'localhost',
+      user: 'root',
+      password: '',
+      database: 'sua_coluna'
     });
 
-    console.log('🔗 Conectado ao banco de dados');
+    console.log('✅ Conectado ao banco de dados');
 
-    // Find the user paulo@gmail.com
-    const [users] = await connection.execute(`
-      SELECT id, email, role
-      FROM users 
-      WHERE email = 'paulo@gmail.com'
-    `);
+    // Buscar usuário Paulo Santos
+    console.log('🔍 Buscando usuário Paulo Santos...');
+    const [users] = await connection.execute(
+      "SELECT id, email, first_name, last_name, role FROM users WHERE first_name = 'Paulo' AND last_name = 'Santos'"
+    );
     
     if (users.length === 0) {
-      console.log('❌ Usuário paulo@gmail.com não encontrado!');
+      console.log('❌ Usuário Paulo Santos não encontrado');
       return;
     }
     
     const user = users[0];
-    console.log(`\n👤 Usuário encontrado:`);
-    console.log(`   ID: ${user.id}`);
-    console.log(`   Email: ${user.email}`);
-    console.log(`   Role atual: ${user.role}`);
+    console.log('👤 Usuário encontrado:', user);
     
-    // Update user role to 'client'
-    await connection.execute(`
-      UPDATE users 
-      SET role = 'client'
-      WHERE id = ?
-    `, [user.id]);
+    if (user.role === 'franchise') {
+      console.log('✅ Usuário já tem role franchise');
+      return;
+    }
     
-    console.log(`\n✅ Role do usuário alterado de '${user.role}' para 'client'`);
-    console.log('💡 Agora você pode testar a criação de instâncias do WhatsApp!');
+    // Atualizar role para franchise
+    console.log('🔄 Atualizando role de client para franchise...');
+    await connection.execute(
+      "UPDATE users SET role = 'franchise' WHERE id = ?",
+      [user.id]
+    );
     
-    // Verify the change
-    const [updatedUsers] = await connection.execute(`
-      SELECT id, email, role
-      FROM users 
-      WHERE id = ?
-    `, [user.id]);
+    console.log('✅ Role atualizada com sucesso!');
     
-    const updatedUser = updatedUsers[0];
-    console.log(`\n🔍 Verificação:`);
-    console.log(`   Role atual: ${updatedUser.role}`);
-
+    // Verificar se foi atualizado
+    const [updatedUsers] = await connection.execute(
+      "SELECT id, email, first_name, last_name, role FROM users WHERE id = ?",
+      [user.id]
+    );
+    
+    if (updatedUsers.length > 0) {
+      console.log('✅ Usuário atualizado:', updatedUsers[0]);
+    }
+    
   } catch (error) {
     console.error('❌ Erro:', error);
   } finally {
     if (connection) {
       await connection.end();
+      console.log('\n🔌 Conexão fechada');
     }
   }
 }
 
-// Run the script
-fixUserRole().catch(console.error);
+fixUserRole();

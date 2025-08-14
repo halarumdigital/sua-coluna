@@ -12,6 +12,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { Bot, Plus, Edit, Trash2, Loader2 } from "lucide-react";
 
+interface User {
+  role: string;
+  [key: string]: any;
+}
+
 export default function ClientAIPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -19,7 +24,7 @@ export default function ClientAIPage() {
   const { user } = useAuth();
 
   // Early return se não deveria renderizar esta página
-  if (location !== '/client/ai' || user?.role === 'super_root' || (!user?.role || (user?.role !== 'client' && user?.role !== 'franchise'))) {
+  if (location !== '/client/ai' || !user || (user as User).role === 'super_root' || ((user as User).role !== 'client' && (user as User).role !== 'franchise')) {
     return null;
   }
 
@@ -38,13 +43,13 @@ export default function ClientAIPage() {
   // Determinar se deve executar a query
   const shouldFetchAgents = location === '/client/ai' && 
                            typeof window !== 'undefined' && 
-                           user?.role !== 'super_root' &&
-                           (user?.role === 'client' || user?.role === 'franchise');
+                           user && (user as User).role !== 'super_root' &&
+                           ((user as User).role === 'client' || (user as User).role === 'franchise');
 
   // Debug logs
   console.log('Debug ClientAIPage:', {
     location,
-    userRole: user?.role,
+    userRole: user ? (user as User).role : 'undefined',
     shouldFetchAgents,
     windowDefined: typeof window !== 'undefined'
   });
@@ -89,7 +94,7 @@ export default function ClientAIPage() {
     retry: 1,
     enabled: shouldFetchAgents,
     staleTime: 5 * 60 * 1000, // 5 minutos
-    cacheTime: 10 * 60 * 1000, // 10 minutos
+    gcTime: 10 * 60 * 1000, // 10 minutos
   });
 
   // Create/Update custom agent mutation
@@ -239,14 +244,81 @@ export default function ClientAIPage() {
 
   const handleSaveAgent = (e: React.FormEvent) => {
     e.preventDefault();
-    saveAgentMutation.mutate(agentForm);
+    
+    // Garantir que os dados estejam no formato correto conforme o schema
+    const validatedData = {
+      name: agentForm.name.trim(),
+      description: agentForm.description?.trim() || "",
+      systemPrompt: agentForm.systemPrompt.trim(),
+      temperature: Number(agentForm.temperature),
+      maxTokens: Number(agentForm.maxTokens),
+      isActive: Boolean(agentForm.isActive)
+    };
+    
+    // Validação básica antes de enviar
+    if (!validatedData.name) {
+      toast({
+        title: "Erro",
+        description: "Nome do agente é obrigatório",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!validatedData.systemPrompt) {
+      toast({
+        title: "Erro",
+        description: "Prompt do sistema é obrigatório",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (validatedData.temperature < 0 || validatedData.temperature > 2) {
+      toast({
+        title: "Erro",
+        description: "Temperatura deve estar entre 0 e 2",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (validatedData.maxTokens < 1 || validatedData.maxTokens > 4000) {
+      toast({
+        title: "Erro",
+        description: "Tokens máximos deve estar entre 1 e 4000",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    saveAgentMutation.mutate(validatedData);
   };
 
   const handleAgentFormChange = (field: string, value: any) => {
-    setAgentForm(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setAgentForm(prev => {
+      const newForm = { ...prev };
+      
+      // Garantir tipos corretos para campos específicos
+      switch (field) {
+        case 'temperature':
+          newForm.temperature = Number(value);
+          break;
+        case 'maxTokens':
+          newForm.maxTokens = Number(value);
+          break;
+        case 'isActive':
+          newForm.isActive = Boolean(value);
+          break;
+        case 'name':
+        case 'description':
+        case 'systemPrompt':
+          (newForm as any)[field] = value;
+          break;
+      }
+      
+      return newForm;
+    });
   };
 
   if (agentsLoading) {

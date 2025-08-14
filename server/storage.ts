@@ -23,6 +23,8 @@ import {
   globalPrompts,
   whatsappAgents,
   whatsappInstanceAgentBindings,
+  clientWhatsappInstanceAgentBindings,
+  customAIAgents,
   type User,
   type UpsertUser,
   type Client,
@@ -77,6 +79,8 @@ import {
   type InsertWhatsappAgent,
   type WhatsappInstanceAgentBinding,
   type InsertWhatsappInstanceAgentBinding,
+  type ClientWhatsappInstanceAgentBinding,
+  type InsertClientWhatsappInstanceAgentBinding,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, count, sum, sql, like, gte, lte, or, between, asc } from "drizzle-orm";
@@ -202,6 +206,7 @@ export interface IStorage {
   // WhatsApp Instances operations
   getWhatsappInstances(): Promise<WhatsappInstance[]>;
   getWhatsappInstancesByClient(clientId: string): Promise<WhatsappInstance[]>;
+  getWhatsappInstancesByFranchise(franchiseId: string): Promise<WhatsappInstance[]>;
   getWhatsappInstance(id: string): Promise<WhatsappInstance | undefined>;
   getWhatsappInstanceByKey(instanceKey: string): Promise<WhatsappInstance | undefined>;
   createWhatsappInstance(instance: InsertWhatsappInstance): Promise<WhatsappInstance>;
@@ -254,6 +259,18 @@ export interface IStorage {
   updateWhatsappInstanceAgentBinding(id: string, bindingData: Partial<InsertWhatsappInstanceAgentBinding>): Promise<WhatsappInstanceAgentBinding>;
   deleteWhatsappInstanceAgentBinding(id: string): Promise<void>;
   toggleWhatsappInstanceAgentBinding(id: string): Promise<WhatsappInstanceAgentBinding>;
+
+  // Client WhatsApp Instance Agent Bindings operations
+  getClientInstanceAgentBindings(clientId: string): Promise<WhatsappInstanceAgentBinding[]>;
+  getFranchiseInstanceAgentBindings(franchiseId: string): Promise<WhatsappInstanceAgentBinding[]>;
+  createClientWhatsappInstanceAgentBinding(bindingData: InsertWhatsappInstanceAgentBinding): Promise<WhatsappInstanceAgentBinding>;
+  updateClientWhatsappInstanceAgentBinding(id: string, bindingData: Partial<InsertWhatsappInstanceAgentBinding>): Promise<WhatsappInstanceAgentBinding>;
+  deleteClientWhatsappInstanceAgentBinding(id: string): Promise<void>;
+  getClientInstanceAgentBindingById(id: string): Promise<WhatsappInstanceAgentBinding | undefined>;
+  getClientWhatsappAgents(clientId: string): Promise<GlobalPrompt[]>;
+  
+  // Custom AI Agents operations
+  getCustomAIAgentsByUserId(userId: string): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -326,13 +343,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getClient(id: string): Promise<Client | undefined> {
+    if (!id) {
+      console.error('getClient called with undefined or empty id');
+      return undefined;
+    }
     const [client] = await db.select().from(clients).where(eq(clients.id, id));
     return client;
   }
 
   async getClientByUserId(userId: string): Promise<Client | undefined> {
-    const [client] = await db.select().from(clients).where(eq(clients.userId, userId));
-    return client;
+    // Na nova estrutura, usuários não são diretamente clientes
+    // Usuários podem ser donos de franquias, e clientes pertencem a franquias
+    // Este método agora retorna undefined pois a relação mudou
+    return undefined;
   }
 
   async createClient(client: InsertClient): Promise<Client> {
@@ -1245,6 +1268,7 @@ export class DatabaseStorage implements IStorage {
 
   // WhatsApp API Settings operations
   async getWhatsappApiSettings(): Promise<WhatsappApiSettings | undefined> {
+    await this.ensureWhatsappApiSettingsTable();
     const [settings] = await db
       .select()
       .from(whatsappApiSettings)
@@ -1255,6 +1279,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async saveWhatsappApiSettings(settings: WhatsappApiSettingsForm, userId: string): Promise<WhatsappApiSettings> {
+    await this.ensureWhatsappApiSettingsTable();
     // Deactivate all existing settings first
     await db
       .update(whatsappApiSettings)
@@ -1283,6 +1308,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateWhatsappApiSettings(id: string, settings: Partial<WhatsappApiSettingsForm>): Promise<WhatsappApiSettings> {
+    await this.ensureWhatsappApiSettingsTable();
     await db
       .update(whatsappApiSettings)
       .set({ ...settings, updatedAt: new Date() })
@@ -1298,7 +1324,32 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteWhatsappApiSettings(id: string): Promise<void> {
+    await this.ensureWhatsappApiSettingsTable();
     await db.delete(whatsappApiSettings).where(eq(whatsappApiSettings.id, id));
+  }
+
+  private async ensureWhatsappApiSettingsTable(): Promise<void> {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS whatsapp_api_settings (
+          id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+          evolution_api_url VARCHAR(500) NOT NULL,
+          global_token VARCHAR(500) NOT NULL,
+          system_url VARCHAR(255),
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          created_by VARCHAR(36),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_whatsapp_api_active (is_active),
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+      `);
+    } catch (error: any) {
+      if (error?.code !== 'ER_TABLE_EXISTS_ERROR') {
+        // Log but don't crash; subsequent queries may still fail and surface meaningful errors
+        console.error('Erro ao garantir tabela whatsapp_api_settings:', error);
+      }
+    }
   }
 
   // WhatsApp Instances operations
@@ -1310,10 +1361,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getWhatsappInstancesByClient(clientId: string): Promise<WhatsappInstance[]> {
+    // Esta função agora é obsoleta, usar getWhatsappInstancesByFranchise
     return await db
       .select()
       .from(whatsappInstances)
-      .where(eq(whatsappInstances.clientId, clientId))
+      .where(eq(whatsappInstances.franchiseId, clientId)) // clientId agora é franchiseId
+      .orderBy(desc(whatsappInstances.createdAt));
+  }
+
+  async getWhatsappInstancesByFranchise(franchiseId: string): Promise<WhatsappInstance[]> {
+    // Agora as instâncias pertencem diretamente à franquia
+    return await db
+      .select()
+      .from(whatsappInstances)
+      .where(eq(whatsappInstances.franchiseId, franchiseId))
       .orderBy(desc(whatsappInstances.createdAt));
   }
 
@@ -1341,7 +1402,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(whatsappInstances)
       .where(and(
-        eq(whatsappInstances.clientId, instance.clientId),
+        eq(whatsappInstances.franchiseId, instance.franchiseId),
         eq(whatsappInstances.instanceKey, instance.instanceKey)
       ))
       .orderBy(desc(whatsappInstances.createdAt))
@@ -2111,7 +2172,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(whatsappConversations)
       .innerJoin(whatsappInstances, eq(whatsappConversations.instanceId, whatsappInstances.id))
-      .where(eq(whatsappInstances.clientId, clientId));
+      .where(eq(whatsappInstances.franchiseId, clientId));
 
     // Build conditions array
     const conditions = [eq(whatsappInstances.clientId, clientId)];
@@ -2446,6 +2507,143 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Client WhatsApp Instance Agent Bindings operations
+  async getClientInstanceAgentBindings(clientId: string): Promise<WhatsappInstanceAgentBinding[]> {
+    await this.ensureWhatsappInstanceAgentBindingsTable();
+    
+    // Get bindings for instances that belong to the client
+    const bindings = await db
+      .select({
+        id: whatsappInstanceAgentBindings.id,
+        instanceId: whatsappInstanceAgentBindings.instanceId,
+        agentId: whatsappInstanceAgentBindings.agentId,
+        isActive: whatsappInstanceAgentBindings.isActive,
+        createdAt: whatsappInstanceAgentBindings.createdAt,
+        updatedAt: whatsappInstanceAgentBindings.updatedAt,
+      })
+      .from(whatsappInstanceAgentBindings)
+      .innerJoin(whatsappInstances, eq(whatsappInstanceAgentBindings.instanceId, whatsappInstances.id))
+      .where(eq(whatsappInstances.franchiseId, clientId))
+      .orderBy(desc(whatsappInstanceAgentBindings.createdAt));
+
+    return bindings;
+  }
+
+  async getFranchiseInstanceAgentBindings(franchiseId: string): Promise<ClientWhatsappInstanceAgentBinding[]> {
+    await this.ensureClientWhatsappInstanceAgentBindingsTable();
+    
+    // Validate franchiseId parameter
+    if (!franchiseId || franchiseId.trim() === '') {
+      console.error('getFranchiseInstanceAgentBindings: franchiseId is undefined or empty:', franchiseId);
+      return [];
+    }
+    
+    // Get bindings for instances that belong to clients of the franchise
+    const bindings = await db
+      .select({
+        id: clientWhatsappInstanceAgentBindings.id,
+        instanceId: clientWhatsappInstanceAgentBindings.instanceId,
+        agentId: clientWhatsappInstanceAgentBindings.agentId,
+        userId: clientWhatsappInstanceAgentBindings.userId,
+        isActive: clientWhatsappInstanceAgentBindings.isActive,
+        createdAt: clientWhatsappInstanceAgentBindings.createdAt,
+        updatedAt: clientWhatsappInstanceAgentBindings.updatedAt,
+      })
+      .from(clientWhatsappInstanceAgentBindings)
+      .innerJoin(whatsappInstances, eq(clientWhatsappInstanceAgentBindings.instanceId, whatsappInstances.id))
+      .where(eq(whatsappInstances.franchiseId, franchiseId))
+      .orderBy(desc(clientWhatsappInstanceAgentBindings.createdAt));
+
+    return bindings;
+  }
+
+  async createClientWhatsappInstanceAgentBinding(bindingData: InsertClientWhatsappInstanceAgentBinding): Promise<ClientWhatsappInstanceAgentBinding> {
+    await this.ensureClientWhatsappInstanceAgentBindingsTable();
+    await db.insert(clientWhatsappInstanceAgentBindings).values(bindingData);
+    
+    const [inserted] = await db
+      .select()
+      .from(clientWhatsappInstanceAgentBindings)
+      .where(and(
+        eq(clientWhatsappInstanceAgentBindings.instanceId, bindingData.instanceId),
+        eq(clientWhatsappInstanceAgentBindings.agentId, bindingData.agentId)
+      ))
+      .orderBy(desc(clientWhatsappInstanceAgentBindings.createdAt))
+      .limit(1);
+    
+    return inserted;
+  }
+
+  async updateClientWhatsappInstanceAgentBinding(id: string, bindingData: Partial<InsertClientWhatsappInstanceAgentBinding>): Promise<ClientWhatsappInstanceAgentBinding> {
+    await this.ensureClientWhatsappInstanceAgentBindingsTable();
+    await db
+      .update(clientWhatsappInstanceAgentBindings)
+      .set({ ...bindingData, updatedAt: new Date() })
+      .where(eq(clientWhatsappInstanceAgentBindings.id, id));
+
+    const [updated] = await db
+      .select()
+      .from(clientWhatsappInstanceAgentBindings)
+      .where(eq(clientWhatsappInstanceAgentBindings.id, id));
+
+    return updated;
+  }
+
+  async deleteClientWhatsappInstanceAgentBinding(id: string): Promise<void> {
+    await this.ensureClientWhatsappInstanceAgentBindingsTable();
+    await db.delete(clientWhatsappInstanceAgentBindings).where(eq(clientWhatsappInstanceAgentBindings.id, id));
+  }
+
+  async getClientInstanceAgentBindingById(id: string): Promise<ClientWhatsappInstanceAgentBinding | undefined> {
+    await this.ensureClientWhatsappInstanceAgentBindingsTable();
+    
+    const [binding] = await db
+      .select()
+      .from(clientWhatsappInstanceAgentBindings)
+      .where(eq(clientWhatsappInstanceAgentBindings.id, id));
+
+    return binding ? {
+      id: binding.id,
+      instanceId: binding.instanceId,
+      agentId: binding.agentId,
+      userId: binding.userId,
+      isActive: binding.isActive,
+      createdAt: binding.createdAt,
+      updatedAt: binding.updatedAt,
+    } : undefined;
+  }
+
+  async getClientWhatsappAgents(clientId: string): Promise<GlobalPrompt[]> {
+    // Get client's franchisor to access global prompts
+    const client = await this.getClient(clientId);
+    if (!client) {
+      return [];
+    }
+
+    // Get user to find franchisor
+    const user = await this.getUser(client.userId);
+    if (!user) {
+      return [];
+    }
+
+    // Get franchisor
+    const franchisor = await this.getFranchisorByUserId(user.id);
+    if (!franchisor) {
+      return [];
+    }
+
+    // Return global prompts for this franchisor
+    return await this.getGlobalPrompts(franchisor.id);
+  }
+
+  async getCustomAIAgentsByUserId(userId: string): Promise<any[]> {
+    return await db
+      .select()
+      .from(customAIAgents)
+      .where(eq(customAIAgents.userId, userId))
+      .orderBy(desc(customAIAgents.createdAt));
+  }
+
   private async ensureWhatsappAgentsTable(): Promise<void> {
     try {
       await db.execute(sql`
@@ -2482,6 +2680,27 @@ export class DatabaseStorage implements IStorage {
       `);
     } catch (error) {
       console.error("Error ensuring whatsapp_instance_agent_bindings table:", error);
+    }
+  }
+
+  private async ensureClientWhatsappInstanceAgentBindingsTable(): Promise<void> {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS client_whatsapp_instance_agent_bindings (
+          id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+          instance_id VARCHAR(36) NOT NULL,
+          agent_id VARCHAR(36) NOT NULL,
+          user_id VARCHAR(36) NOT NULL,
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          FOREIGN KEY (instance_id) REFERENCES whatsapp_instances(id) ON DELETE CASCADE,
+          FOREIGN KEY (agent_id) REFERENCES custom_ai_agents(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+      `);
+    } catch (error) {
+      console.error("Error ensuring client_whatsapp_instance_agent_bindings table:", error);
     }
   }
 }

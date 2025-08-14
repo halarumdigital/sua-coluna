@@ -2250,16 +2250,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Save instance to database
       console.log('💾 Salvando instância no banco de dados...');
       
-      // Generate a local instanceKey if API didn't return one
-      const safeKey = (base: string) =>
-        `${base}`
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/(^-|-$)/g, '')
-          .slice(0, 40);
-
-      const generatedKey = `${safeKey(instanceName)}-${Math.random().toString(36).slice(2, 8)}`;
-      const finalInstanceKey = instanceKeyFromApi || generatedKey;
+      // Use simple instance name as key (no complex naming)
+      const finalInstanceKey = instanceKeyFromApi || instanceName;
       
       console.log('🔑 Chave da instância:', finalInstanceKey);
 
@@ -3649,8 +3641,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Configurações da API WhatsApp não encontradas ou inativas" });
       }
       
-      // Generate unique instance key
-      const instanceKey = `${instanceName}_${userId}_${Date.now()}`;
+      // Use simple instance name as key (no complex naming)
+      const instanceKey = instanceName;
       
       // Create instance in Evolution API
       const evolutionResponse = await fetch(`${adminSettings.evolutionApiUrl}/instance/create`, {
@@ -3660,7 +3652,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          instanceName: instanceKey,
+          instanceName: instanceName,
           token: adminSettings.globalToken,
           qrcode: true,
           integration: "WHATSAPP-BAILEYS"
@@ -4086,16 +4078,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Save instance to database
       console.log('💾 Salvando instância no banco de dados...');
       
-      // Generate a local instanceKey if API didn't return one
-      const safeKey = (base: string) =>
-        `${base}`
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/(^-|-$)/g, '')
-          .slice(0, 40);
-
-      const generatedKey = `${safeKey(instanceName)}-${Math.random().toString(36).slice(2, 8)}`;
-      const finalInstanceKey = instanceKeyFromApi || generatedKey;
+      // Use simple instance name as key (no complex naming)
+      const finalInstanceKey = instanceKeyFromApi || instanceName;
       
       console.log('🔑 Chave da instância:', finalInstanceKey);
 

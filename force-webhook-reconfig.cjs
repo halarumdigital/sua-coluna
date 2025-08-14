@@ -5,9 +5,9 @@ async function forceWebhookReconfig() {
   console.log('🔧 FORÇANDO RECONFIGURAÇÃO COMPLETA DO WEBHOOK...\n');
 
   const evolutionApiUrl = 'https://evoapilabs.beaihub.com.br';
-  const instanceKey = 'deploy1_ec227650-755b-11f0-8b9e-2ae8d4b3399a_1755135347398';
+  const instanceKey = '90d6c848-73f5-49dd-82eb-81883c25d2ed';
   const apiKey = '25cab27e8bdeb30090a423f0c03844ff';
-  const webhookUrl = 'https://labs.beaihub.com.br/api/client/whatsapp-webhook/deploy1_ec227650-755b-11f0-8b9e-2ae8d4b3399a_1755135347398';
+  const webhookUrl = 'https://labs.beaihub.com.br/api/client/whatsapp-webhook/deploy1';
 
   try {
     console.log('1️⃣ Verificando status atual da instância...');
@@ -21,7 +21,17 @@ async function forceWebhookReconfig() {
 
     if (instanceResponse.ok) {
       const instances = await instanceResponse.json();
-      const deploy1Instance = instances.find(inst => inst.instance.instanceName === 'deploy1');
+      console.log('   📋 Resposta da API:', JSON.stringify(instances, null, 2));
+      
+      // Procurar pela instância deploy1
+      let deploy1Instance = null;
+      for (const inst of instances) {
+        if (inst.instance && inst.instance.instanceName === 'deploy1') {
+          deploy1Instance = inst;
+          break;
+        }
+      }
+      
       if (deploy1Instance) {
         console.log(`   ✅ Instância deploy1 encontrada`);
         console.log(`   📱 Status: ${deploy1Instance.instance.status}`);

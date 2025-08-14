@@ -18,8 +18,16 @@ import { useToast } from "@/hooks/use-toast";
 import { Upload, MessageCircle, FolderOpen } from "lucide-react";
 import { z } from "zod";
 
-const updateProjectSchema = insertProjectSchema.partial().extend({
-  progress: z.number().min(0).max(100),
+// SCHEMA REMOVIDO - TABELA PROJECTS NÃO MAIS UTILIZADA
+// const updateProjectSchema = insertProjectSchema.partial().extend({
+//   progress: z.number().min(0).max(100),
+// });
+
+// Schema temporário para evitar erros
+const updateProjectSchema = z.object({
+  status: z.string().optional(),
+  progress: z.number().min(0).max(100).optional(),
+  description: z.string().optional(),
 });
 
 export default function TeamProjectsPage() {

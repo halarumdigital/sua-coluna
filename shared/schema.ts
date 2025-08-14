@@ -652,24 +652,33 @@ export const globalPromptsRelations = relations(globalPrompts, ({ one }) => ({
 
 export const teamMembersRelations = relations(teamMembers, ({ one, many }) => ({
   user: one(users, { fields: [teamMembers.userId], references: [users.id] }),
-  assignments: many(projectAssignments),
+  // assignments: many(projectAssignments), // REMOVIDO - TABELA PROJECT_ASSIGNMENTS NÃO MAIS UTILIZADA
 }));
 
+// RELAÇÕES REMOVIDAS - TABELA PROJECTS NÃO MAIS UTILIZADA
+/*
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   // // client: one(clients, { fields: [projects.clientId], references: [clients.id]  // RELAÇÃO REMOVIDA}), // Comentado - não usar mais clients
   assignments: many(projectAssignments),
   invoices: many(invoices),
 }));
+*/
 
+// RELAÇÕES REMOVIDAS - TABELA PROJECT_ASSIGNMENTS NÃO MAIS UTILIZADA
+/*
 export const projectAssignmentsRelations = relations(projectAssignments, ({ one }) => ({
   project: one(projects, { fields: [projectAssignments.projectId], references: [projects.id] }),
   teamMember: one(teamMembers, { fields: [projectAssignments.teamMemberId], references: [teamMembers.id] }),
 }));
+*/
 
+// RELAÇÕES REMOVIDAS - TABELA INVOICES NÃO MAIS UTILIZADA
+/*
 export const invoicesRelations = relations(invoices, ({ one }) => ({
   // // client: one(clients, { fields: [invoices.clientId], references: [clients.id]  // RELAÇÃO REMOVIDA}), // Comentado - não usar mais clients
   project: one(projects, { fields: [invoices.projectId], references: [projects.id] }),
 }));
+*/
 
 export const aiConfigurationsRelations = relations(aiConfigurations, ({ one }) => ({
   createdByUser: one(users, { fields: [aiConfigurations.createdBy], references: [users.id] }),
@@ -863,13 +872,16 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type TeamMember = typeof teamMembers.$inferSelect;
 export type InsertTeamMember = z.infer<typeof insertTeamMemberSchema>;
 
-export type Project = typeof projects.$inferSelect;
+// TIPO REMOVIDO - TABELA PROJECTS NÃO MAIS UTILIZADA
+// export type Project = typeof projects.$inferSelect;
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 
-export type Invoice = typeof invoices.$inferSelect;
+// TIPO REMOVIDO - TABELA INVOICES NÃO MAIS UTILIZADA
+// export type Invoice = typeof invoices.$inferSelect;
 export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
 
-export type ProjectAssignment = typeof projectAssignments.$inferSelect;
+// TIPO REMOVIDO - TABELA PROJECT_ASSIGNMENTS NÃO MAIS UTILIZADA
+// export type ProjectAssignment = typeof projectAssignments.$inferSelect;
 
 export type SystemSetting = typeof systemSettings.$inferSelect;
 export type InsertSystemSetting = z.infer<typeof insertSystemSettingSchema>;

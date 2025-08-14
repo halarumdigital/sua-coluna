@@ -3936,14 +3936,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Test endpoint to verify logging
+  app.post("/api/test-webhook-logs", async (req: any, res) => {
+    console.log("🚨 TEST WEBHOOK ENDPOINT HIT!");
+    console.log("🚨 Body:", JSON.stringify(req.body, null, 2));
+    res.json({ message: "Test webhook received", timestamp: new Date().toISOString() });
+  });
+
   // Client WhatsApp webhook endpoint
   app.post("/api/client/whatsapp-webhook/:instanceKey", async (req: any, res) => {
     try {
       const { instanceKey } = req.params;
       const webhookData = req.body;
       
-      console.log(`📨 Client WhatsApp webhook received for instance: ${instanceKey}`);
-      console.log('📋 Webhook data:', JSON.stringify(webhookData, null, 2));
+      console.log(`🚨 WEBHOOK RECEIVED! Instance: ${instanceKey}`);
+      console.log(`🚨 Timestamp: ${new Date().toISOString()}`);
+      console.log(`🚨 Headers:`, JSON.stringify(req.headers, null, 2));
+      console.log(`🚨 Body:`, JSON.stringify(webhookData, null, 2));
       
       // Find the instance
       const instance = await storage.getWhatsappInstanceByKey(instanceKey);
@@ -3952,14 +3961,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Instance not found" });
       }
       
-      // Process the webhook with AI handler
-      await whatsappAIHandler.handleClientWebhook(instanceKey, webhookData);
+      console.log(`✅ Instance found: ${instance.instanceName}`);
       
-      res.status(200).json({ message: "Webhook processed successfully" });
+      // Process the webhook with AI handler
+      console.log(`🔄 Processing webhook with AI handler...`);
+      await whatsappAIHandler.handleClientWebhook(instanceKey, webhookData);
+      console.log(`✅ Webhook processing completed`);
+      
+      res.status(200).json({ message: "Webhook processed successfully", success: true });
     } catch (error) {
       console.error("❌ Error processing client WhatsApp webhook:", error);
       res.status(500).json({ message: "Error processing webhook" });
     }
+  });
+
+  // Debug endpoint para testar webhooks
+  app.post("/api/debug/webhook/:instanceKey", async (req: any, res) => {
+    console.log(`🚨🚨🚨 DEBUG WEBHOOK RECEIVED! 🚨🚨🚨`);
+    console.log(`Instance: ${req.params.instanceKey}`);
+    console.log(`Body:`, JSON.stringify(req.body, null, 2));
+    console.log(`Headers:`, JSON.stringify(req.headers, null, 2));
+    res.json({ success: true, message: "Debug webhook received" });
   });
 
   // Rota para usuários franchise criarem instâncias WhatsApp

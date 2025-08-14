@@ -131,17 +131,44 @@ Responda de forma natural e útil, como um assistente virtual. Mantenha a respos
   async handleClientWebhook(instanceKey: string, webhookData: any): Promise<void> {
     try {
       console.log(`📨 Processing client webhook for instance: ${instanceKey}`);
+      console.log(`📋 Webhook data structure:`, JSON.stringify(webhookData, null, 2));
       
       // Check if this is a message event
       if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT') {
-        const messages = webhookData.data?.messages || webhookData.messages || [];
+        // Handle different webhook data structures
+        let messages = [];
+        
+        if (webhookData.data?.messages) {
+          // Format: { data: { messages: [...] } }
+          messages = webhookData.data.messages;
+        } else if (webhookData.messages) {
+          // Format: { messages: [...] }
+          messages = webhookData.messages;
+        } else if (webhookData.key && webhookData.message) {
+          // Format: Direct message object (Evolution API format)
+          messages = [webhookData];
+        }
+        
+        console.log(`📬 Processing ${messages.length} message(s)`);
         
         for (const message of messages) {
+          console.log(`📨 Message details:`, {
+            fromMe: message.key?.fromMe,
+            hasMessage: !!message.message,
+            messageType: message.messageType,
+            remoteJid: message.key?.remoteJid
+          });
+          
           // Only process incoming messages (not sent by us)
           if (!message.key?.fromMe && message.message) {
+            console.log(`✅ Processing incoming message from ${message.key.remoteJid}`);
             await this.handleIncomingMessage(instanceKey, message);
+          } else {
+            console.log(`⏭️ Skipping message: fromMe=${message.key?.fromMe}, hasMessage=${!!message.message}`);
           }
         }
+      } else {
+        console.log(`⏭️ Skipping non-message event: ${webhookData.event}`);
       }
     } catch (error) {
       console.error('❌ Error processing client webhook:', error);
@@ -151,17 +178,44 @@ Responda de forma natural e útil, como um assistente virtual. Mantenha a respos
   async handleAdminWebhook(instanceKey: string, webhookData: any): Promise<void> {
     try {
       console.log(`📨 Processing admin webhook for instance: ${instanceKey}`);
+      console.log(`📋 Webhook data structure:`, JSON.stringify(webhookData, null, 2));
       
       // Check if this is a message event
       if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT') {
-        const messages = webhookData.data?.messages || webhookData.messages || [];
+        // Handle different webhook data structures
+        let messages = [];
+        
+        if (webhookData.data?.messages) {
+          // Format: { data: { messages: [...] } }
+          messages = webhookData.data.messages;
+        } else if (webhookData.messages) {
+          // Format: { messages: [...] }
+          messages = webhookData.messages;
+        } else if (webhookData.key && webhookData.message) {
+          // Format: Direct message object (Evolution API format)
+          messages = [webhookData];
+        }
+        
+        console.log(`📬 Processing ${messages.length} message(s)`);
         
         for (const message of messages) {
+          console.log(`📨 Message details:`, {
+            fromMe: message.key?.fromMe,
+            hasMessage: !!message.message,
+            messageType: message.messageType,
+            remoteJid: message.key?.remoteJid
+          });
+          
           // Only process incoming messages (not sent by us)
           if (!message.key?.fromMe && message.message) {
+            console.log(`✅ Processing incoming message from ${message.key.remoteJid}`);
             await this.handleIncomingMessage(instanceKey, message);
+          } else {
+            console.log(`⏭️ Skipping message: fromMe=${message.key?.fromMe}, hasMessage=${!!message.message}`);
           }
         }
+      } else {
+        console.log(`⏭️ Skipping non-message event: ${webhookData.event}`);
       }
     } catch (error) {
       console.error('❌ Error processing admin webhook:', error);

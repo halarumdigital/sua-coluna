@@ -1,106 +1,154 @@
-const { drizzle } = require('drizzle-orm/mysql2');
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 async function checkFinalStatus() {
-  console.log('🔍 Verificando status final do sistema...');
+  console.log('🔍 VERIFICAÇÃO FINAL DO SISTEMA WHATSAPP...\n');
 
   let connection;
   try {
+    // Conectar ao banco de dados
     connection = await mysql.createConnection({
-      host: process.env.MYSQL_HOST,
-      user: process.env.MYSQL_USER,
-      password: process.env.MYSQL_PASSWORD,
-      database: process.env.MYSQL_DATABASE,
-      port: parseInt(process.env.MYSQL_PORT || '3306'),
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME
     });
 
-    console.log('✅ Conectado ao banco de dados');
+    console.log('✅ Conectado ao banco de dados\n');
 
-    // Verificar estrutura da tabela custom_ai_agents
-    const [columns] = await connection.execute('DESCRIBE custom_ai_agents');
-    console.log('\n📋 Colunas da tabela custom_ai_agents:');
-    columns.forEach(col => {
-      console.log(`   • ${col.Field} (${col.Type})`);
+    // 1. Verificar configurações de AI
+    console.log('1️⃣ CONFIGURAÇÕES DE AI:');
+    const [aiSettings] = await connection.execute(`
+      SELECT setting_key, setting_value 
+      FROM system_settings 
+      WHERE setting_key LIKE 'ai_%'
+    `);
+
+    const aiConfig = {};
+    aiSettings.forEach(setting => {
+      aiConfig[setting.setting_key] = setting.setting_value;
     });
 
-    // Verificar agentes customizados
-    const [customAgents] = await connection.execute('SELECT * FROM custom_ai_agents WHERE is_active = 1');
-    console.log(`\n🤖 Agentes Customizados Ativos: ${customAgents.length}`);
-    
-    customAgents.forEach((agent, index) => {
-      console.log(`${index + 1}. ${agent.name} (ID: ${agent.id})`);
-    });
+    console.log(`   • API Key OpenAI: ${aiConfig.ai_chatgpt_api_key ? '✅ Configurada' : '❌ Não configurada'}`);
+    console.log(`   • Modelo: ${aiConfig.ai_model || '❌ Não configurado'}`);
+    console.log(`   • Temperature: ${aiConfig.ai_temperature || '❌ Não configurado'}`);
+    console.log(`   • Max Tokens: ${aiConfig.ai_max_tokens || '❌ Não configurado'}`);
+    console.log(`   • System Prompt: ${aiConfig.ai_system_prompt ? '✅ Configurado' : '❌ Não configurado'}\n`);
 
-    // Verificar vinculação da instância
-    const instanceKey = 'deploy1_ec227650-755b-11f0-8b9e-2ae8d4b3399a_1755135347398';
-    const [instanceData] = await connection.execute(
-      'SELECT * FROM whatsapp_instances WHERE instance_key = ?',
-      [instanceKey]
-    );
+    // 2. Verificar instância WhatsApp
+    console.log('2️⃣ INSTÂNCIA WHATSAPP:');
+    const [instances] = await connection.execute(`
+      SELECT id, instance_name, instance_key, status, is_active, client_id, webhook
+      FROM whatsapp_instances 
+      WHERE instance_name = 'deploy1'
+    `);
 
-    if (instanceData.length > 0) {
-      const instance = instanceData[0];
-      console.log(`\n📱 INSTÂNCIA: ${instance.instance_name}`);
-      console.log(`   • ID: ${instance.id}`);
+    if (instances.length > 0) {
+      const instance = instances[0];
+      console.log(`   • Nome: ${instance.instance_name}`);
+      console.log(`   • Chave: ${instance.instance_key}`);
       console.log(`   • Status: ${instance.status}`);
-      console.log(`   • Ativo: ${instance.is_active ? 'Sim' : 'Não'}`);
-      console.log(`   • Webhook: ${instance.webhook ? 'Configurado' : 'Não configurado'}`);
-      
-      // Verificar vinculação (sem tentar acessar coluna prompt que não existe)
+      console.log(`   • Ativa: ${instance.is_active ? '✅ Sim' : '❌ Não'}`);
+      console.log(`   • Cliente ID: ${instance.client_id || '❌ Não vinculado'}`);
+      console.log(`   • Webhook: ${instance.webhook ? '✅ Configurado' : '❌ Não configurado'}\n`);
+    } else {
+      console.log('   ❌ Instância deploy1 não encontrada\n');
+    }
+
+    // 3. Verificar agente vinculado
+    console.log('3️⃣ AGENTE VINCULADO:');
+    if (instances.length > 0) {
       const [bindings] = await connection.execute(`
-        SELECT 
-          b.*,
-          a.name as agent_name,
-          a.is_active as agent_active
+        SELECT b.id, b.instance_id, b.agent_id, b.is_active,
+               a.name as agent_name, a.is_active as agent_active
         FROM client_whatsapp_instance_agent_bindings b
         LEFT JOIN custom_ai_agents a ON b.agent_id = a.id
         WHERE b.instance_id = ?
-      `, [instance.id]);
+      `, [instances[0].id]);
 
       if (bindings.length > 0) {
         const binding = bindings[0];
-        console.log(`\n🔗 VINCULAÇÃO:`);
         console.log(`   • Binding ID: ${binding.id}`);
-        console.log(`   • Agent ID: ${binding.agent_id}`);
-        console.log(`   • Agente: ${binding.agent_name || 'N/A'}`);
-        console.log(`   • Agente ativo: ${binding.agent_active ? 'Sim' : 'Não'}`);
-        console.log(`   • Binding ativo: ${binding.is_active ? 'Sim' : 'Não'}`);
+        console.log(`   • Agente: ${binding.agent_name || '❌ Nome não encontrado'}`);
+        console.log(`   • Agente Ativo: ${binding.agent_active ? '✅ Sim' : '❌ Não'}`);
+        console.log(`   • Binding Ativo: ${binding.is_active ? '✅ Sim' : '❌ Não'}\n`);
+      } else {
+        console.log('   ❌ Nenhum agente vinculado à instância\n');
       }
     }
 
-    // Verificar configurações finais
-    const [aiConfig] = await connection.execute('SELECT * FROM ai_configurations LIMIT 1');
-    const [whatsappConfig] = await connection.execute('SELECT * FROM whatsapp_api_settings LIMIT 1');
+    // 4. Verificar cliente
+    console.log('4️⃣ CLIENTE:');
+    if (instances.length > 0 && instances[0].client_id) {
+      const [clients] = await connection.execute(`
+        SELECT id, name, is_active, user_id
+        FROM clients 
+        WHERE id = ?
+      `, [instances[0].client_id]);
 
-    console.log('\n📊 CONFIGURAÇÕES:');
-    console.log(`   • AI configurada: ${aiConfig.length > 0 && aiConfig[0].openai_api_key ? 'Sim' : 'Não'}`);
-    console.log(`   • WhatsApp API ativa: ${whatsappConfig.length > 0 && whatsappConfig[0].is_active ? 'Sim' : 'Não'}`);
-
-    // Status geral
-    const hasValidBinding = instanceData.length > 0 && 
-                           instanceData[0].is_active && 
-                           instanceData[0].webhook;
-    
-    const hasAI = aiConfig.length > 0 && aiConfig[0].openai_api_key;
-    const hasWhatsApp = whatsappConfig.length > 0 && whatsappConfig[0].is_active;
-
-    console.log('\n🎯 STATUS GERAL:');
-    console.log(`   • Instância configurada: ${hasValidBinding ? '✅' : '❌'}`);
-    console.log(`   • AI configurada: ${hasAI ? '✅' : '❌'}`);
-    console.log(`   • WhatsApp API ativa: ${hasWhatsApp ? '✅' : '❌'}`);
-
-    if (hasValidBinding && hasAI && hasWhatsApp) {
-      console.log('\n🎉 SISTEMA TOTALMENTE CONFIGURADO!');
-      console.log('\n📝 COMO FUNCIONA:');
-      console.log('   1. Alguém envia mensagem para o número da instância');
-      console.log('   2. Evolution API envia webhook para:');
-      console.log('      https://labs.beaihub.com.br/api/client/whatsapp-webhook/deploy1_ec227650-755b-11f0-8b9e-2ae8d4b3399a_1755135347398');
-      console.log('   3. Sistema processa mensagem com o agente "Secretáriaaaaa"');
-      console.log('   4. Resposta é enviada automaticamente via WhatsApp');
-      console.log('\n✨ O agente está pronto para responder automaticamente!');
+      if (clients.length > 0) {
+        const client = clients[0];
+        console.log(`   • Nome: ${client.name}`);
+        console.log(`   • Ativo: ${client.is_active ? '✅ Sim' : '❌ Não'}`);
+        console.log(`   • User ID: ${client.user_id}\n`);
+      } else {
+        console.log('   ❌ Cliente não encontrado\n');
+      }
     } else {
-      console.log('\n⚠️ Ainda há configurações pendentes');
+      console.log('   ❌ Instância não tem cliente vinculado\n');
+    }
+
+    // 5. Verificar configurações da API WhatsApp
+    console.log('5️⃣ API WHATSAPP:');
+    const [whatsappSettings] = await connection.execute(`
+      SELECT id, evolution_api_url, global_token, is_active
+      FROM whatsapp_api_settings 
+      WHERE is_active = 1
+    `);
+
+    if (whatsappSettings.length > 0) {
+      const settings = whatsappSettings[0];
+      console.log(`   • URL: ${settings.evolution_api_url}`);
+      console.log(`   • Token: ${settings.global_token ? '✅ Configurado' : '❌ Não configurado'}`);
+      console.log(`   • Ativa: ${settings.is_active ? '✅ Sim' : '❌ Não'}\n`);
+    } else {
+      console.log('   ❌ Configurações da API WhatsApp não encontradas\n');
+    }
+
+    // 6. Resumo final
+    console.log('🎯 RESUMO FINAL:');
+    
+    const hasApiKey = !!aiConfig.ai_chatgpt_api_key;
+    const hasInstance = instances.length > 0 && instances[0].is_active;
+    const hasWebhook = instances.length > 0 && !!instances[0].webhook;
+    const hasAgent = instances.length > 0 && (await connection.execute(`
+      SELECT COUNT(*) as count FROM client_whatsapp_instance_agent_bindings 
+      WHERE instance_id = ? AND is_active = 1
+    `, [instances[0].id]))[0][0].count > 0;
+    const hasClient = instances.length > 0 && !!instances[0].client_id;
+    const hasWhatsappApi = whatsappSettings.length > 0;
+
+    console.log(`   • API Key OpenAI: ${hasApiKey ? '✅' : '❌'}`);
+    console.log(`   • Instância Ativa: ${hasInstance ? '✅' : '❌'}`);
+    console.log(`   • Webhook Configurado: ${hasWebhook ? '✅' : '❌'}`);
+    console.log(`   • Agente Vinculado: ${hasAgent ? '✅' : '❌'}`);
+    console.log(`   • Cliente Vinculado: ${hasClient ? '✅' : '❌'}`);
+    console.log(`   • API WhatsApp: ${hasWhatsappApi ? '✅' : '❌'}`);
+
+    if (hasApiKey && hasInstance && hasWebhook && hasAgent && hasClient && hasWhatsappApi) {
+      console.log('\n🎉 SISTEMA TOTALMENTE FUNCIONAL!');
+      console.log('\n📝 PARA TESTAR:');
+      console.log('   1. Envie uma mensagem para o WhatsApp');
+      console.log('   2. Verifique os logs do servidor');
+      console.log('   3. O agente deve responder automaticamente');
+    } else {
+      console.log('\n⚠️ PROBLEMAS IDENTIFICADOS:');
+      if (!hasApiKey) console.log('   • API Key do OpenAI não configurada');
+      if (!hasInstance) console.log('   • Instância WhatsApp não ativa');
+      if (!hasWebhook) console.log('   • Webhook não configurado');
+      if (!hasAgent) console.log('   • Agente não vinculado à instância');
+      if (!hasClient) console.log('   • Cliente não vinculado à instância');
+      if (!hasWhatsappApi) console.log('   • API WhatsApp não configurada');
     }
 
   } catch (error) {
@@ -112,4 +160,4 @@ async function checkFinalStatus() {
   }
 }
 
-checkFinalStatus().catch(console.error);
+checkFinalStatus();

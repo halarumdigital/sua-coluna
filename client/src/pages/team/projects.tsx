@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertProjectSchema } from "@shared/schema";
+// SCHEMA REMOVIDO - TABELA PROJECTS NÃO MAIS UTILIZADA
+// import { insertProjectSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, MessageCircle, FolderOpen } from "lucide-react";

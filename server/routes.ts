@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertClientSchema, insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema, aiSettingsSchema, createClientSchema, editClientSchema } from "@shared/schema";
+import { insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema, aiSettingsSchema } from "@shared/schema";
 import { openaiService } from "./openai";
 import { whatsappAIHandler } from "./whatsapp-ai-handler";
 import { z } from "zod";

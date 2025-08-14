@@ -1,10 +1,11 @@
 import {
   users,
-  clients,
+  // TABELAS REMOVIDAS - NÃO MAIS UTILIZADAS
+  // clients,
   teamMembers,
-  projects,
-  invoices,
-  projectAssignments,
+  // projects,
+  // invoices,
+  // projectAssignments,
   systemSettings,
   userRoles,
   aiConfigurations,
@@ -27,15 +28,16 @@ import {
   customAIAgents,
   type User,
   type UpsertUser,
-  type Client,
-  type InsertClient,
+  // TIPOS REMOVIDOS - TABELAS NÃO MAIS UTILIZADAS
+  // type Client,
+  // type InsertClient,
   type TeamMember,
   type InsertTeamMember,
-  type Project,
-  type InsertProject,
-  type Invoice,
-  type InsertInvoice,
-  type ProjectAssignment,
+  // type Project,
+  // type InsertProject,
+  // type Invoice,
+  // type InsertInvoice,
+  // type ProjectAssignment,
   type SystemSetting,
   type InsertSystemSetting,
   type UserRole,
@@ -79,8 +81,9 @@ import {
   type InsertWhatsappAgent,
   type WhatsappInstanceAgentBinding,
   type InsertWhatsappInstanceAgentBinding,
-  type ClientWhatsappInstanceAgentBinding,
-  type InsertClientWhatsappInstanceAgentBinding,
+  // TIPOS REMOVIDOS - TABELAS NÃO MAIS UTILIZADAS
+  // type ClientWhatsappInstanceAgentBinding,
+  // type InsertClientWhatsappInstanceAgentBinding,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, count, sum, sql, like, gte, lte, or, between, asc } from "drizzle-orm";
@@ -92,13 +95,15 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
 
-  // Client operations
+  // Client operations - REMOVIDAS - TABELA CLIENTS NÃO MAIS UTILIZADA
+  /*
   getClients(): Promise<Client[]>;
   getClient(id: string): Promise<Client | undefined>;
   getClientByUserId(userId: string): Promise<Client | undefined>;
   createClient(client: InsertClient): Promise<Client>;
   updateClient(id: string, client: Partial<InsertClient>): Promise<Client>;
   deleteClient(id: string): Promise<void>;
+  */
 
   // Team operations
   getTeamMembers(): Promise<TeamMember[]>;
@@ -107,21 +112,25 @@ export interface IStorage {
   updateTeamMember(id: string, member: Partial<InsertTeamMember>): Promise<TeamMember>;
   deleteTeamMember(id: string): Promise<void>;
 
-  // Project operations
+  // Project operations - REMOVIDAS - TABELA PROJECTS NÃO MAIS UTILIZADA
+  /*
   getProjects(): Promise<Project[]>;
   getProjectsByTeamMember(teamMemberId: string): Promise<Project[]>;
   getProject(id: string): Promise<Project | undefined>;
   createProject(project: InsertProject): Promise<Project>;
   updateProject(id: string, project: Partial<InsertProject>): Promise<Project>;
   deleteProject(id: string): Promise<void>;
+  */
 
-  // Invoice operations
+  // Invoice operations - REMOVIDAS - TABELA INVOICES NÃO MAIS UTILIZADA
+  /*
   getInvoices(): Promise<Invoice[]>;
   getInvoicesByClient(clientId: string): Promise<Invoice[]>;
   getInvoice(id: string): Promise<Invoice | undefined>;
   createInvoice(invoice: InsertInvoice): Promise<Invoice>;
   updateInvoice(id: string, invoice: Partial<InsertInvoice>): Promise<Invoice>;
   deleteInvoice(id: string): Promise<void>;
+  */
 
   // Dashboard stats
   getAdminStats(): Promise<{
@@ -130,11 +139,14 @@ export interface IStorage {
     activeProjects: number;
     teamMembers: number;
   }>;
+  // MÉTODO REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
+  /*
   getClientStats(clientId: string): Promise<{
     pendingInvoices: number;
     totalOpen: number;
     nextDue: string | null;
   }>;
+  */
   getTeamStats(teamMemberId: string): Promise<{
     activeProjects: number;
     pendingTasks: number;
@@ -150,8 +162,10 @@ export interface IStorage {
   // Team member with user creation
   createTeamMemberWithUser(data: any): Promise<TeamMember>;
 
-  // Client with user creation
+  // Client with user creation - REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
+  /*
   createClientWithUser(data: any): Promise<Client>;
+  */
 
   // Roles operations
   getRoles(): Promise<UserRole[]>;
@@ -338,10 +352,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Client operations
+  // MÉTODO REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
+  /*
   async getClients(): Promise<Client[]> {
     return await db.select().from(clients).orderBy(desc(clients.createdAt));
   }
+  */
 
+  // MÉTODO REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
+  /*
   async getClient(id: string): Promise<Client | undefined> {
     if (!id) {
       console.error('getClient called with undefined or empty id');
@@ -350,6 +369,7 @@ export class DatabaseStorage implements IStorage {
     const [client] = await db.select().from(clients).where(eq(clients.id, id));
     return client;
   }
+  */
 
   async getClientByUserId(userId: string): Promise<Client | undefined> {
     // Na nova estrutura, usuários não são diretamente clientes
@@ -358,11 +378,16 @@ export class DatabaseStorage implements IStorage {
     return undefined;
   }
 
+  // MÉTODO REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
+  /*
   async createClient(client: InsertClient): Promise<Client> {
     const [newClient] = await db.insert(clients).values(client).returning();
     return newClient;
   }
+  */
 
+  // MÉTODO REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
+  /*
   async updateClient(id: string, client: Partial<InsertClient>): Promise<Client> {
     try {
       console.log("updateClient - ID:", id);
@@ -411,10 +436,14 @@ export class DatabaseStorage implements IStorage {
       throw error;
     }
   }
+  */
 
+  // MÉTODO REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
+  /*
   async deleteClient(id: string): Promise<void> {
     await db.delete(clients).where(eq(clients.id, id));
   }
+  */
 
   // Team operations
   async getTeamMembers(): Promise<TeamMember[]> {
@@ -536,7 +565,7 @@ export class DatabaseStorage implements IStorage {
     activeProjects: number;
     teamMembers: number;
   }> {
-    const [clientCount] = await db.select({ count: count() }).from(clients);
+    // const [clientCount] = await db.select({ count: count() }).from(clients); // TABELA REMOVIDA
     const [revenueSum] = await db
       .select({ sum: sum(invoices.amount) })
       .from(invoices)
@@ -548,14 +577,17 @@ export class DatabaseStorage implements IStorage {
     const [memberCount] = await db.select({ count: count() }).from(teamMembers);
 
     return {
-      totalClients: clientCount.count,
+      totalClients: 0, // TABELA CLIENTS REMOVIDA
       totalRevenue: Number(revenueSum.sum || 0),
       activeProjects: projectCount.count,
       teamMembers: memberCount.count,
     };
   }
 
-  async getClientStats(clientId: string): Promise<{
+  // MÉTODO REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
+// async getClientStats(clientId: string): Promise<{
+    // MÉTODO REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
+    /*
     pendingInvoices: number;
     totalOpen: number;
     nextDue: string | null;
@@ -583,6 +615,7 @@ export class DatabaseStorage implements IStorage {
       nextDue: nextInvoice?.dueDate?.toISOString().split('T')[0] || null,
     };
   }
+  */
 
   async getTeamStats(teamMemberId: string): Promise<{
     activeProjects: number;
@@ -919,7 +952,7 @@ export class DatabaseStorage implements IStorage {
     const [newClient] = await db
       .select()
       .from(clients)
-      .where(eq(clients.userId, newUser.id))
+      .where(eq(clients.id, newClient.id))
       .limit(1);
 
     return newClient;

@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
-import { editClientSchema } from "@shared/schema";
+// SCHEMA REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
+// import { editClientSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -59,7 +60,8 @@ export default function ClientProfilePage() {
   });
 
   const form = useForm({
-    resolver: zodResolver(editClientSchema.partial()),
+    // SCHEMA REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
+    // resolver: zodResolver(editClientSchema.partial()),
     defaultValues: {
       companyName: "",
       legalName: "",

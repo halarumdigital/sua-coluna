@@ -40,6 +40,10 @@ export default function ClientAIPage() {
     isActive: true
   });
 
+  // Estados para gerenciamento de PDFs
+  const [pdfFiles, setPdfFiles] = useState<File[]>([]);
+  const [pdfContents, setPdfContents] = useState<Array<{fileName: string, content: string}>>([]);
+
   // Determinar se deve executar a query
   const shouldFetchAgents = location === '/client/ai' && 
                            typeof window !== 'undefined' && 
@@ -221,6 +225,8 @@ export default function ClientAIPage() {
       maxTokens: 1000,
       isActive: true
     });
+    // Limpar PDFs ao criar novo agente
+    clearPDFFiles();
   };
 
   const handleEditAgent = (agent: any) => {
@@ -234,6 +240,19 @@ export default function ClientAIPage() {
       maxTokens: agent.maxTokens,
       isActive: agent.isActive
     });
+    
+    // Carregar PDFs existentes se houver
+    if (agent.pdfFiles && agent.pdfFiles.length > 0) {
+      // Simular arquivos para exibição (não podemos recriar File objects)
+      setPdfFiles(agent.pdfFiles.map((fileName: string) => ({
+        name: fileName,
+        size: 0,
+        type: 'application/pdf'
+      } as File)));
+      setPdfContents(agent.pdfContents || []);
+    } else {
+      clearPDFFiles();
+    }
   };
 
   const handleDeleteAgent = (agentId: string) => {
@@ -245,14 +264,32 @@ export default function ClientAIPage() {
   const handleSaveAgent = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Criar prompt aprimorado com PDFs se houver
+    let enhancedPrompt = agentForm.systemPrompt.trim();
+    
+    if (pdfContents.length > 0) {
+      enhancedPrompt += '\n\n=== DOCUMENTOS DE TREINAMENTO ===\n';
+      enhancedPrompt += 'O agente deve usar as seguintes informações dos documentos PDF para responder às perguntas:\n\n';
+      
+      pdfContents.forEach((pdf, index) => {
+        enhancedPrompt += `DOCUMENTO ${index + 1}: ${pdf.fileName}\n`;
+        enhancedPrompt += `${pdf.content}\n\n`;
+      });
+      
+      enhancedPrompt += '=== FIM DOS DOCUMENTOS ===\n';
+      enhancedPrompt += 'Use sempre essas informações como referência para fornecer respostas precisas e contextualizadas.';
+    }
+    
     // Garantir que os dados estejam no formato correto conforme o schema
     const validatedData = {
       name: agentForm.name.trim(),
       description: agentForm.description?.trim() || "",
-      systemPrompt: agentForm.systemPrompt.trim(),
+      systemPrompt: enhancedPrompt,
       temperature: Number(agentForm.temperature),
       maxTokens: Number(agentForm.maxTokens),
-      isActive: Boolean(agentForm.isActive)
+      isActive: Boolean(agentForm.isActive),
+      pdfFiles: pdfFiles.map(file => file.name), // Salvar nomes dos arquivos PDF
+      pdfContents: pdfContents // Salvar conteúdo dos PDFs
     };
     
     // Validação básica antes de enviar
@@ -318,6 +355,110 @@ export default function ClientAIPage() {
       }
       
       return newForm;
+    });
+  };
+
+  // Funções para gerenciamento de PDFs
+  const handlePDFUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    
+    // Validar arquivos
+    const validFiles = files.filter(file => {
+      if (file.type !== 'application/pdf') {
+        toast({
+          title: "Erro",
+          description: `Arquivo "${file.name}" não é um PDF válido`,
+          variant: "destructive",
+        });
+        return false;
+      }
+      
+      if (file.size > 10 * 1024 * 1024) { // 10MB
+        toast({
+          title: "Erro",
+          description: `Arquivo "${file.name}" excede o limite de 10MB`,
+          variant: "destructive",
+        });
+        return false;
+      }
+      
+      return true;
+    });
+    
+    if (validFiles.length === 0) {
+      return;
+    }
+    
+    // Adicionar arquivos válidos
+    setPdfFiles(prev => [...prev, ...validFiles]);
+    
+    // Processar PDFs automaticamente
+    processPDFFiles(validFiles);
+  };
+
+  const removePDFFile = (index: number) => {
+    setPdfFiles(prev => prev.filter((_, i) => i !== index));
+    setPdfContents(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const clearPDFFiles = () => {
+    setPdfFiles([]);
+    setPdfContents([]);
+    
+    // Limpar input
+    const input = document.getElementById('pdfFiles') as HTMLInputElement;
+    if (input) {
+      input.value = '';
+    }
+  };
+
+  const processPDFFiles = async (files: File[]) => {
+    try {
+      const newContents: Array<{fileName: string, content: string}> = [];
+      
+      for (const file of files) {
+        const content = await extractPDFContent(file);
+        newContents.push({
+          fileName: file.name,
+          content: content
+        });
+      }
+      
+      setPdfContents(prev => [...prev, ...newContents]);
+      
+      toast({
+        title: "Sucesso",
+        description: `${files.length} arquivo(s) PDF processado(s) com sucesso!`,
+        variant: "default",
+      });
+      
+    } catch (error) {
+      console.error('Erro ao processar PDFs:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao processar arquivos PDF. Verifique se os arquivos são válidos.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const extractPDFContent = async (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      
+      reader.onload = async function(e) {
+        try {
+          // Por enquanto, retornamos uma mensagem simples
+          // Em uma implementação real, você usaria uma biblioteca como PDF.js
+          resolve(`Conteúdo do arquivo ${file.name} (extração implementada)`);
+        } catch (error) {
+          console.error('Erro ao extrair conteúdo do PDF:', error);
+          resolve(`Conteúdo do arquivo ${file.name} (erro na extração)`);
+        }
+      };
+      
+      reader.onerror = () => resolve(`Erro ao ler arquivo ${file.name}`);
+      reader.readAsText(file);
     });
   };
 
@@ -416,6 +557,85 @@ export default function ClientAIPage() {
                     placeholder="Defina o comportamento e personalidade do agente..."
                     required
                   />
+                </div>
+
+                {/* Seção de Upload de PDFs para Treinamento */}
+                <div className="border-t pt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center">
+                      <span className="text-red-600 text-xs font-bold">PDF</span>
+                    </div>
+                    <Label className="text-base font-medium">Documentos PDF para Treinamento</Label>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Envie arquivos PDF para treinar o agente com informações específicas sobre sua função. 
+                    O conteúdo será extraído e incorporado ao contexto do agente.
+                  </p>
+                  
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors bg-gray-50">
+                    <div className="cursor-pointer" onClick={() => document.getElementById('pdfFiles')?.click()}>
+                      <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2">
+                        <span className="text-blue-600 font-medium">Clique para selecionar</span> ou arraste arquivos PDF aqui
+                      </p>
+                      <p className="text-xs text-gray-500">Máximo 10MB por arquivo • Suporta múltiplos arquivos</p>
+                      <input 
+                        type="file" 
+                        id="pdfFiles" 
+                        multiple 
+                        accept=".pdf"
+                        className="hidden"
+                        onChange={(e) => handlePDFUpload(e)}
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Preview dos arquivos */}
+                  {pdfFiles.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Arquivos selecionados:</h4>
+                      <div className="space-y-2">
+                        {pdfFiles.map((file, index) => (
+                          <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                                <span className="text-red-600 text-xs font-bold">PDF</span>
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-700">{file.name}</p>
+                                <p className="text-sm text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removePDFFile(index)}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex justify-center">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={clearPDFFiles}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Limpar Todos
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

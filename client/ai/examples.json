@@ -87,6 +87,28 @@
       "maxTokens": 1400,
       "isActive": true,
       "createdAt": "2024-01-17T10:20:00.000Z"
+    },
+    {
+      "id": "9",
+      "name": "Assistente de Documentação Técnica",
+      "description": "Especializado em documentação técnica baseada em PDFs",
+      "systemPrompt": "Você é um assistente especializado em documentação técnica. Use as informações dos documentos PDF fornecidos para responder perguntas sobre procedimentos, especificações técnicas e processos documentados. Sempre cite a fonte específica do documento quando fornecer informações.",
+      "model": "gpt-4",
+      "temperature": 0.3,
+      "maxTokens": 2000,
+      "isActive": true,
+      "createdAt": "2024-01-18T14:00:00.000Z",
+      "pdfFiles": ["manual_tecnico.pdf", "especificacoes.pdf"],
+      "pdfContents": [
+        {
+          "fileName": "manual_tecnico.pdf",
+          "content": "Este documento contém procedimentos técnicos detalhados para operação e manutenção de equipamentos. Inclui listas de verificação de segurança, procedimentos de inicialização e protocolos de emergência."
+        },
+        {
+          "fileName": "especificacoes.pdf", 
+          "content": "Especificações técnicas detalhadas incluindo parâmetros operacionais, limites de tolerância, requisitos de manutenção e procedimentos de calibração para todos os sistemas."
+        }
+      ]
     }
   ],
   "globalSettings": {
@@ -99,8 +121,8 @@
   "metadata": {
     "version": "1.0.0",
     "createdAt": "2024-01-15T10:00:00.000Z",
-    "lastUpdated": "2024-01-17T10:20:00.000Z",
-    "totalAgents": 8,
-    "activeAgents": 7
+    "lastUpdated": "2024-01-18T14:00:00.000Z",
+    "totalAgents": 9,
+    "activeAgents": 8
   }
 }

@@ -1,185 +1,184 @@
 # Gerenciador de Agentes IA
 
-Sistema completo para criação e gerenciamento de agentes de IA com prompts personalizados.
+Sistema completo para criação, gerenciamento e treinamento de agentes de Inteligência Artificial com prompts personalizados.
 
-## 🚀 Funcionalidades
+## Funcionalidades Principais
 
-### Agentes Personalizados
-- ✅ **Criar** novos agentes com prompts específicos
-- ✅ **Editar** agentes existentes
-- ✅ **Duplicar** agentes para criar variações
-- ✅ **Deletar** agentes (com confirmação)
-- ✅ **Ativar/Desativar** agentes
-- ✅ **Testar** agentes com mensagens personalizadas
+### 🚀 Criação de Agentes
+- **Nome e Descrição**: Identificação clara do propósito do agente
+- **Prompt do Sistema**: Definição do comportamento e personalidade
+- **Configurações Avançadas**: Modelo, temperatura, tokens máximos
+- **Status Ativo/Inativo**: Controle de disponibilidade
 
-### Configurações por Agente
-- **Nome**: Identificação única do agente
-- **Descrição**: Breve explicação do propósito
-- **Prompt do Sistema**: Comportamento e personalidade
-- **Modelo**: GPT-3.5, GPT-4, GPT-4 Turbo, GPT-4o
-- **Temperatura**: Controle de criatividade (0-2)
-- **Max Tokens**: Limite de tokens por resposta
-- **Status**: Ativo/Inativo
+### 📚 **NOVA FUNCIONALIDADE: Treinamento com PDFs**
+- **Upload de Documentos**: Envie arquivos PDF para treinar o agente
+- **Extração Automática**: O sistema extrai automaticamente o texto dos PDFs
+- **Contexto Aprimorado**: O conteúdo dos PDFs é incorporado ao prompt do sistema
+- **Múltiplos Arquivos**: Suporte para upload de vários documentos
+- **Drag & Drop**: Interface intuitiva para arrastar e soltar arquivos
 
-### Configurações Globais
-- Chave da API OpenAI
-- Modelo padrão do sistema
-- Prompt global do sistema
+### 🎯 Gerenciamento de Agentes
+- **Edição**: Modifique configurações existentes
+- **Duplicação**: Crie cópias de agentes para variações
+- **Exclusão**: Remova agentes não utilizados
+- **Teste**: Experimente o comportamento dos agentes
 
-## 📁 Estrutura de Arquivos
+### ⚙️ Configurações Globais
+- **API OpenAI**: Configuração centralizada da chave da API
+- **Modelo Padrão**: Definição do modelo padrão para novos agentes
+- **Prompt Global**: Comportamento base para todos os agentes
 
-```
-client/ai/
-├── index.html      # Interface principal
-├── script.js       # Lógica da aplicação
-├── styles.css      # Estilos personalizados
-└── README.md       # Documentação
-```
+## Como Usar
 
-## 🎯 Como Usar
+### 1. Criando um Novo Agente
 
-### 1. Acessar o Sistema
-Abra o arquivo `index.html` em seu navegador.
-
-### 2. Criar um Novo Agente
 1. Clique em "Novo Agente"
-2. Preencha os campos obrigatórios:
-   - Nome do Agente
-   - Prompt do Sistema
-3. Configure as opções avançadas:
-   - Modelo de IA
-   - Temperatura
-   - Tokens máximos
-4. Clique em "Criar Agente"
+2. Preencha as informações básicas:
+   - Nome e descrição
+   - Prompt do sistema
+   - Configurações técnicas
 
-### 3. Gerenciar Agentes Existentes
-- **Editar**: Clique no ícone de lápis
-- **Duplicar**: Clique no ícone de cópia
-- **Deletar**: Clique no ícone de lixeira
-- **Testar**: Clique em "Testar" no card do agente
-- **Ativar/Desativar**: Clique no botão de status
+### 2. **Treinando com PDFs**
 
-### 4. Configurações Globais
-1. Acesse a aba "Configurações Globais"
-2. Configure a chave da API OpenAI
-3. Defina o modelo padrão
-4. Configure o prompt global do sistema
+1. **Seleção de Arquivos**:
+   - Clique na área de upload ou arraste arquivos PDF
+   - Suporte para múltiplos arquivos
+   - Limite: 10MB por arquivo
 
-## 🔧 Funcionalidades Técnicas
+2. **Processamento Automático**:
+   - O sistema extrai o texto dos PDFs
+   - O conteúdo é incorporado ao prompt do agente
+   - O agente usa essas informações para responder perguntas
+
+3. **Visualização**:
+   - Lista de arquivos selecionados
+   - Tamanho e nome dos arquivos
+   - Opção de remoção individual ou em massa
+
+### 3. Gerenciando Agentes
+
+- **Editar**: Clique no ícone de edição
+- **Duplicar**: Crie variações com o ícone de cópia
+- **Excluir**: Remova com o ícone de lixeira
+- **Testar**: Experimente o comportamento
+
+## Estrutura dos Dados
+
+### Agente
+```json
+{
+  "id": "string",
+  "name": "string",
+  "description": "string",
+  "systemPrompt": "string",
+  "model": "string",
+  "temperature": "number",
+  "maxTokens": "number",
+  "isActive": "boolean",
+  "createdAt": "string",
+  "pdfFiles": ["string"],
+  "pdfContents": [
+    {
+      "fileName": "string",
+      "content": "string"
+    }
+  ]
+}
+```
+
+### Prompt Aprimorado
+Quando PDFs são enviados, o prompt do sistema é automaticamente expandido:
+
+```
+[Prompt Original]
+
+=== DOCUMENTOS DE TREINAMENTO ===
+O agente deve usar as seguintes informações dos documentos PDF para responder às perguntas:
+
+DOCUMENTO 1: [nome_arquivo.pdf]
+[conteúdo extraído]
+
+=== FIM DOS DOCUMENTOS ===
+Use sempre essas informações como referência para fornecer respostas precisas e contextualizadas.
+```
+
+## Tecnologias Utilizadas
+
+- **Frontend**: HTML5, CSS3, JavaScript ES6+
+- **Estilização**: Tailwind CSS
+- **Ícones**: Font Awesome
+- **Processamento PDF**: PDF.js (fallback para extração básica)
+- **Armazenamento**: LocalStorage
+- **Responsividade**: Design mobile-first
+
+## Recursos Avançados
+
+### Validação de Arquivos
+- Verificação de tipo MIME
+- Validação de tamanho (máximo 10MB)
+- Suporte apenas para arquivos PDF
+
+### Interface Responsiva
+- Funciona em dispositivos móveis e desktop
+- Drag & drop otimizado para touch
+- Animações suaves e feedback visual
 
 ### Persistência de Dados
-- Os dados são salvos no `localStorage` do navegador
-- Funciona offline após o primeiro carregamento
-- Dados persistem entre sessões
+- Salvamento automático no navegador
+- Exportação/importação de configurações
+- Backup de agentes e configurações
 
-### Exportação/Importação
-```javascript
-// Exportar agentes
-exportAgents();
+## Casos de Uso
 
-// Importar agentes
-importAgents();
-```
+### 🏢 Empresas
+- **Suporte ao Cliente**: Treinar agentes com manuais e FAQs
+- **Vendas**: Incorporar catálogos e especificações de produtos
+- **RH**: Políticas da empresa e procedimentos
 
-### Sistema de Notificações
-- Feedback visual para todas as ações
-- Notificações de sucesso, erro e informação
-- Auto-dismiss após 3 segundos
+### 🎓 Educação
+- **Tutoria**: Materiais didáticos e livros
+- **Administração**: Regulamentos e procedimentos acadêmicos
 
-### Responsividade
-- Interface adaptável para desktop, tablet e mobile
-- Grid responsivo para cards de agentes
-- Formulários otimizados para telas pequenas
+### 🏥 Saúde
+- **Protocolos**: Procedimentos médicos e protocolos
+- **Documentação**: Manuais de equipamentos e procedimentos
 
-## 🎨 Personalização
+### 💼 Consultoria
+- **Metodologias**: Frameworks e processos
+- **Cases**: Estudos de caso e experiências
 
-### Temas
-O sistema suporta modo escuro automático baseado na preferência do sistema:
+## Limitações e Considerações
 
-```css
-@media (prefers-color-scheme: dark) {
-    /* Estilos do modo escuro */
-}
-```
+### Tamanho dos Arquivos
+- Máximo de 10MB por arquivo
+- Processamento pode ser lento para arquivos grandes
+- Considere dividir documentos extensos
 
-### Cores Personalizadas
-Modifique as variáveis CSS em `styles.css`:
+### Qualidade da Extração
+- Depende da qualidade do PDF
+- PDFs escaneados podem ter extração limitada
+- Arquivos com proteção podem não ser processados
 
-```css
-:root {
-    --primary-color: #3b82f6;
-    --secondary-color: #1d4ed8;
-    --success-color: #10b981;
-    --error-color: #ef4444;
-}
-```
+### Armazenamento
+- Dados salvos localmente no navegador
+- Considere backup regular das configurações
+- Limite de armazenamento do navegador
 
-## 📱 Compatibilidade
+## Próximas Atualizações
 
-### Navegadores Suportados
-- Chrome 90+
-- Firefox 88+
-- Safari 14+
-- Edge 90+
+- [ ] Suporte para outros formatos (DOCX, TXT)
+- [ ] Processamento em lote de arquivos
+- [ ] Integração com APIs de IA externas
+- [ ] Sistema de versionamento de agentes
+- [ ] Análise de qualidade dos PDFs
+- [ ] Backup na nuvem
 
-### Recursos Utilizados
-- HTML5
-- CSS3 (Grid, Flexbox, Custom Properties)
-- JavaScript ES6+
-- LocalStorage API
-- File API (para importação/exportação)
+## Suporte
 
-## 🔒 Segurança
-
-### Dados Locais
-- Todos os dados ficam no navegador do usuário
-- Nenhuma informação é enviada para servidores externos
-- Chaves de API são armazenadas localmente
-
-### Validação
-- Validação de formulários no frontend
-- Sanitização de dados de entrada
-- Confirmação para ações destrutivas
-
-## 🚀 Próximas Funcionalidades
-
-### Em Desenvolvimento
-- [ ] Integração com APIs reais de IA
-- [ ] Sistema de templates de prompts
-- [ ] Histórico de conversas
-- [ ] Métricas de uso dos agentes
-- [ ] Backup automático na nuvem
-- [ ] Colaboração em equipe
-
-### Melhorias Planejadas
-- [ ] Editor de prompts com syntax highlighting
-- [ ] Biblioteca de prompts pré-definidos
-- [ ] Sistema de tags para organização
-- [ ] Busca e filtros avançados
-- [ ] Versionamento de agentes
-- [ ] A/B testing de prompts
-
-## 🤝 Contribuição
-
-Para contribuir com o projeto:
-
-1. Faça um fork do repositório
-2. Crie uma branch para sua feature
-3. Implemente as mudanças
-4. Teste thoroughly
-5. Submeta um pull request
-
-## 📞 Suporte
-
-Para dúvidas ou problemas:
-- Abra uma issue no repositório
-- Consulte a documentação
-- Entre em contato com a equipe de desenvolvimento
-
-## 📄 Licença
-
-Este projeto está sob a licença MIT. Veja o arquivo LICENSE para mais detalhes.
+Para dúvidas ou sugestões, consulte a documentação ou entre em contato com a equipe de desenvolvimento.
 
 ---
 
-**Desenvolvido com ❤️ para facilitar o gerenciamento de agentes de IA**
+**Versão**: 2.0.0  
+**Última Atualização**: Janeiro 2025  
+**Funcionalidade PDF**: ✅ Implementada

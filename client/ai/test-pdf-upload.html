@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Upload PDF</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-900 mb-8">Teste de Upload de PDFs</h1>
+        
+        <!-- Formulário de teste -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Formulário de Teste</h2>
+            
+            <!-- Campo de nome -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nome do Agente</label>
+                <input 
+                    type="text" 
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Ex: Assistente de Vendas"
+                >
+            </div>
+            
+            <!-- Campo de prompt -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Prompt do Sistema</label>
+                <textarea 
+                    rows="4"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Defina o comportamento e personalidade do agente..."
+                ></textarea>
+            </div>
+            
+            <!-- Seção de Upload de PDFs para Treinamento -->
+            <div class="border-t pt-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <i class="fas fa-file-pdf text-red-600"></i>
+                    <label class="block text-sm font-medium text-gray-700">Documentos PDF para Treinamento</label>
+                </div>
+                <p class="text-sm text-gray-600 mb-3">
+                    Envie arquivos PDF para treinar o agente com informações específicas sobre sua função. 
+                    O conteúdo será extraído e incorporado ao contexto do agente.
+                </p>
+                
+                <div 
+                    class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors"
+                    id="pdf-drop-zone"
+                    ondragover="handleDragOver(event)"
+                    ondrop="handleDrop(event)"
+                    ondragleave="handleDragLeave(event)"
+                >
+                    <div id="pdf-upload-area" class="cursor-pointer" onclick="document.getElementById('pdfFiles').click()">
+                        <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
+                        <p class="text-sm text-gray-600 mb-2">
+                            <span class="text-blue-600 font-medium">Clique para selecionar</span> ou arraste arquivos PDF aqui
+                        </p>
+                        <p class="text-xs text-gray-500">Máximo 10MB por arquivo • Suporta múltiplos arquivos</p>
+                        <input 
+                            type="file" 
+                            id="pdfFiles" 
+                            multiple 
+                            accept=".pdf"
+                            class="hidden"
+                            onchange="handlePDFUpload(event)"
+                        >
+                    </div>
+                    
+                    <div id="pdf-preview" class="hidden mt-4">
+                        <h4 class="text-sm font-medium text-gray-700 mb-2">Arquivos selecionados:</h4>
+                        <div id="pdf-files-list" class="space-y-2"></div>
+                        <div class="mt-3 flex gap-2 justify-center">
+                            <button 
+                                type="button"
+                                onclick="clearPDFFiles()"
+                                class="px-3 py-1 text-sm text-red-600 hover:text-red-700 border border-red-300 hover:border-red-400 rounded transition-colors"
+                            >
+                                <i class="fas fa-trash mr-1"></i>
+                                Limpar Todos
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="pdf-processing" class="hidden mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div class="flex items-center gap-2 text-blue-700">
+                        <div class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                        <span class="text-sm">Processando arquivos PDF...</span>
+                    </div>
+                </div>
+                
+                <div id="pdf-error" class="hidden mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div class="flex items-center gap-2 text-red-700">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span id="pdf-error-message" class="text-sm"></span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Botão de teste -->
+            <div class="mt-6 pt-4 border-t">
+                <button 
+                    type="button"
+                    onclick="testPDFFunctionality()"
+                    class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                >
+                    Testar Funcionalidade PDF
+                </button>
+            </div>
+        </div>
+        
+        <!-- Resultado do teste -->
+        <div id="test-result" class="mt-6 bg-white rounded-lg shadow-md p-6 hidden">
+            <h3 class="text-lg font-semibold text-gray-900 mb-3">Resultado do Teste</h3>
+            <div id="result-content"></div>
+        </div>
+    </div>
+
+    <script>
+        // Variáveis globais para teste
+        let pdfFiles = [];
+        let pdfContents = [];
+
+        // Funções de gerenciamento de PDFs
+        function handlePDFUpload(event) {
+            const files = Array.from(event.target.files);
+            
+            // Validar arquivos
+            const validFiles = files.filter(file => {
+                if (file.type !== 'application/pdf') {
+                    showNotification(`Arquivo "${file.name}" não é um PDF válido`, 'error');
+                    return false;
+                }
+                
+                if (file.size > 10 * 1024 * 1024) { // 10MB
+                    showNotification(`Arquivo "${file.name}" excede o limite de 10MB`, 'error');
+                    return false;
+                }
+                
+                return true;
+            });
+            
+            if (validFiles.length === 0) {
+                return;
+            }
+            
+            // Adicionar arquivos válidos
+            pdfFiles = [...pdfFiles, ...validFiles];
+            renderPDFFiles();
+            showPDFPreview();
+            
+            // Processar PDFs automaticamente
+            processPDFFiles();
+        }
+
+        function renderPDFFiles() {
+            const filesList = document.getElementById('pdf-files-list');
+            if (!filesList) return;
+            
+            filesList.innerHTML = pdfFiles.map((file, index) => `
+                <div class="flex items-center justify-between p-2 bg-gray-50 rounded border">
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-file-pdf text-red-500"></i>
+                        <div>
+                            <p class="text-sm font-medium text-gray-700">${file.name}</p>
+                            <p class="text-xs text-gray-500">${(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                        </div>
+                    </div>
+                    <button 
+                        onclick="removePDFFile(${index})"
+                        class="text-red-500 hover:text-red-700 p-1"
+                        title="Remover arquivo"
+                    >
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function showPDFPreview() {
+            const preview = document.getElementById('pdf-preview');
+            if (preview) {
+                preview.classList.remove('hidden');
+            }
+        }
+
+        function hidePDFPreview() {
+            const preview = document.getElementById('pdf-preview');
+            if (preview) {
+                preview.classList.add('hidden');
+            }
+        }
+
+        function removePDFFile(index) {
+            pdfFiles.splice(index, 1);
+            pdfContents.splice(index, 1);
+            
+            if (pdfFiles.length === 0) {
+                hidePDFPreview();
+            } else {
+                renderPDFFiles();
+            }
+        }
+
+        function clearPDFFiles() {
+            pdfFiles = [];
+            pdfContents = [];
+            hidePDFPreview();
+            
+            const input = document.getElementById('pdfFiles');
+            if (input) {
+                input.value = '';
+            }
+        }
+
+        async function processPDFFiles() {
+            if (pdfFiles.length === 0) return;
+            
+            const processing = document.getElementById('pdf-processing');
+            const error = document.getElementById('pdf-error');
+            
+            if (processing) processing.classList.remove('hidden');
+            if (error) error.classList.add('hidden');
+            
+            try {
+                pdfContents = [];
+                
+                for (let i = 0; i < pdfFiles.length; i++) {
+                    const file = pdfFiles[i];
+                    const content = await extractPDFContent(file);
+                    pdfContents.push({
+                        fileName: file.name,
+                        content: content
+                    });
+                }
+                
+                showNotification(`${pdfFiles.length} arquivo(s) PDF processado(s) com sucesso!`, 'success');
+                
+            } catch (error) {
+                console.error('Erro ao processar PDFs:', error);
+                showPDFError('Erro ao processar arquivos PDF. Verifique se os arquivos são válidos.');
+            } finally {
+                if (processing) processing.classList.add('hidden');
+            }
+        }
+
+        async function extractPDFContent(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                
+                reader.onload = async function(e) {
+                    try {
+                        // Simular extração de conteúdo para teste
+                        resolve(`Conteúdo simulado do arquivo ${file.name} - Tamanho: ${(file.size / 1024).toFixed(2)} KB`);
+                    } catch (error) {
+                        console.error('Erro ao extrair conteúdo do PDF:', error);
+                        resolve(`Conteúdo do arquivo ${file.name} (erro na extração)`);
+                    }
+                };
+                
+                reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
+                reader.readAsText(file);
+            });
+        }
+
+        function showPDFError(message) {
+            const error = document.getElementById('pdf-error');
+            const errorMessage = document.getElementById('pdf-error-message');
+            
+            if (error && errorMessage) {
+                errorMessage.textContent = message;
+                error.classList.remove('hidden');
+            }
+        }
+
+        // Funções de Drag and Drop
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            const dropZone = document.getElementById('pdf-drop-zone');
+            if (dropZone) {
+                dropZone.classList.add('border-blue-500', 'bg-blue-50');
+            }
+        }
+
+        function handleDragLeave(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            const dropZone = document.getElementById('pdf-drop-zone');
+            if (dropZone) {
+                dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+            }
+        }
+
+        function handleDrop(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            
+            const dropZone = document.getElementById('pdf-drop-zone');
+            if (dropZone) {
+                dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+            }
+            
+            const files = Array.from(event.dataTransfer.files);
+            const pdfFiles = files.filter(file => file.type === 'application/pdf');
+            
+            if (pdfFiles.length === 0) {
+                showNotification('Nenhum arquivo PDF encontrado nos arquivos arrastados', 'error');
+                return;
+            }
+            
+            // Simular evento de upload
+            const uploadEvent = {
+                target: {
+                    files: pdfFiles
+                }
+            };
+            
+            handlePDFUpload(uploadEvent);
+        }
+
+        // Função de teste
+        function testPDFFunctionality() {
+            const resultDiv = document.getElementById('test-result');
+            const resultContent = document.getElementById('result-content');
+            
+            if (resultDiv) {
+                resultDiv.classList.remove('hidden');
+            }
+            
+            let resultHTML = '<div class="space-y-3">';
+            
+            // Testar se os elementos estão presentes
+            const pdfSection = document.querySelector('.border-t.pt-4');
+            const dropZone = document.getElementById('pdf-drop-zone');
+            const uploadArea = document.getElementById('pdf-upload-area');
+            const fileInput = document.getElementById('pdfFiles');
+            
+            resultHTML += `<div class="p-3 rounded ${pdfSection ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}">`;
+            resultHTML += `<strong>Seção de PDF:</strong> ${pdfSection ? '✅ Presente' : '❌ Ausente'}`;
+            resultHTML += '</div>';
+            
+            resultHTML += `<div class="p-3 rounded ${dropZone ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}">`;
+            resultHTML += `<strong>Zona de Drop:</strong> ${dropZone ? '✅ Presente' : '❌ Ausente'}`;
+            resultHTML += '</div>';
+            
+            resultHTML += `<div class="p-3 rounded ${uploadArea ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}">`;
+            resultHTML += `<strong>Área de Upload:</strong> ${uploadArea ? '✅ Presente' : '❌ Ausente'}`;
+            resultHTML += '</div>';
+            
+            resultHTML += `<div class="p-3 rounded ${fileInput ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}">`;
+            resultHTML += `<strong>Input de Arquivo:</strong> ${fileInput ? '✅ Presente' : '❌ Ausente'}`;
+            resultHTML += '</div>';
+            
+            // Testar estado dos PDFs
+            resultHTML += `<div class="p-3 rounded bg-blue-50 text-blue-700">`;
+            resultHTML += `<strong>Arquivos PDF:</strong> ${pdfFiles.length} arquivo(s) selecionado(s)`;
+            resultHTML += '</div>';
+            
+            resultHTML += `<div class="p-3 rounded bg-blue-50 text-blue-700">`;
+            resultHTML += `<strong>Conteúdo Extraído:</strong> ${pdfContents.length} arquivo(s) processado(s)`;
+            resultHTML += '</div>';
+            
+            resultHTML += '</div>';
+            
+            if (resultContent) {
+                resultContent.innerHTML = resultHTML;
+            }
+        }
+
+        // Sistema de notificações simples
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${
+                type === 'success' ? 'bg-green-500 text-white' :
+                type === 'error' ? 'bg-red-500 text-white' :
+                'bg-blue-500 text-white'
+            }`;
+            
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                if (notification && notification.parentNode) {
+                    notification.remove();
+                }
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

@@ -172,18 +172,26 @@ export default function ClientWhatsAppPage() {
   const { data: bindings, isLoading: bindingsLoading } = useQuery({
     queryKey: ["instance-agent-bindings"],
     queryFn: async () => {
+      console.log("🔍 Buscando vinculações de agentes...");
       const response = await fetch("/api/franchise/instance-agent-bindings", {
         credentials: "include",
       });
       
+      console.log("📡 Resposta da API:", response.status, response.statusText);
+      
       if (!response.ok) {
         if (response.status === 404) {
+          console.log("📭 Nenhuma vinculação encontrada (404)");
           return [];
         }
+        const errorText = await response.text();
+        console.error("❌ Erro na API:", errorText);
         throw new Error("Falha ao carregar vinculações");
       }
       
-      return response.json() as Promise<InstanceAgentBinding[]>;
+      const data = await response.json();
+      console.log("✅ Dados recebidos:", data);
+      return data as Promise<InstanceAgentBinding[]>;
     },
   });
 
@@ -230,7 +238,8 @@ export default function ClientWhatsAppPage() {
   // Create binding mutation
   const createBindingMutation = useMutation({
     mutationFn: async (data: { instanceId: string; agentId: string }) => {
-      const response = await fetch("/api/client/instance-agent-bindings", {
+      console.log("📝 Criando vinculação com dados:", data);
+      const response = await fetch("/api/franchise/instance-agent-bindings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -239,19 +248,33 @@ export default function ClientWhatsAppPage() {
         body: JSON.stringify(data),
       });
 
+      console.log("📡 Resposta da criação:", response.status, response.statusText);
+
       if (!response.ok) {
         const errorData = await response.json();
+        console.error("❌ Erro ao criar vinculação:", errorData);
         throw new Error(errorData.message || "Falha ao criar vinculação");
       }
 
-      return response.json();
+      const result = await response.json();
+      console.log("✅ Vinculação criada com sucesso:", result);
+      return result;
     },
     onSuccess: () => {
+      console.log("🎉 Mutação de criação bem-sucedida!");
       toast({
         title: "Vinculação Criada",
         description: "Instância vinculada ao agente com sucesso!",
       });
+      
+      console.log("🔄 Invalidando queries...");
+      // Invalidar a query correta para forçar o refresh
       queryClient.invalidateQueries({ queryKey: ["instance-agent-bindings"] });
+      // Também invalidar queries relacionadas para garantir sincronização
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+      queryClient.invalidateQueries({ queryKey: ["custom-agents"] });
+      
+      console.log("✅ Queries invalidadas, fechando modal...");
       setShowBindingModal(false);
       setSelectedInstance("");
       setSelectedAgent("");
@@ -268,7 +291,7 @@ export default function ClientWhatsAppPage() {
   // Delete binding mutation
   const deleteBindingMutation = useMutation({
     mutationFn: async (bindingId: string) => {
-      const response = await fetch(`/api/client/instance-agent-bindings/${bindingId}`, {
+      const response = await fetch(`/api/franchise/instance-agent-bindings/${bindingId}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -285,7 +308,11 @@ export default function ClientWhatsAppPage() {
         title: "Vinculação Removida",
         description: "Vinculação removida com sucesso!",
       });
+      // Invalidar a query correta para forçar o refresh
       queryClient.invalidateQueries({ queryKey: ["instance-agent-bindings"] });
+      // Também invalidar queries relacionadas para garantir sincronização
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+      queryClient.invalidateQueries({ queryKey: ["custom-agents"] });
     },
     onError: (error: any) => {
       toast({
@@ -706,7 +733,10 @@ export default function ClientWhatsAppPage() {
 
   // Funções para vincular agentes
   const handleCreateBinding = () => {
+    console.log("🔗 handleCreateBinding chamado com:", { selectedInstance, selectedAgent });
+    
     if (!selectedInstance || !selectedAgent) {
+      console.log("❌ Instância ou agente não selecionado");
       toast({
         title: "Erro",
         description: "Selecione uma instância e um agente",
@@ -718,6 +748,7 @@ export default function ClientWhatsAppPage() {
     // Verificar se já existe uma vinculação para esta instância
     const existingBinding = bindings?.find(b => b.instanceId === selectedInstance);
     if (existingBinding) {
+      console.log("❌ Já existe vinculação para esta instância:", existingBinding);
       toast({
         title: "Erro",
         description: "Esta instância já está vinculada a um agente",
@@ -726,6 +757,7 @@ export default function ClientWhatsAppPage() {
       return;
     }
 
+    console.log("✅ Iniciando criação de vinculação...");
     setIsCreatingBinding(true);
     createBindingMutation.mutate({
       instanceId: selectedInstance,
@@ -1725,6 +1757,7 @@ export default function ClientWhatsAppPage() {
                 </div>
 
                 {/* Lista de vinculações existentes */}
+                {console.log("🔍 Renderizando lista de vinculações:", { bindingsLoading, bindings, bindingsLength: bindings?.length })}
                 {bindingsLoading ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin" />

@@ -2530,6 +2530,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getFranchiseInstanceAgentBindings(franchiseId: string): Promise<ClientWhatsappInstanceAgentBinding[]> {
+    console.log('🔍 getFranchiseInstanceAgentBindings chamado com franchiseId:', franchiseId);
+    
     await this.ensureClientWhatsappInstanceAgentBindingsTable();
     
     // Validate franchiseId parameter
@@ -2538,40 +2540,76 @@ export class DatabaseStorage implements IStorage {
       return [];
     }
     
-    // Get bindings for instances that belong to clients of the franchise
-    const bindings = await db
-      .select({
-        id: clientWhatsappInstanceAgentBindings.id,
-        instanceId: clientWhatsappInstanceAgentBindings.instanceId,
-        agentId: clientWhatsappInstanceAgentBindings.agentId,
-        userId: clientWhatsappInstanceAgentBindings.userId,
-        isActive: clientWhatsappInstanceAgentBindings.isActive,
-        createdAt: clientWhatsappInstanceAgentBindings.createdAt,
-        updatedAt: clientWhatsappInstanceAgentBindings.updatedAt,
-      })
-      .from(clientWhatsappInstanceAgentBindings)
-      .innerJoin(whatsappInstances, eq(clientWhatsappInstanceAgentBindings.instanceId, whatsappInstances.id))
-      .where(eq(whatsappInstances.franchiseId, franchiseId))
-      .orderBy(desc(clientWhatsappInstanceAgentBindings.createdAt));
+    console.log('✅ franchiseId válido, buscando vinculações...');
+    
+    try {
+      // Get bindings for instances that belong to clients of the franchise
+      console.log('🔍 Executando query SQL para buscar vinculações...');
+      
+      // Primeiro, vamos verificar se existem vinculações na tabela
+      const allBindings = await db
+        .select()
+        .from(clientWhatsappInstanceAgentBindings);
+      console.log('📊 Todas as vinculações na tabela:', allBindings.length, allBindings);
+      
+      // Verificar se existem instâncias para esta franquia
+      const franchiseInstances = await db
+        .select()
+        .from(whatsappInstances)
+        .where(eq(whatsappInstances.franchiseId, franchiseId));
+      console.log('📱 Instâncias da franquia:', franchiseInstances.length, franchiseInstances);
+      
+      // Agora executar a query principal
+      const bindings = await db
+        .select({
+          id: clientWhatsappInstanceAgentBindings.id,
+          instanceId: clientWhatsappInstanceAgentBindings.instanceId,
+          agentId: clientWhatsappInstanceAgentBindings.agentId,
+          userId: clientWhatsappInstanceAgentBindings.userId,
+          isActive: clientWhatsappInstanceAgentBindings.isActive,
+          createdAt: clientWhatsappInstanceAgentBindings.createdAt,
+          updatedAt: clientWhatsappInstanceAgentBindings.updatedAt,
+        })
+        .from(clientWhatsappInstanceAgentBindings)
+        .innerJoin(whatsappInstances, eq(clientWhatsappInstanceAgentBindings.instanceId, whatsappInstances.id))
+        .where(eq(whatsappInstances.franchiseId, franchiseId))
+        .orderBy(desc(clientWhatsappInstanceAgentBindings.createdAt));
 
-    return bindings;
+      console.log('📊 Vinculações encontradas na query:', bindings.length, bindings);
+      return bindings;
+    } catch (error) {
+      console.error('❌ Erro na query getFranchiseInstanceAgentBindings:', error);
+      return [];
+    }
   }
 
   async createClientWhatsappInstanceAgentBinding(bindingData: InsertClientWhatsappInstanceAgentBinding): Promise<ClientWhatsappInstanceAgentBinding> {
+    console.log('📝 createClientWhatsappInstanceAgentBinding chamado com dados:', bindingData);
+    
     await this.ensureClientWhatsappInstanceAgentBindingsTable();
-    await db.insert(clientWhatsappInstanceAgentBindings).values(bindingData);
     
-    const [inserted] = await db
-      .select()
-      .from(clientWhatsappInstanceAgentBindings)
-      .where(and(
-        eq(clientWhatsappInstanceAgentBindings.instanceId, bindingData.instanceId),
-        eq(clientWhatsappInstanceAgentBindings.agentId, bindingData.agentId)
-      ))
-      .orderBy(desc(clientWhatsappInstanceAgentBindings.createdAt))
-      .limit(1);
-    
-    return inserted;
+    try {
+      console.log('✅ Tabela verificada, inserindo dados...');
+      await db.insert(clientWhatsappInstanceAgentBindings).values(bindingData);
+      console.log('✅ Dados inseridos com sucesso');
+      
+      console.log('🔍 Buscando dados inseridos...');
+      const [inserted] = await db
+        .select()
+        .from(clientWhatsappInstanceAgentBindings)
+        .where(and(
+          eq(clientWhatsappInstanceAgentBindings.instanceId, bindingData.instanceId),
+          eq(clientWhatsappInstanceAgentBindings.agentId, bindingData.agentId)
+        ))
+        .orderBy(desc(clientWhatsappInstanceAgentBindings.createdAt))
+        .limit(1);
+      
+      console.log('✅ Dados inseridos encontrados:', inserted);
+      return inserted;
+    } catch (error) {
+      console.error('❌ Erro ao criar vinculação:', error);
+      throw error;
+    }
   }
 
   async updateClientWhatsappInstanceAgentBinding(id: string, bindingData: Partial<InsertClientWhatsappInstanceAgentBinding>): Promise<ClientWhatsappInstanceAgentBinding> {

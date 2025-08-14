@@ -19,6 +19,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const path = await import('path');
   const express = await import('express');
   app.use('/uploads', express.default.static(path.join(process.cwd(), 'public', 'uploads')));
+  
+  // Serve static files from client/ai directory for testing
+  app.use('/ai', express.default.static(path.join(process.cwd(), 'client', 'ai')));
 
   // System settings route (public - no auth required)
   app.get("/api/system/settings", async (req: any, res) => {
@@ -1323,8 +1326,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Franchise not found" });
       }
       
-      // Na nova estrutura, buscar vinculações através das instâncias da franquia
-      const bindings: any[] = []; // TODO: Implementar busca de vinculações por franquia
+      // Buscar vinculações através das instâncias da franquia
+      const bindings = await storage.getFranchiseInstanceAgentBindings(franchise.id);
 
       res.json(bindings);
     } catch (error) {
@@ -3409,33 +3412,155 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Rota para usuários franchise verem vinculações
   app.get("/api/franchise/instance-agent-bindings", isAuthenticated, async (req: any, res) => {
     try {
+      console.log("🔍 GET /api/franchise/instance-agent-bindings - Iniciando busca de vinculações");
+      
       const userId = getCurrentUserId(req);
       if (!userId) {
+        console.log("❌ Usuário não autenticado");
         return res.status(401).json({ message: "Not authenticated" });
       }
       
+      console.log("👤 Usuário autenticado:", userId);
+      
       const user = await storage.getUser(userId);
-      if (user?.role !== 'franchise') {
-        return res.status(403).json({ message: "Access denied: only franchise users can access this route" });
+      if (user?.role !== 'franchise' && user?.role !== 'client') {
+        console.log("❌ Usuário não tem role franchise ou client:", user?.role);
+        return res.status(403).json({ message: "Access denied: only franchise or client users can access this route" });
       }
+      
+      console.log("✅ Usuário tem role franchise");
       
       // Buscar franquia do usuário
       const franchise = await storage.getFranchiseByUserId(userId);
       if (!franchise) {
+        console.log("❌ Franquia não encontrada para o usuário");
         return res.status(404).json({ message: "Franchise not found" });
       }
       
+      console.log("🏢 Franquia encontrada:", franchise.id);
+      
       // Buscar vinculações da franquia
+      console.log("🔍 Buscando vinculações para a franquia...");
       const bindings = await storage.getFranchiseInstanceAgentBindings(franchise.id);
+      console.log("📊 Vinculações encontradas:", bindings.length, bindings);
+      
       res.json(bindings);
     } catch (error) {
-      console.error("Error fetching instance-agent bindings for franchise:", error);
+      console.error("❌ Error fetching instance-agent bindings for franchise:", error);
       res.status(500).json({ message: "Failed to fetch instance-agent bindings" });
     }
   });
 
   // Rota para usuários franchise criarem vinculações
   app.post("/api/franchise/instance-agent-bindings", isAuthenticated, async (req: any, res) => {
+    try {
+      console.log("📝 POST /api/franchise/instance-agent-bindings - Iniciando criação de vinculação");
+      
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        console.log("❌ Usuário não autenticado");
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      console.log("👤 Usuário autenticado:", userId);
+
+      // Verificar se o usuário tem role franchise
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchise' && user?.role !== 'client') {
+        console.log("❌ Usuário não tem role franchise ou client:", user?.role);
+        return res.status(403).json({ 
+          message: "Access denied: only franchise users can access this route"
+        });
+      }
+
+      console.log("✅ Usuário tem role válido:", user?.role);
+
+      const { instanceId, agentId } = req.body;
+      console.log("📋 Dados recebidos:", { instanceId, agentId });
+      
+      if (!instanceId || !agentId) {
+        console.log("❌ Dados obrigatórios não fornecidos");
+        return res.status(400).json({ message: "Instance ID and Agent ID are required" });
+      }
+
+      // Verificar se a instância pertence ao usuário através da franquia
+      const franchise = await storage.getFranchiseByUserId(userId);
+      if (!franchise) {
+        console.log("❌ Franquia não encontrada para o usuário");
+        return res.status(404).json({ message: "Franchise not found" });
+      }
+      
+      console.log("🏢 Franquia encontrada:", franchise.id);
+      
+      const instance = await storage.getWhatsappInstance(instanceId);
+      if (!instance) {
+        console.log("❌ Instância WhatsApp não encontrada:", instanceId);
+        return res.status(404).json({ message: "WhatsApp instance not found" });
+      }
+      
+      console.log("📱 Instância encontrada:", instance.instanceName);
+      
+      // Verificar se a instância pertence à franquia do usuário
+      if (instance.franchiseId !== franchise.id) {
+        console.log("❌ Instância não pertence à franquia do usuário");
+        return res.status(403).json({ message: "Access denied: instance does not belong to your franchise" });
+      }
+
+      // Verificar se o agente pertence ao usuário
+      const agent = await db
+        .select()
+        .from(customAIAgents)
+        .where(and(eq(customAIAgents.id, agentId), eq(customAIAgents.userId, userId)))
+        .limit(1);
+
+      if (!agent.length) {
+        console.log("❌ Agente não encontrado ou acesso negado:", agentId);
+        return res.status(404).json({ message: "Custom AI agent not found or access denied" });
+      }
+
+      console.log("🤖 Agente encontrado:", agent[0].name);
+
+      // Verificar se o agente está ativo
+      if (!agent[0].isActive) {
+        console.log("❌ Agente não está ativo");
+        return res.status(400).json({ message: "Agent is not active" });
+      }
+
+      // Verificar se já existe uma vinculação para esta instância
+      console.log("🔍 Verificando vinculações existentes para a franquia:", franchise.id);
+      const existingBindings = await storage.getFranchiseInstanceAgentBindings(franchise.id);
+      console.log("📊 Vinculações existentes encontradas:", existingBindings.length, existingBindings);
+      
+      const existingBinding = existingBindings.find(b => b.instanceId === instanceId);
+      console.log("🔍 Procurando vinculação para instância:", instanceId);
+      console.log("🔍 Vinculação existente encontrada:", existingBinding);
+      
+      if (existingBinding) {
+        console.log("❌ Já existe vinculação para esta instância:", existingBinding);
+        return res.status(400).json({ message: "This instance already has an agent binding" });
+      }
+
+      console.log("✅ Nenhuma vinculação existente encontrada, criando nova...");
+
+      // Criar vinculação
+      const binding = await storage.createClientWhatsappInstanceAgentBinding({
+        instanceId,
+        agentId,
+        userId,
+        isActive: true
+      });
+
+      console.log("🎉 Vinculação criada com sucesso:", binding);
+
+      res.status(201).json(binding);
+    } catch (error) {
+      console.error("❌ Error creating franchise instance-agent binding:", error);
+      res.status(500).json({ message: "Failed to create instance-agent binding" });
+    }
+  });
+
+  // Rota para usuários franchise deletarem vinculações
+  app.delete("/api/franchise/instance-agent-bindings/:bindingId", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -3450,63 +3575,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const { instanceId, agentId } = req.body;
-      
-      if (!instanceId || !agentId) {
-        return res.status(400).json({ message: "Instance ID and Agent ID are required" });
-      }
+      const { bindingId } = req.params;
 
-      // Verificar se a instância pertence ao usuário através da franquia
+      // Verificar se a vinculação pertence ao usuário através da franquia
       const franchise = await storage.getFranchiseByUserId(userId);
       if (!franchise) {
         return res.status(404).json({ message: "Franchise not found" });
       }
-      
-      const instance = await storage.getWhatsappInstance(instanceId);
-      if (!instance) {
-        return res.status(404).json({ message: "WhatsApp instance not found" });
-      }
-      
-      // Verificar se a instância pertence à franquia do usuário
-      if (instance.franchiseId !== franchise.id) {
-        return res.status(403).json({ message: "Access denied: instance does not belong to your franchise" });
+
+      // Verificar se a vinculação existe e pertence à franquia
+      const binding = await storage.getClientInstanceAgentBindingById(bindingId);
+      if (!binding) {
+        return res.status(404).json({ message: "Binding not found" });
       }
 
-      // Verificar se o agente pertence ao usuário
-      const agent = await db
-        .select()
-        .from(customAIAgents)
-        .where(and(eq(customAIAgents.id, agentId), eq(customAIAgents.userId, userId)))
-        .limit(1);
-
-      if (!agent.length) {
-        return res.status(404).json({ message: "Custom AI agent not found or access denied" });
+      // Verificar se a instância da vinculação pertence à franquia
+      const instance = await storage.getWhatsappInstance(binding.instanceId);
+      if (!instance || instance.franchiseId !== franchise.id) {
+        return res.status(403).json({ message: "Access denied: binding does not belong to your franchise" });
       }
 
-      // Verificar se o agente está ativo
-      if (!agent[0].isActive) {
-        return res.status(400).json({ message: "Agent is not active" });
-      }
+      // Deletar vinculação
+      await storage.deleteClientWhatsappInstanceAgentBinding(bindingId);
 
-      // Verificar se já existe uma vinculação para esta instância
-      const existingBindings = await storage.getFranchiseInstanceAgentBindings(franchise.id);
-      const existingBinding = existingBindings.find(b => b.instanceId === instanceId);
-      if (existingBinding) {
-        return res.status(400).json({ message: "This instance already has an agent binding" });
-      }
-
-      // Criar vinculação
-      const binding = await storage.createClientWhatsappInstanceAgentBinding({
-        instanceId,
-        agentId,
-        userId,
-        isActive: true
-      });
-
-      res.status(201).json(binding);
+      res.json({ message: "Binding deleted successfully" });
     } catch (error) {
-      console.error("Error creating franchise instance-agent binding:", error);
-      res.status(500).json({ message: "Failed to create instance-agent binding" });
+      console.error("Error deleting franchise instance-agent binding:", error);
+      res.status(500).json({ message: "Failed to delete instance-agent binding" });
     }
   });
 

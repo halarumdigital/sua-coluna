@@ -160,6 +160,71 @@
                             ></textarea>
                         </div>
 
+                        <!-- Seção de Upload de PDFs para Treinamento -->
+                        <div class="border-t pt-4" id="pdf-section" style="display: block !important;">
+                            <div class="flex items-center gap-2 mb-3">
+                                <i class="fas fa-file-pdf text-red-600"></i>
+                                <label class="block text-sm font-medium text-gray-700">Documentos PDF para Treinamento</label>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-3">
+                                Envie arquivos PDF para treinar o agente com informações específicas sobre sua função. 
+                                O conteúdo será extraído e incorporado ao contexto do agente.
+                            </p>
+                            
+                            <div 
+                                class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors pdf-drop-zone"
+                                id="pdf-drop-zone"
+                                ondragover="handleDragOver(event)"
+                                ondrop="handleDrop(event)"
+                                ondragleave="handleDragLeave(event)"
+                            >
+                                <div id="pdf-upload-area" class="cursor-pointer" onclick="document.getElementById('pdfFiles').click()">
+                                    <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
+                                    <p class="text-sm text-gray-600 mb-2">
+                                        <span class="text-blue-600 font-medium">Clique para selecionar</span> ou arraste arquivos PDF aqui
+                                    </p>
+                                    <p class="text-xs text-gray-500">Máximo 10MB por arquivo • Suporta múltiplos arquivos</p>
+                                    <input 
+                                        type="file" 
+                                        id="pdfFiles" 
+                                        multiple 
+                                        accept=".pdf"
+                                        class="hidden"
+                                        onchange="handlePDFUpload(event)"
+                                    >
+                                </div>
+                                
+                                <div id="pdf-preview" class="hidden mt-4">
+                                    <h4 class="text-sm font-medium text-gray-700 mb-2">Arquivos selecionados:</h4>
+                                    <div id="pdf-files-list" class="space-y-2"></div>
+                                    <div class="mt-3 flex gap-2 justify-center">
+                                        <button 
+                                            type="button"
+                                            onclick="clearPDFFiles()"
+                                            class="px-3 py-1 text-sm text-red-600 hover:text-red-700 border border-red-300 hover:border-red-400 rounded transition-colors"
+                                        >
+                                            <i class="fas fa-trash mr-1"></i>
+                                            Limpar Todos
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="pdf-processing" class="hidden mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg pdf-processing">
+                                <div class="flex items-center gap-2 text-blue-700">
+                                    <div class="loader"></div>
+                                    <span class="text-sm">Processando arquivos PDF...</span>
+                                </div>
+                            </div>
+                            
+                            <div id="pdf-error" class="hidden mt-3 p-3 bg-red-50 border border-red-200 rounded-lg pdf-error">
+                                <div class="flex items-center gap-2 text-red-700">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <span id="pdf-error-message" class="text-sm"></span>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">

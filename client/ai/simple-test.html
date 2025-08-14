@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Simples - Seção PDF</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-900 mb-8">Teste Simples: Seção de Upload de PDFs</h1>
+        
+        <!-- Botão para mostrar/ocultar formulário -->
+        <div class="mb-8">
+            <button onclick="toggleForm()" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                <span id="toggle-text">Mostrar Formulário</span>
+            </button>
+        </div>
+        
+        <!-- Formulário principal -->
+        <div id="agent-form" class="hidden bg-white rounded-lg shadow-lg p-8">
+            <h2 class="text-2xl font-semibold text-gray-900 mb-6">Formulário de Agente IA</h2>
+            
+            <!-- Campo de nome -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Nome do Agente</label>
+                <input 
+                    type="text" 
+                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Ex: Assistente de Vendas"
+                >
+            </div>
+            
+            <!-- Campo de prompt -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Prompt do Sistema</label>
+                <textarea 
+                    rows="4"
+                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Defina o comportamento e personalidade do agente..."
+                ></textarea>
+            </div>
+            
+            <!-- Seção de Upload de PDFs para Treinamento -->
+            <div class="border-t pt-6" id="pdf-section">
+                <div class="flex items-center gap-3 mb-4">
+                    <i class="fas fa-file-pdf text-red-600 text-xl"></i>
+                    <label class="block text-lg font-semibold text-gray-700">Documentos PDF para Treinamento</label>
+                </div>
+                <p class="text-gray-600 mb-4">
+                    Envie arquivos PDF para treinar o agente com informações específicas sobre sua função. 
+                    O conteúdo será extraído e incorporado ao contexto do agente.
+                </p>
+                
+                <div 
+                    class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors bg-gray-50"
+                    id="pdf-drop-zone"
+                >
+                    <div id="pdf-upload-area" class="cursor-pointer" onclick="document.getElementById('pdfFiles').click()">
+                        <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-4"></i>
+                        <p class="text-lg text-gray-600 mb-2">
+                            <span class="text-blue-600 font-semibold">Clique para selecionar</span> ou arraste arquivos PDF aqui
+                        </p>
+                        <p class="text-sm text-gray-500">Máximo 10MB por arquivo • Suporta múltiplos arquivos</p>
+                        <input 
+                            type="file" 
+                            id="pdfFiles" 
+                            multiple 
+                            accept=".pdf"
+                            class="hidden"
+                            onchange="handlePDFUpload(event)"
+                        >
+                    </div>
+                </div>
+                
+                <!-- Preview dos arquivos -->
+                <div id="pdf-preview" class="hidden mt-6">
+                    <h4 class="text-lg font-semibold text-gray-700 mb-4">Arquivos selecionados:</h4>
+                    <div id="pdf-files-list" class="space-y-3"></div>
+                    <div class="mt-4 flex gap-3 justify-center">
+                        <button 
+                            type="button"
+                            onclick="clearPDFFiles()"
+                            class="px-4 py-2 text-red-600 hover:text-red-700 border border-red-300 hover:border-red-400 rounded-lg transition-colors"
+                        >
+                            <i class="fas fa-trash mr-2"></i>
+                            Limpar Todos
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Botão de envio -->
+            <div class="mt-8 pt-6 border-t">
+                <button 
+                    type="button"
+                    onclick="submitForm()"
+                    class="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold"
+                >
+                    <i class="fas fa-save mr-2"></i>
+                    Salvar Agente
+                </button>
+            </div>
+        </div>
+        
+        <!-- Status da seção PDF -->
+        <div id="status" class="mt-6 bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Status da Seção PDF</h3>
+            <div id="status-content" class="space-y-2">
+                <div class="p-3 bg-gray-100 rounded">
+                    <strong>Status:</strong> <span id="pdf-status">Verificando...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Variáveis globais
+        let pdfFiles = [];
+        let pdfContents = [];
+        let formVisible = false;
+        
+        // Função para alternar visibilidade do formulário
+        function toggleForm() {
+            const form = document.getElementById('agent-form');
+            const toggleText = document.getElementById('toggle-text');
+            
+            if (formVisible) {
+                form.classList.add('hidden');
+                toggleText.textContent = 'Mostrar Formulário';
+                formVisible = false;
+            } else {
+                form.classList.remove('hidden');
+                toggleText.textContent = 'Ocultar Formulário';
+                formVisible = true;
+                
+                // Verificar seção PDF após mostrar formulário
+                setTimeout(checkPDFSection, 100);
+            }
+        }
+        
+        // Função para verificar seção PDF
+        function checkPDFSection() {
+            const pdfSection = document.getElementById('pdf-section');
+            const statusElement = document.getElementById('pdf-status');
+            
+            if (pdfSection) {
+                const isVisible = !pdfSection.classList.contains('hidden');
+                const display = window.getComputedStyle(pdfSection).display;
+                
+                statusElement.textContent = `✅ Seção PDF encontrada - Visível: ${isVisible} - Display: ${display}`;
+                statusElement.className = 'text-green-600';
+                
+                console.log('✅ Seção PDF encontrada e visível');
+            } else {
+                statusElement.textContent = '❌ Seção PDF não encontrada';
+                statusElement.className = 'text-red-600';
+                console.log('❌ Seção PDF não encontrada');
+            }
+        }
+        
+        // Funções de gerenciamento de PDFs
+        function handlePDFUpload(event) {
+            const files = Array.from(event.target.files);
+            
+            // Validar arquivos
+            const validFiles = files.filter(file => {
+                if (file.type !== 'application/pdf') {
+                    alert(`Arquivo "${file.name}" não é um PDF válido`);
+                    return false;
+                }
+                
+                if (file.size > 10 * 1024 * 1024) { // 10MB
+                    alert(`Arquivo "${file.name}" excede o limite de 10MB`);
+                    return false;
+                }
+                
+                return true;
+            });
+            
+            if (validFiles.length === 0) {
+                return;
+            }
+            
+            // Adicionar arquivos válidos
+            pdfFiles = [...pdfFiles, ...validFiles];
+            renderPDFFiles();
+            showPDFPreview();
+            
+            console.log(`${validFiles.length} arquivo(s) PDF adicionado(s)`);
+        }
+        
+        function renderPDFFiles() {
+            const filesList = document.getElementById('pdf-files-list');
+            if (!filesList) return;
+            
+            filesList.innerHTML = pdfFiles.map((file, index) => `
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-file-pdf text-red-500 text-lg"></i>
+                        <div>
+                            <p class="font-medium text-gray-700">${file.name}</p>
+                            <p class="text-sm text-gray-500">${(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                        </div>
+                    </div>
+                    <button 
+                        onclick="removePDFFile(${index})"
+                        class="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Remover arquivo"
+                    >
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+        
+        function showPDFPreview() {
+            const preview = document.getElementById('pdf-preview');
+            if (preview) {
+                preview.classList.remove('hidden');
+            }
+        }
+        
+        function removePDFFile(index) {
+            pdfFiles.splice(index, 1);
+            
+            if (pdfFiles.length === 0) {
+                const preview = document.getElementById('pdf-preview');
+                if (preview) {
+                    preview.classList.add('hidden');
+                }
+            } else {
+                renderPDFFiles();
+            }
+        }
+        
+        function clearPDFFiles() {
+            pdfFiles = [];
+            const preview = document.getElementById('pdf-preview');
+            if (preview) {
+                preview.classList.add('hidden');
+            }
+            
+            const input = document.getElementById('pdfFiles');
+            if (input) {
+                input.value = '';
+            }
+            
+            console.log('Arquivos PDF limpos');
+        }
+        
+        function submitForm() {
+            if (pdfFiles.length > 0) {
+                alert(`Formulário enviado com ${pdfFiles.length} arquivo(s) PDF!`);
+            } else {
+                alert('Formulário enviado sem arquivos PDF!');
+            }
+        }
+        
+        // Verificar seção PDF quando a página carregar
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Página carregada');
+            console.log('📋 Funções disponíveis:');
+            console.log('- toggleForm()');
+            console.log('- checkPDFSection()');
+            console.log('- handlePDFUpload()');
+            console.log('- clearPDFFiles()');
+            
+            // Verificar seção PDF inicialmente
+            setTimeout(checkPDFSection, 500);
+        });
+    </script>
+</body>
+</html>

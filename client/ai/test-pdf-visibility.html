@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Visibilidade Seção PDF</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-900 mb-8">Teste de Visibilidade da Seção PDF</h1>
+        
+        <!-- Controles de teste -->
+        <div class="mb-8 space-y-4">
+            <div class="flex space-x-4">
+                <button onclick="showForm()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                    Mostrar Formulário
+                </button>
+                <button onclick="hideForm()" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                    Esconder Formulário
+                </button>
+                <button onclick="clearForm()" class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700">
+                    Limpar Formulário
+                </button>
+            </div>
+            
+            <div class="flex space-x-4">
+                <button onclick="ensurePDFSectionVisible()" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                    Garantir Visibilidade PDF
+                </button>
+                <button onclick="checkPDFSection()" class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700">
+                    Verificar Seção PDF
+                </button>
+            </div>
+        </div>
+        
+        <!-- Formulário de teste -->
+        <div id="agent-form" class="hidden bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Formulário de Teste</h2>
+            
+            <!-- Campo de nome -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nome do Agente</label>
+                <input 
+                    type="text" 
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Ex: Assistente de Vendas"
+                >
+            </div>
+            
+            <!-- Campo de prompt -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Prompt do Sistema</label>
+                <textarea 
+                    rows="4"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Defina o comportamento e personalidade do agente..."
+                ></textarea>
+            </div>
+            
+            <!-- Seção de Upload de PDFs para Treinamento -->
+            <div class="border-t pt-4" id="pdf-section">
+                <div class="flex items-center gap-2 mb-3">
+                    <i class="fas fa-file-pdf text-red-600"></i>
+                    <label class="block text-sm font-medium text-gray-700">Documentos PDF para Treinamento</label>
+                </div>
+                <p class="text-sm text-gray-600 mb-3">
+                    Envie arquivos PDF para treinar o agente com informações específicas sobre sua função. 
+                    O conteúdo será extraído e incorporado ao contexto do agente.
+                </p>
+                
+                <div 
+                    class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors"
+                    id="pdf-drop-zone"
+                >
+                    <div id="pdf-upload-area" class="cursor-pointer">
+                        <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
+                        <p class="text-sm text-gray-600 mb-2">
+                            <span class="text-blue-600 font-medium">Clique para selecionar</span> ou arraste arquivos PDF aqui
+                        </p>
+                        <p class="text-xs text-gray-500">Máximo 10MB por arquivo • Suporta múltiplos arquivos</p>
+                        <input 
+                            type="file" 
+                            id="pdfFiles" 
+                            multiple 
+                            accept=".pdf"
+                            class="hidden"
+                        >
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Botão de teste -->
+            <div class="mt-6 pt-4 border-t">
+                <button 
+                    type="button"
+                    onclick="testPDFFunctionality()"
+                    class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                >
+                    Testar Funcionalidade PDF
+                </button>
+            </div>
+        </div>
+        
+        <!-- Resultado do teste -->
+        <div id="test-result" class="mt-6 bg-white rounded-lg shadow-md p-6 hidden">
+            <h3 class="text-lg font-semibold text-gray-900 mb-3">Resultado do Teste</h3>
+            <div id="result-content"></div>
+        </div>
+    </div>
+
+    <script>
+        // Variáveis globais para teste
+        let pdfFiles = [];
+        let pdfContents = [];
+
+        // Função para garantir que a seção de PDFs seja sempre visível
+        function ensurePDFSectionVisible() {
+            const pdfSection = document.querySelector('.border-t.pt-4');
+            if (pdfSection) {
+                pdfSection.classList.remove('hidden');
+                pdfSection.style.display = 'block';
+                console.log('✅ Seção PDF garantida como visível');
+            } else {
+                console.log('❌ Seção PDF não encontrada');
+            }
+        }
+
+        // Funções de controle do formulário
+        function showForm() {
+            const form = document.getElementById('agent-form');
+            if (form) {
+                form.classList.remove('hidden');
+                console.log('✅ Formulário exibido');
+                
+                // Garantir que a seção de PDFs seja visível
+                setTimeout(ensurePDFSectionVisible, 100);
+            }
+        }
+        
+        function hideForm() {
+            const form = document.getElementById('agent-form');
+            if (form) {
+                form.classList.add('hidden');
+                console.log('✅ Formulário escondido');
+            }
+        }
+        
+        function clearForm() {
+            const form = document.getElementById('agentForm');
+            if (form) {
+                form.reset();
+                console.log('✅ Formulário limpo');
+            }
+            
+            // Limpar arquivos PDF
+            clearPDFFiles();
+            
+            // Garantir que a seção de PDFs seja visível
+            ensurePDFSectionVisible();
+        }
+
+        // Funções de gerenciamento de PDFs
+        function clearPDFFiles() {
+            pdfFiles = [];
+            pdfContents = [];
+            console.log('✅ Arquivos PDF limpos');
+            
+            // Garantir que a seção de upload de PDFs sempre esteja visível
+            ensurePDFSectionVisible();
+        }
+
+        function checkPDFSection() {
+            const pdfSection = document.querySelector('.border-t.pt-4');
+            const dropZone = document.getElementById('pdf-drop-zone');
+            const uploadArea = document.getElementById('pdf-upload-area');
+            const fileInput = document.getElementById('pdfFiles');
+            
+            console.log('=== Verificação da Seção PDF ===');
+            console.log('PDF Section:', pdfSection);
+            console.log('Drop Zone:', dropZone);
+            console.log('Upload Area:', uploadArea);
+            console.log('File Input:', fileInput);
+            
+            if (pdfSection) {
+                console.log('Classes da seção PDF:', pdfSection.className);
+                console.log('Display da seção PDF:', window.getComputedStyle(pdfSection).display);
+                console.log('Visibility da seção PDF:', window.getComputedStyle(pdfSection).visibility);
+                console.log('Hidden class:', pdfSection.classList.contains('hidden'));
+            }
+            
+            showTestResult();
+        }
+        
+        function testPDFFunctionality() {
+            console.log('=== Teste da Funcionalidade PDF ===');
+            
+            // Verificar se todos os elementos estão presentes
+            const pdfSection = document.querySelector('.border-t.pt-4');
+            const dropZone = document.getElementById('pdf-drop-zone');
+            const uploadArea = document.getElementById('pdf-upload-area');
+            const fileInput = document.getElementById('pdfFiles');
+            
+            let allElementsPresent = true;
+            
+            if (!pdfSection) {
+                console.log('❌ Seção PDF não encontrada');
+                allElementsPresent = false;
+            }
+            
+            if (!dropZone) {
+                console.log('❌ Drop Zone não encontrada');
+                allElementsPresent = false;
+            }
+            
+            if (!uploadArea) {
+                console.log('❌ Upload Area não encontrada');
+                allElementsPresent = false;
+            }
+            
+            if (!fileInput) {
+                console.log('❌ File Input não encontrado');
+                allElementsPresent = false;
+            }
+            
+            if (allElementsPresent) {
+                console.log('✅ Todos os elementos estão presentes');
+            }
+            
+            // Testar upload de arquivo
+            if (fileInput) {
+                console.log('✅ Input de arquivo encontrado');
+                
+                // Criar um arquivo de teste
+                const testFile = new File(['Conteúdo de teste'], 'teste.pdf', { type: 'application/pdf' });
+                console.log('✅ Arquivo de teste criado:', testFile);
+            }
+        }
+        
+        function showTestResult() {
+            const resultDiv = document.getElementById('test-result');
+            const resultContent = document.getElementById('result-content');
+            
+            if (resultDiv) {
+                resultDiv.classList.remove('hidden');
+            }
+            
+            if (resultContent) {
+                const pdfSection = document.querySelector('.border-t.pt-4');
+                const dropZone = document.getElementById('pdf-drop-zone');
+                const uploadArea = document.getElementById('pdf-upload-area');
+                const fileInput = document.getElementById('pdfFiles');
+                
+                resultContent.innerHTML = `
+                    <div class="space-y-3">
+                        <div class="p-3 bg-blue-50 text-blue-700 rounded">
+                            <strong>Console:</strong> Verifique o console do navegador para mais detalhes
+                        </div>
+                        <div class="p-3 rounded ${pdfSection ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}">
+                            <strong>Seção PDF:</strong> ${pdfSection ? '✅ Presente' : '❌ Ausente'}
+                        </div>
+                        <div class="p-3 rounded ${dropZone ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}">
+                            <strong>Drop Zone:</strong> ${dropZone ? '✅ Presente' : '❌ Ausente'}
+                        </div>
+                        <div class="p-3 rounded ${uploadArea ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}">
+                            <strong>Upload Area:</strong> ${uploadArea ? '✅ Presente' : '❌ Ausente'}
+                        </div>
+                        <div class="p-3 rounded ${fileInput ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}">
+                            <strong>File Input:</strong> ${fileInput ? '✅ Presente' : '❌ Ausente'}
+                        </div>
+                        ${pdfSection ? `
+                            <div class="p-3 bg-blue-50 text-blue-700 rounded">
+                                <strong>Classes:</strong> ${pdfSection.className}
+                            </div>
+                            <div class="p-3 bg-blue-50 text-blue-700 rounded">
+                                <strong>Display:</strong> ${window.getComputedStyle(pdfSection).display}
+                            </div>
+                            <div class="p-3 bg-blue-50 text-blue-700 rounded">
+                                <strong>Hidden Class:</strong> ${pdfSection.classList.contains('hidden') ? 'Sim' : 'Não'}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+        }
+        
+        // Verificar seção PDF quando a página carregar
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Página carregada');
+            console.log('📋 Funções disponíveis:');
+            console.log('- showForm()');
+            console.log('- hideForm()');
+            console.log('- clearForm()');
+            console.log('- ensurePDFSectionVisible()');
+            console.log('- checkPDFSection()');
+            console.log('- testPDFFunctionality()');
+            
+            setTimeout(() => {
+                console.log('⏰ Verificação automática após 1 segundo...');
+                checkPDFSection();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

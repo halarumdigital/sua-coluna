@@ -1,12 +1,46 @@
 // Estado da aplicação
 let agents = [];
 let editingAgent = null;
+let pdfFiles = []; // Array para armazenar arquivos PDF selecionados
+let pdfContents = []; // Array para armazenar o conteúdo extraído dos PDFs
+
+// Função para garantir que a seção de PDFs seja sempre visível
+function ensurePDFSectionVisible() {
+    const pdfSection = document.getElementById('pdf-section');
+    if (pdfSection) {
+        pdfSection.classList.remove('hidden');
+        pdfSection.style.display = 'block';
+        pdfSection.style.visibility = 'visible';
+        pdfSection.style.opacity = '1';
+        
+        // Forçar visibilidade com !important via CSS inline
+        pdfSection.setAttribute('style', 'display: block !important; visibility: visible !important; opacity: 1 !important;');
+        
+        console.log('✅ Seção PDF garantida como visível');
+    } else {
+        console.log('❌ Seção PDF não encontrada');
+    }
+}
 
 // Inicialização
 document.addEventListener('DOMContentLoaded', function() {
     loadAgents();
     setupFormSubmission();
     setupClickOutside();
+    
+    // Garantir que a seção de PDFs seja visível
+    ensurePDFSectionVisible();
+    
+    // Verificar se a seção está visível e forçar se necessário
+    setTimeout(() => {
+        const pdfSection = document.getElementById('pdf-section');
+        if (pdfSection) {
+            pdfSection.style.display = 'block';
+            pdfSection.style.visibility = 'visible';
+            pdfSection.style.opacity = '1';
+            console.log('✅ Seção PDF forçada como visível após carregamento');
+        }
+    }, 1000);
 });
 
 // Configurar clique fora para fechar menus
@@ -19,6 +53,247 @@ function setupClickOutside() {
             actionsMenu.classList.add('hidden');
         }
     });
+}
+
+// Funções de gerenciamento de PDFs
+function handlePDFUpload(event) {
+    const files = Array.from(event.target.files);
+    
+    // Validar arquivos
+    const validFiles = files.filter(file => {
+        if (file.type !== 'application/pdf') {
+            showNotification(`Arquivo "${file.name}" não é um PDF válido`, 'error');
+            return false;
+        }
+        
+        if (file.size > 10 * 1024 * 1024) { // 10MB
+            showNotification(`Arquivo "${file.name}" excede o limite de 10MB`, 'error');
+            return false;
+        }
+        
+        return true;
+    });
+    
+    if (validFiles.length === 0) {
+        return;
+    }
+    
+    // Adicionar arquivos válidos
+    pdfFiles = [...pdfFiles, ...validFiles];
+    renderPDFFiles();
+    showPDFPreview();
+    
+    // Processar PDFs automaticamente
+    processPDFFiles();
+}
+
+function renderPDFFiles() {
+    const filesList = document.getElementById('pdf-files-list');
+    if (!filesList) return;
+    
+    filesList.innerHTML = pdfFiles.map((file, index) => `
+        <div class="flex items-center justify-between p-2 bg-gray-50 rounded border pdf-file-item">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-file-pdf text-red-500"></i>
+                <div>
+                    <p class="text-sm font-medium text-gray-700">${file.name}</p>
+                    <p class="text-xs text-gray-500">${(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                </div>
+            </div>
+            <button 
+                onclick="removePDFFile(${index})"
+                class="text-red-500 hover:text-red-700 p-1 remove-btn"
+                title="Remover arquivo"
+            >
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+function showPDFPreview() {
+    const preview = document.getElementById('pdf-preview');
+    if (preview) {
+        preview.classList.remove('hidden');
+    }
+}
+
+function hidePDFPreview() {
+    const preview = document.getElementById('pdf-preview');
+    if (preview) {
+        preview.classList.add('hidden');
+    }
+}
+
+function removePDFFile(index) {
+    pdfFiles.splice(index, 1);
+    pdfContents.splice(index, 1);
+    
+    if (pdfFiles.length === 0) {
+        hidePDFPreview();
+    } else {
+        renderPDFFiles();
+    }
+}
+
+function clearPDFFiles() {
+    pdfFiles = [];
+    pdfContents = [];
+    hidePDFPreview();
+    
+    const input = document.getElementById('pdfFiles');
+    if (input) {
+        input.value = '';
+    }
+    
+    // Garantir que a seção de upload de PDFs sempre esteja visível
+    ensurePDFSectionVisible();
+}
+
+async function processPDFFiles() {
+    if (pdfFiles.length === 0) return;
+    
+    const processing = document.getElementById('pdf-processing');
+    const error = document.getElementById('pdf-error');
+    
+    if (processing) processing.classList.remove('hidden');
+    if (error) error.classList.add('hidden');
+    
+    try {
+        pdfContents = [];
+        
+        for (let i = 0; i < pdfFiles.length; i++) {
+            const file = pdfFiles[i];
+            const content = await extractPDFContent(file);
+            pdfContents.push({
+                fileName: file.name,
+                content: content
+            });
+        }
+        
+        showNotification(`${pdfFiles.length} arquivo(s) PDF processado(s) com sucesso!`, 'success');
+        
+    } catch (error) {
+        console.error('Erro ao processar PDFs:', error);
+        showPDFError('Erro ao processar arquivos PDF. Verifique se os arquivos são válidos.');
+    } finally {
+        if (processing) processing.classList.add('hidden');
+    }
+}
+
+async function extractPDFContent(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        
+        reader.onload = async function(e) {
+            try {
+                const arrayBuffer = e.target.result;
+                
+                // Usar PDF.js para extrair texto
+                const pdfjsLib = window['pdfjs-dist/build/pdf'];
+                
+                if (!pdfjsLib) {
+                    // Fallback: tentar extrair texto básico
+                    resolve(`Conteúdo do arquivo ${file.name} (extração limitada)`);
+                    return;
+                }
+                
+                const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+                let fullText = '';
+                
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(' ');
+                    fullText += pageText + '\n';
+                }
+                
+                resolve(fullText.trim());
+                
+            } catch (error) {
+                console.error('Erro ao extrair conteúdo do PDF:', error);
+                resolve(`Conteúdo do arquivo ${file.name} (erro na extração)`);
+            }
+        };
+        
+        reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+function showPDFError(message) {
+    const error = document.getElementById('pdf-error');
+    const errorMessage = document.getElementById('pdf-error-message');
+    
+    if (error && errorMessage) {
+        errorMessage.textContent = message;
+        error.classList.remove('hidden');
+    }
+}
+
+function getEnhancedPrompt() {
+    let basePrompt = document.getElementById('agentPrompt').value.trim();
+    
+    if (pdfContents.length > 0) {
+        basePrompt += '\n\n=== DOCUMENTOS DE TREINAMENTO ===\n';
+        basePrompt += 'O agente deve usar as seguintes informações dos documentos PDF para responder às perguntas:\n\n';
+        
+        pdfContents.forEach((pdf, index) => {
+            basePrompt += `DOCUMENTO ${index + 1}: ${pdf.fileName}\n`;
+            basePrompt += `${pdf.content}\n\n`;
+        });
+        
+        basePrompt += '=== FIM DOS DOCUMENTOS ===\n';
+        basePrompt += 'Use sempre essas informações como referência para fornecer respostas precisas e contextualizadas.';
+    }
+    
+    return basePrompt;
+}
+
+// Funções de Drag and Drop
+function handleDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const dropZone = document.getElementById('pdf-drop-zone');
+    if (dropZone) {
+        dropZone.classList.add('dragover');
+    }
+}
+
+function handleDragLeave(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const dropZone = document.getElementById('pdf-drop-zone');
+    if (dropZone) {
+        dropZone.classList.remove('dragover');
+    }
+}
+
+function handleDrop(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const dropZone = document.getElementById('pdf-drop-zone');
+    if (dropZone) {
+        dropZone.classList.remove('dragover');
+    }
+    
+    const files = Array.from(event.dataTransfer.files);
+    const pdfFiles = files.filter(file => file.type === 'application/pdf');
+    
+    if (pdfFiles.length === 0) {
+        showNotification('Nenhum arquivo PDF encontrado nos arquivos arrastados', 'error');
+        return;
+    }
+    
+    // Simular evento de upload
+    const uploadEvent = {
+        target: {
+            files: pdfFiles
+        }
+    };
+    
+    handlePDFUpload(uploadEvent);
 }
 
 // Controlar menu de ações
@@ -66,6 +341,12 @@ function showCreateForm() {
         submitText.textContent = 'Criar Agente';
         clearForm();
         editingAgent = null;
+        
+        // Garantir que a seção de upload de PDFs seja sempre visível
+        setTimeout(ensurePDFSectionVisible, 100);
+        
+        // Forçar visibilidade imediatamente também
+        ensurePDFSectionVisible();
     }
 }
 
@@ -109,6 +390,9 @@ function clearForm() {
     if (agentModel) {
         agentModel.value = 'gpt-3.5-turbo';
     }
+    
+    // Limpar arquivos PDF
+    clearPDFFiles();
 }
 
 function updateTemperatureValue(value) {
@@ -178,12 +462,14 @@ function setupFormSubmission() {
             id: editingAgent ? editingAgent.id : Date.now().toString(),
             name: name,
             description: description,
-            systemPrompt: systemPrompt,
+            systemPrompt: getEnhancedPrompt(), // Usar prompt aprimorado com PDFs
             model: model,
             temperature: temperature,
             maxTokens: maxTokens,
             isActive: isActive,
-            createdAt: editingAgent ? editingAgent.createdAt : new Date().toISOString()
+            createdAt: editingAgent ? editingAgent.createdAt : new Date().toISOString(),
+            pdfFiles: pdfFiles.map(file => file.name), // Salvar nomes dos arquivos PDF
+            pdfContents: pdfContents // Salvar conteúdo dos PDFs
         };
         
         if (editingAgent) {
@@ -280,7 +566,9 @@ function editAgent(agentId) {
             model: editingAgent.model || 'gpt-3.5-turbo',
             temperature: parseFloat(editingAgent.temperature) || 0.7,
             maxTokens: parseInt(editingAgent.maxTokens) || 1000,
-            isActive: Boolean(editingAgent.isActive)
+            isActive: Boolean(editingAgent.isActive),
+            pdfFiles: editingAgent.pdfFiles || [],
+            pdfContents: editingAgent.pdfContents || []
         };
         
         // Obter elementos do formulário
@@ -317,6 +605,25 @@ function editAgent(agentId) {
         titleElement.textContent = 'Editar Agente';
         submitTextElement.textContent = 'Atualizar Agente';
         formElement.classList.remove('hidden');
+        
+        // Garantir que a seção de upload de PDFs seja sempre visível
+        setTimeout(ensurePDFSectionVisible, 100);
+        
+        // Forçar visibilidade imediatamente também
+        ensurePDFSectionVisible();
+        
+        // Carregar arquivos PDF se existirem
+        if (validatedAgent.pdfFiles && validatedAgent.pdfFiles.length > 0) {
+            // Simular arquivos para exibição (não podemos recriar File objects)
+            pdfFiles = validatedAgent.pdfFiles.map(fileName => ({
+                name: fileName,
+                size: 0,
+                type: 'application/pdf'
+            }));
+            pdfContents = validatedAgent.pdfContents || [];
+            renderPDFFiles();
+            showPDFPreview();
+        }
     }
 }
 
@@ -338,7 +645,9 @@ function duplicateAgent(agentId) {
                 temperature: parseFloat(agent.temperature) || 0.7,
                 maxTokens: parseInt(agent.maxTokens) || 1000,
                 isActive: Boolean(agent.isActive),
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
+                pdfFiles: agent.pdfFiles || [],
+                pdfContents: agent.pdfContents || []
             };
             createAgent(duplicatedAgent);
         } else {
@@ -378,7 +687,9 @@ function renderAgents() {
             model: agent.model || 'gpt-3.5-turbo',
             temperature: agent.temperature || 0.7,
             maxTokens: agent.maxTokens || 1000,
-            isActive: Boolean(agent.isActive)
+            isActive: Boolean(agent.isActive),
+            pdfFiles: agent.pdfFiles || [],
+            pdfContents: agent.pdfContents || []
         };
         
         return `
@@ -440,6 +751,14 @@ function renderAgents() {
                 <p class="text-xs text-gray-500 line-clamp-3">
                     ${safeAgent.systemPrompt}
                 </p>
+                ${safeAgent.pdfFiles && safeAgent.pdfFiles.length > 0 ? `
+                    <div class="mt-2 pt-2 border-t border-gray-100">
+                        <div class="pdf-indicator">
+                            <i class="fas fa-file-pdf"></i>
+                            <span>${safeAgent.pdfFiles.length} PDF(s) de treinamento</span>
+                        </div>
+                    </div>
+                ` : ''}
             </div>
             
             <div class="mt-4 flex gap-2">
@@ -503,7 +822,11 @@ function toggleAgentStatus(agentId) {
 function saveAgents() {
     try {
         // Garantir que os dados sejam válidos antes de salvar
-        const validAgents = agents.filter(agent => agent && typeof agent === 'object');
+        const validAgents = agents.filter(agent => agent && typeof agent === 'object').map(agent => ({
+            ...agent,
+            pdfFiles: agent.pdfFiles || [],
+            pdfContents: agent.pdfContents || []
+        }));
         localStorage.setItem('ai-agents', JSON.stringify(validAgents));
     } catch (error) {
         console.error('Erro ao salvar agentes:', error);
@@ -528,7 +851,9 @@ function loadAgents() {
                     temperature: parseFloat(agent.temperature) || 0.7,
                     maxTokens: parseInt(agent.maxTokens) || 1000,
                     isActive: Boolean(agent.isActive),
-                    createdAt: agent.createdAt || new Date().toISOString()
+                    createdAt: agent.createdAt || new Date().toISOString(),
+                    pdfFiles: agent.pdfFiles || [],
+                    pdfContents: agent.pdfContents || []
                 }));
             } else {
                 agents = [];
@@ -549,7 +874,9 @@ function loadAgents() {
                 temperature: 0.7,
                 maxTokens: 1000,
                 isActive: true,
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
+                pdfFiles: [],
+                pdfContents: []
             },
             {
                 id: '2',
@@ -560,7 +887,9 @@ function loadAgents() {
                 temperature: 0.3,
                 maxTokens: 1500,
                 isActive: true,
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
+                pdfFiles: [],
+                pdfContents: []
             }
         ];
         saveAgents();
@@ -648,7 +977,9 @@ function loadExamples() {
                     temperature: parseFloat(agent.temperature) || 0.7,
                     maxTokens: parseInt(agent.maxTokens) || 1000,
                     isActive: Boolean(agent.isActive),
-                    createdAt: agent.createdAt || new Date().toISOString()
+                    createdAt: agent.createdAt || new Date().toISOString(),
+                    pdfFiles: agent.pdfFiles || [],
+                    pdfContents: agent.pdfContents || []
                 }));
                 saveAgents();
                 renderAgents();
@@ -687,7 +1018,9 @@ function importAgents() {
                         temperature: parseFloat(agent.temperature) || 0.7,
                         maxTokens: parseInt(agent.maxTokens) || 1000,
                         isActive: Boolean(agent.isActive),
-                        createdAt: agent.createdAt || new Date().toISOString()
+                        createdAt: agent.createdAt || new Date().toISOString(),
+                        pdfFiles: agent.pdfFiles || [],
+                        pdfContents: agent.pdfContents || []
                     }));
                     saveAgents();
                     renderAgents();

@@ -34,6 +34,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Temporary route to update webhook URLs to Replit domain (REMOVE AFTER USE)
+  app.post("/api/admin/update-webhook-urls", async (req: any, res) => {
+    try {
+      const replitDomain = `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
+      console.log(`🔧 Atualizando webhooks para o domínio do Replit: ${replitDomain}`);
+      
+      // Update WhatsApp API settings
+      await db.execute(sql`
+        UPDATE whatsapp_api_settings 
+        SET system_url = ${replitDomain}
+        WHERE id IS NOT NULL
+      `);
+      console.log('✅ whatsapp_api_settings atualizada');
+      
+      // Update WhatsApp instances webhooks
+      await db.execute(sql`
+        UPDATE whatsapp_instances 
+        SET webhook = CONCAT(${replitDomain}, '/api/client/whatsapp-webhook/', instance_key)
+        WHERE instance_key IS NOT NULL
+      `);
+      console.log('✅ whatsapp_instances webhooks atualizadas');
+      
+      // Update admin WhatsApp instances webhooks  
+      await db.execute(sql`
+        UPDATE admin_whatsapp_instances 
+        SET webhook = CONCAT(${replitDomain}, '/api/admin/whatsapp-webhook/', instance_key)
+        WHERE instance_key IS NOT NULL
+      `);
+      console.log('✅ admin_whatsapp_instances webhooks atualizadas');
+      
+      console.log('🎯 Todas as URLs de webhook foram atualizadas!');
+      res.json({ 
+        message: 'URLs de webhook atualizadas com sucesso',
+        domain: replitDomain
+      });
+      
+    } catch (error: any) {
+      console.error('❌ Erro durante a atualização:', error);
+      res.status(500).json({ message: 'Erro durante a atualização', error: error.message });
+    }
+  });
+
   // Temporary route to fix WhatsApp instances table (REMOVE AFTER USE)
   app.post("/api/admin/fix-whatsapp-table", async (req: any, res) => {
     try {

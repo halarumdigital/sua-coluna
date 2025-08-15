@@ -34,16 +34,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Temporary route to update webhook URLs to Replit domain (REMOVE AFTER USE)
+  // Temporary route to update webhook URLs to custom domain (REMOVE AFTER USE)
   app.post("/api/admin/update-webhook-urls", async (req: any, res) => {
     try {
-      const replitDomain = `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
-      console.log(`🔧 Atualizando webhooks para o domínio do Replit: ${replitDomain}`);
+      const { customDomain } = req.body;
+      const finalDomain = customDomain || `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
+      console.log(`🔧 Atualizando webhooks para o domínio: ${finalDomain}`);
       
       // Update WhatsApp API settings
       await db.execute(sql`
         UPDATE whatsapp_api_settings 
-        SET system_url = ${replitDomain}
+        SET system_url = ${finalDomain}
         WHERE id IS NOT NULL
       `);
       console.log('✅ whatsapp_api_settings atualizada');
@@ -51,7 +52,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update WhatsApp instances webhooks
       await db.execute(sql`
         UPDATE whatsapp_instances 
-        SET webhook = CONCAT(${replitDomain}, '/api/client/whatsapp-webhook/', instance_key)
+        SET webhook = CONCAT(${finalDomain}, '/api/client/whatsapp-webhook/', instance_key)
         WHERE instance_key IS NOT NULL
       `);
       console.log('✅ whatsapp_instances webhooks atualizadas');
@@ -59,7 +60,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update admin WhatsApp instances webhooks  
       await db.execute(sql`
         UPDATE admin_whatsapp_instances 
-        SET webhook = CONCAT(${replitDomain}, '/api/admin/whatsapp-webhook/', instance_key)
+        SET webhook = CONCAT(${finalDomain}, '/api/admin/whatsapp-webhook/', instance_key)
         WHERE instance_key IS NOT NULL
       `);
       console.log('✅ admin_whatsapp_instances webhooks atualizadas');
@@ -67,7 +68,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('🎯 Todas as URLs de webhook foram atualizadas!');
       res.json({ 
         message: 'URLs de webhook atualizadas com sucesso',
-        domain: replitDomain
+        domain: finalDomain
       });
       
     } catch (error: any) {

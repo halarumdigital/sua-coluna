@@ -285,6 +285,7 @@ export interface IStorage {
   
   // Custom AI Agents operations
   getCustomAIAgentsByUserId(userId: string): Promise<any[]>;
+  getCustomAIAgentById(id: string): Promise<any | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2713,6 +2714,15 @@ export class DatabaseStorage implements IStorage {
       .from(customAIAgents)
       .where(eq(customAIAgents.userId, userId))
       .orderBy(desc(customAIAgents.createdAt));
+  }
+
+  async getCustomAIAgentById(id: string): Promise<any | undefined> {
+    const [agent] = await db
+      .select()
+      .from(customAIAgents)
+      .where(eq(customAIAgents.id, id));
+    
+    return agent;
   }
 
   private async ensureWhatsappAgentsTable(): Promise<void> {

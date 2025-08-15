@@ -1,0 +1,158 @@
+} 
+
+[Evolution API]    v2.3.1  169   -  Fri Aug 15 2025 20:24:48     LOG   [WebhookController]  [object]   
+
+{
+
+  local: 'p.sendData-Webhook',
+
+  url: 'https://labs.beaihub.com.br/api/client/whatsapp-webhook/deploy2',
+
+  event: 'messages.upsert',
+
+  instance: 'deploy2',
+
+
+
+{
+
+    key: {
+
+      remoteJid: '554999214230@s.whatsapp.net',
+
+      fromMe: false,
+
+      id: '3F9486FDA06691998DA7',
+
+      senderLid: '67065981456567@lid',
+
+      senderPn: undefined,
+
+      participant: undefined,
+
+      participantPn: undefined,
+
+      participantLid: undefined
+
+    },
+
+    pushName: 'Gilliard Damaceno',
+
+    status: 'DELIVERY_ACK',
+
+    message: { messageContextInfo: [MessageContextInfo], conversation: 'oi' },
+
+    contextInfo: ContextInfo {
+
+      mentionedJid: [],
+
+      groupMentions: [],
+
+      expiration: 0,
+
+      ephemeralSettingTimestamp: [Long],
+
+      disappearingMode: [DisappearingMode]
+
+    },
+
+    messageType: 'conversation',
+
+    messageTimestamp: 1755300287,
+
+    instanceId: '7226638b-9c5d-446a-8c78-06c7fb95d680',
+
+    source: 'desktop'
+
+  },
+
+  destination: 'https://labs.beaihub.com.br/api/client/whatsapp-webhook/deploy2',
+
+  date_time: '2025-08-15T20:24:48.238Z',
+
+  sender: '554991016846@s.whatsapp.net',
+
+  server_url: 'https://evoapilabs.beaihub.com.br',
+
+  apikey: '25cab27e8bdeb30090a423f0c03844ff'
+
+} 
+
+[Evolution API]    v2.3.1  169   -  Fri Aug 15 2025 20:24:49     LOG   [WebhookController]  [object]   
+
+{
+
+  local: 'p.sendData-Webhook-Global',
+
+  url: '',
+
+  event: 'messages.upsert',
+
+  instance: 'deploy2',
+
+
+
+{
+
+    key: {
+
+      remoteJid: '554999214230@s.whatsapp.net',
+
+      fromMe: false,
+
+      id: '3F9486FDA06691998DA7',
+
+      senderLid: '67065981456567@lid',
+
+      senderPn: undefined,
+
+      participant: undefined,
+
+      participantPn: undefined,
+
+      participantLid: undefined
+
+    },
+
+    pushName: 'Gilliard Damaceno',
+
+    status: 'DELIVERY_ACK',
+
+    message: { messageContextInfo: [MessageContextInfo], conversation: 'oi' },
+
+    contextInfo: ContextInfo {
+
+      mentionedJid: [],
+
+      groupMentions: [],
+
+      expiration: 0,
+
+      ephemeralSettingTimestamp: [Long],
+
+      disappearingMode: [DisappearingMode]
+
+    },
+
+    messageType: 'conversation',
+
+    messageTimestamp: 1755300287,
+
+    instanceId: '7226638b-9c5d-446a-8c78-06c7fb95d680',
+
+    source: 'desktop'
+
+  },
+
+  destination: 'https://labs.beaihub.com.br/api/client/whatsapp-webhook/deploy2',
+
+  date_time: '2025-08-15T20:24:48.238Z',
+
+  sender: '554991016846@s.whatsapp.net',
+
+  server_url: 'https://evoapilabs.beaihub.com.br',
+
+  apikey: '25cab27e8bdeb30090a423f0c03844ff'
+
+} 
+

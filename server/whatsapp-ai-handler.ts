@@ -158,6 +158,9 @@ Mensagem recebida: "${messageText}"`;
         if (webhookData.data?.messages) {
           // Format: { data: { messages: [...] } }
           messages = webhookData.data.messages;
+        } else if (webhookData.data?.key && webhookData.data?.message) {
+          // Format: Evolution API { data: { key, message } }
+          messages = [webhookData.data];
         } else if (webhookData.messages) {
           // Format: { messages: [...] }
           messages = webhookData.messages;
@@ -205,6 +208,9 @@ Mensagem recebida: "${messageText}"`;
         if (webhookData.data?.messages) {
           // Format: { data: { messages: [...] } }
           messages = webhookData.data.messages;
+        } else if (webhookData.data?.key && webhookData.data?.message) {
+          // Format: Evolution API { data: { key, message } }
+          messages = [webhookData.data];
         } else if (webhookData.messages) {
           // Format: { messages: [...] }
           messages = webhookData.messages;

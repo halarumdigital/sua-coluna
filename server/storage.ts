@@ -26,6 +26,7 @@ import {
   whatsappInstanceAgentBindings,
   clientWhatsappInstanceAgentBindings,
   customAIAgents,
+  agentConversationContext,
   type User,
   type UpsertUser,
   // TIPOS REMOVIDOS - TABELAS NÃO MAIS UTILIZADAS
@@ -84,6 +85,8 @@ import {
   // TIPOS REMOVIDOS - TABELAS NÃO MAIS UTILIZADAS
   // type ClientWhatsappInstanceAgentBinding,
   // type InsertClientWhatsappInstanceAgentBinding,
+  type AgentConversationContext,
+  type InsertAgentConversationContext,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, count, sum, sql, like, gte, lte, or, between, asc } from "drizzle-orm";
@@ -251,6 +254,11 @@ export interface IStorage {
   // WhatsApp Messages operations
   createWhatsappMessage(message: InsertWhatsappMessage): Promise<WhatsappMessage>;
   getWhatsappMessagesByConversation(conversationId: string): Promise<WhatsappMessage[]>;
+
+  // Agent Conversation Context operations
+  addToAgentContext(context: InsertAgentConversationContext): Promise<void>;
+  getAgentContext(conversationId: string, agentId: string, limit?: number): Promise<AgentConversationContext[]>;
+  cleanupAgentContext(conversationId: string, agentId: string, maxMessages?: number): Promise<void>;
 
   // Global Prompts operations
   getGlobalPrompts(franchisorId: string): Promise<GlobalPrompt[]>;
@@ -2272,6 +2280,73 @@ export class DatabaseStorage implements IStorage {
       .from(whatsappMessages)
       .where(eq(whatsappMessages.conversationId, conversationId))
       .orderBy(asc(whatsappMessages.timestamp));
+  }
+
+  // Agent Conversation Context operations
+  async addToAgentContext(context: InsertAgentConversationContext): Promise<void> {
+    await db.insert(agentConversationContext).values(context);
+    
+    // Automatically cleanup to maintain only last 100 messages
+    await this.cleanupAgentContext(context.conversationId, context.agentId, 100);
+  }
+
+  async getAgentContext(conversationId: string, agentId: string, limit: number = 100): Promise<AgentConversationContext[]> {
+    return await db
+      .select()
+      .from(agentConversationContext)
+      .where(
+        and(
+          eq(agentConversationContext.conversationId, conversationId),
+          eq(agentConversationContext.agentId, agentId)
+        )
+      )
+      .orderBy(desc(agentConversationContext.messageOrder))
+      .limit(limit);
+  }
+
+  async cleanupAgentContext(conversationId: string, agentId: string, maxMessages: number = 100): Promise<void> {
+    // Get total count of messages for this conversation and agent
+    const [countResult] = await db
+      .select({ count: count() })
+      .from(agentConversationContext)
+      .where(
+        and(
+          eq(agentConversationContext.conversationId, conversationId),
+          eq(agentConversationContext.agentId, agentId)
+        )
+      );
+    
+    const totalMessages = countResult.count;
+    
+    if (totalMessages > maxMessages) {
+      // Get the oldest messages to delete
+      const messagesToDelete = totalMessages - maxMessages;
+      
+      const oldestMessages = await db
+        .select({ id: agentConversationContext.id })
+        .from(agentConversationContext)
+        .where(
+          and(
+            eq(agentConversationContext.conversationId, conversationId),
+            eq(agentConversationContext.agentId, agentId)
+          )
+        )
+        .orderBy(asc(agentConversationContext.messageOrder))
+        .limit(messagesToDelete);
+      
+      if (oldestMessages.length > 0) {
+        const idsToDelete = oldestMessages.map(msg => msg.id);
+        await db
+          .delete(agentConversationContext)
+          .where(
+            and(
+              eq(agentConversationContext.conversationId, conversationId),
+              eq(agentConversationContext.agentId, agentId),
+              sql`${agentConversationContext.id} IN (${idsToDelete.map(() => '?').join(',')})`
+            )
+          );
+      }
+    }
   }
 
   async updateConversationStatus(id: string, status: string): Promise<WhatsappConversation> {

@@ -546,6 +546,26 @@ export const whatsappMessages = mysqlTable("whatsapp_messages", {
   index("idx_whatsapp_messages_ai").on(table.isAiResponse),
 ]);
 
+// Contexto de conversação para agentes de IA (últimas 100 mensagens)
+export const agentConversationContext = mysqlTable("agent_conversation_context", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  conversationId: varchar("conversation_id", { length: 36 }).references(() => whatsappConversations.id).notNull(),
+  instanceId: varchar("instance_id", { length: 36 }).references(() => whatsappInstances.id).notNull(),
+  agentId: varchar("agent_id", { length: 36 }).references(() => customAIAgents.id).notNull(),
+  messageText: text("message_text").notNull(),
+  messageRole: varchar("message_role", { length: 20 }).notNull(), // "user" ou "assistant"
+  messageOrder: int("message_order").notNull(), // ordem sequencial para manter histórico
+  senderPhone: varchar("sender_phone", { length: 20 }),
+  timestamp: timestamp("timestamp").notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_agent_context_conversation").on(table.conversationId),
+  index("idx_agent_context_instance").on(table.instanceId),
+  index("idx_agent_context_agent").on(table.agentId),
+  index("idx_agent_context_order").on(table.conversationId, table.messageOrder),
+  index("idx_agent_context_timestamp").on(table.timestamp),
+]);
+
 // Instâncias WhatsApp do admin (para o próprio sistema)
 export const adminWhatsappInstances = mysqlTable("admin_whatsapp_instances", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
@@ -1135,3 +1155,12 @@ export type InsertAdminWhatsappInstance = typeof adminWhatsappInstances.$inferIn
 
 export type GlobalPrompt = typeof globalPrompts.$inferSelect;
 export type CreateGlobalPrompt = z.infer<typeof createGlobalPromptSchema>;
+
+export type AgentConversationContext = typeof agentConversationContext.$inferSelect;
+export type InsertAgentConversationContext = typeof agentConversationContext.$inferInsert;
+
+export type WhatsappMessage = typeof whatsappMessages.$inferSelect;
+export type InsertWhatsappMessage = typeof whatsappMessages.$inferInsert;
+
+export type WhatsappConversation = typeof whatsappConversations.$inferSelect;
+export type InsertWhatsappConversation = typeof whatsappConversations.$inferInsert;

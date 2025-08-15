@@ -26,11 +26,6 @@ export class WhatsAppAIHandler {
         return;
       }
 
-      // Salvar conversa e mensagem no banco de dados
-      await this.saveConversationAndMessage(instanceKey, phoneNumber, messageText, messageObj);
-
-      console.log(`📱 Mensagem de ${phoneNumber}: ${messageText.substring(0, 100)}${messageText.length > 100 ? '...' : ''}`);
-
       // Verificar se a instância pertence a um cliente
       const instances = await storage.getWhatsappInstances();
       const instance = instances.find(inst => inst.instanceKey === instanceKey);
@@ -71,6 +66,30 @@ export class WhatsAppAIHandler {
 
       console.log(`🤖 Usando agente: ${customAgent.name}`);
 
+      // Buscar/criar conversa antes de usar contexto
+      const chatId = messageObj.key?.remoteJid || `${phoneNumber}@s.whatsapp.net`;
+      const messageId = messageObj.key?.id || `msg_${Date.now()}`;
+      const timestamp = new Date(messageObj.messageTimestamp ? messageObj.messageTimestamp * 1000 : Date.now());
+
+      let conversation = await storage.getWhatsappConversationByChatId(instance.id, chatId);
+      if (!conversation) {
+        conversation = await storage.createWhatsappConversation({
+          instanceId: instance.id,
+          chatId: chatId,
+          phoneNumber: phoneNumber,
+          contactName: phoneNumber,
+          lastMessage: messageText,
+          lastMessageAt: timestamp,
+          unreadCount: 1,
+          isGroup: chatId.includes('@g.us'),
+          status: 'active'
+        });
+      }
+
+      // Buscar contexto de conversação (últimas mensagens)
+      const conversationContext = await storage.getAgentContext(conversation.id, activeBinding.agentId, 50);
+      console.log(`📖 Contexto encontrado: ${conversationContext.length} mensagens`);
+
       // Obter configurações de AI do sistema
       const aiSettings = await storage.getAISettings();
       if (!aiSettings.chatGptApiKey) {
@@ -78,12 +97,40 @@ export class WhatsAppAIHandler {
         return;
       }
 
-      // Preparar contexto da mensagem para o AI usando o prompt personalizado
+      // Salvar mensagem do usuário no contexto
+      const nextMessageOrder = conversationContext.length > 0 ? 
+        Math.max(...conversationContext.map(ctx => ctx.messageOrder)) + 1 : 1;
+      
+      await storage.addToAgentContext({
+        conversationId: conversation.id,
+        instanceId: instance.id,
+        agentId: activeBinding.agentId,
+        messageText: messageText,
+        messageRole: 'user',
+        messageOrder: nextMessageOrder,
+        senderPhone: phoneNumber,
+        timestamp: new Date()
+      });
+
+      // Construir histórico de conversa para o AI
+      let conversationHistory = '';
+      if (conversationContext.length > 0) {
+        // Ordenar por ordem crescente (mais antigas primeiro)
+        const sortedContext = conversationContext.sort((a, b) => a.messageOrder - b.messageOrder);
+        conversationHistory = '\n\nHistórico da conversa:\n' + 
+          sortedContext.map(ctx => 
+            `${ctx.messageRole === 'user' ? 'Usuário' : 'Assistente'}: ${ctx.messageText}`
+          ).join('\n');
+      }
+
+      // Preparar contexto da mensagem para o AI usando o prompt personalizado + histórico
       const contextMessage = `${customAgent.systemPrompt}
 
-Você está respondendo uma mensagem do WhatsApp de ${phoneNumber}.
+Você está respondendo uma mensagem do WhatsApp de ${phoneNumber}.${conversationHistory}
 
-Mensagem recebida: "${messageText}"`;
+Nova mensagem recebida: "${messageText}";
+
+Responda considerando todo o contexto da conversa acima.`;
 
       console.log('🧠 Gerando resposta com AI...');
 
@@ -102,7 +149,19 @@ Mensagem recebida: "${messageText}"`;
       }
 
       const responseText = aiResponse.response.trim();
-      console.log(`🤖 Resposta gerada: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);
+      console.log(`🤖 Resposta gerada: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);      
+
+      // Salvar resposta do agente no contexto
+      await storage.addToAgentContext({
+        conversationId: conversation.id,
+        instanceId: instance.id,
+        agentId: activeBinding.agentId,
+        messageText: responseText,
+        messageRole: 'assistant',
+        messageOrder: nextMessageOrder + 1,
+        senderPhone: phoneNumber,
+        timestamp: new Date()
+      });
 
       // Enviar resposta via WhatsApp
       const sendResult = await whatsappService.sendMessage(instanceKey, phoneNumber, responseText);
@@ -118,7 +177,7 @@ Mensagem recebida: "${messageText}"`;
             promptTokens: aiResponse.usage?.promptTokens || 0,
             completionTokens: aiResponse.usage?.completionTokens || 0,
             totalTokens: aiResponse.usage?.totalTokens || 0,
-            cost: aiResponse.usage?.cost || 0,
+            cost: String(aiResponse.usage?.cost || 0),
             requestType: 'whatsapp_auto_reply',
             success: true
           });
@@ -128,6 +187,9 @@ Mensagem recebida: "${messageText}"`;
       } else {
         console.log('❌ Falha ao enviar resposta:', sendResult.error);
       }
+
+      // Salvar mensagem no sistema tradicional também (para compatibilidade)
+      await this.saveConversationAndMessage(instanceKey, phoneNumber, messageText, messageObj);
 
     } catch (error: any) {
       console.error('❌ Erro ao processar mensagem recebida:', error);

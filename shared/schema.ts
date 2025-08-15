@@ -874,11 +874,11 @@ export type InsertTeamMember = z.infer<typeof insertTeamMemberSchema>;
 
 // TIPO REMOVIDO - TABELA PROJECTS NÃO MAIS UTILIZADA
 // export type Project = typeof projects.$inferSelect;
-export type InsertProject = z.infer<typeof insertProjectSchema>;
+// export type InsertProject = z.infer<typeof insertProjectSchema>;
 
 // TIPO REMOVIDO - TABELA INVOICES NÃO MAIS UTILIZADA
 // export type Invoice = typeof invoices.$inferSelect;
-export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
+// export type InsertInvoice = z.infer<typeof insertInvoiceSchema);
 
 // TIPO REMOVIDO - TABELA PROJECT_ASSIGNMENTS NÃO MAIS UTILIZADA
 // export type ProjectAssignment = typeof projectAssignments.$inferSelect;

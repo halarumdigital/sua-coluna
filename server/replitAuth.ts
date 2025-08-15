@@ -26,9 +26,12 @@ const getOidcConfig = memoize(
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
   
+  // Use a default session secret if not provided in environment
+  const sessionSecret = process.env.SESSION_SECRET || 'default-session-secret-key-for-development-only-change-in-production';
+  
   // Use memory store for development (simpler setup)
   return session({
-    secret: process.env.SESSION_SECRET!,
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: {

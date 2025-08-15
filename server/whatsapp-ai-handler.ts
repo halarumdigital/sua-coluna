@@ -40,12 +40,36 @@ export class WhatsAppAIHandler {
         return;
       }
 
-      // Obter configurações de AI do cliente
-      const client = await storage.getClient(instance.clientId);
-      if (!client) {
-        console.log(`❌ Cliente não encontrado para instância ${instanceKey}`);
+      // Obter dados da franquia
+      const franchise = await storage.getFranchise(instance.franchiseId);
+      if (!franchise) {
+        console.log(`❌ Franquia não encontrada para instância ${instanceKey}`);
         return;
       }
+
+      console.log(`✅ Franquia encontrada: ${franchise.franchiseName}`);
+
+      // Buscar agente de IA vinculado a esta instância
+      const agentBindings = await storage.getFranchiseInstanceAgentBindings(franchise.id);
+      const activeBinding = agentBindings.find(binding => 
+        binding.instanceId === instance.id && binding.isActive
+      );
+      
+      if (!activeBinding) {
+        console.log(`❌ Nenhum agente de IA ativo vinculado à instância ${instanceKey}`);
+        return;
+      }
+
+      console.log(`✅ Agente de IA encontrado: ${activeBinding.agentId}`);
+
+      // Buscar o agente personalizado
+      const customAgent = await storage.getCustomAIAgentById(activeBinding.agentId);
+      if (!customAgent) {
+        console.log(`❌ Agente de IA personalizado não encontrado: ${activeBinding.agentId}`);
+        return;
+      }
+
+      console.log(`🤖 Usando agente: ${customAgent.name}`);
 
       // Obter configurações de AI do sistema
       const aiSettings = await storage.getAISettings();
@@ -54,22 +78,22 @@ export class WhatsAppAIHandler {
         return;
       }
 
-      // Preparar contexto da mensagem para o AI
-      const contextMessage = `Você está respondendo uma mensagem do WhatsApp de ${phoneNumber}. 
-      
-Mensagem recebida: "${messageText}"
+      // Preparar contexto da mensagem para o AI usando o prompt personalizado
+      const contextMessage = `${customAgent.systemPrompt}
 
-Responda de forma natural e útil, como um assistente virtual. Mantenha a resposta concisa e relevante.`;
+Você está respondendo uma mensagem do WhatsApp de ${phoneNumber}.
+
+Mensagem recebida: "${messageText}"`;
 
       console.log('🧠 Gerando resposta com AI...');
 
-      // Gerar resposta usando AI
+      // Gerar resposta usando AI com configurações do agente personalizado
       const aiResponse = await openaiService.chat(contextMessage, {
         chatGptApiKey: aiSettings.chatGptApiKey,
-        model: aiSettings.model,
-        systemPrompt: aiSettings.systemPrompt,
-        maxTokens: aiSettings.maxTokens,
-        temperature: aiSettings.temperature
+        model: aiSettings.model || 'gpt-3.5-turbo',
+        systemPrompt: customAgent.systemPrompt,
+        maxTokens: Number(customAgent.maxTokens) || 1000,
+        temperature: Number(customAgent.temperature) || 0.7
       });
 
       if (!aiResponse.success || !aiResponse.response) {
@@ -89,21 +113,14 @@ Responda de forma natural e útil, como um assistente virtual. Mantenha a respos
         // Registrar uso da AI
         try {
           await storage.recordAIUsage({
-            userId: client.userId, // Usar userId do cliente
-            model: aiSettings.model,
+            userId: franchise.userId, // Usar userId da franquia
+            model: aiSettings.model || 'gpt-3.5-turbo',
             promptTokens: aiResponse.usage?.promptTokens || 0,
             completionTokens: aiResponse.usage?.completionTokens || 0,
             totalTokens: aiResponse.usage?.totalTokens || 0,
             cost: aiResponse.usage?.cost || 0,
-            requestData: JSON.stringify({
-              context: 'WhatsApp Auto-Reply',
-              phoneNumber,
-              instanceKey,
-              originalMessage: messageText.substring(0, 200) + (messageText.length > 200 ? '...' : '')
-            }),
-            responseData: JSON.stringify({
-              response: responseText.substring(0, 200) + (responseText.length > 200 ? '...' : '')
-            })
+            requestType: 'whatsapp_auto_reply',
+            success: true
           });
         } catch (error) {
           console.error('❌ Erro ao registrar uso da AI:', error);

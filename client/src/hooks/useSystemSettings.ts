@@ -1,10 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 
+interface SystemSettings {
+  systemName?: string;
+  favicon?: string;
+  logo?: string;
+  systemColor?: string;
+  primary_color?: string;
+  [key: string]: any;
+}
+
 export function useSystemSettings() {
-  const { data: settings, isLoading } = useQuery({
+  const { data: settings, isLoading } = useQuery<SystemSettings>({
     queryKey: ["/api/system/settings"],
     staleTime: 5 * 60 * 1000, // 5 minutes
-    cacheTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes (renamed from cacheTime in v5)
   });
 
   return {
@@ -13,6 +22,6 @@ export function useSystemSettings() {
     systemName: settings?.systemName || "Sistema de Gerenciamento",
     favicon: settings?.favicon,
     logo: settings?.logo,
-    systemColor: settings?.systemColor || "#3b82f6",
+    systemColor: settings?.systemColor || settings?.primary_color || "#3b82f6",
   };
 }

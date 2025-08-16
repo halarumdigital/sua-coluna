@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { PDFProcessor } from "./pdf-processor";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema, aiSettingsSchema, editFranchiseProfileSchema } from "@shared/schema";
+import bcrypt from "bcrypt";
 import { openaiService } from "./openai";
 import { whatsappAIHandler } from "./whatsapp-ai-handler";
 import { whatsappService } from "./whatsapp";
@@ -14,7 +15,7 @@ import fs from "fs/promises";
 import { db } from "./db";
 import { aiUsage } from "@shared/schema";
 import { sum, count, desc, sql, eq, and, ne, asc } from "drizzle-orm";
-import { plans, franchises, franchisePhoneNumbers, franchiseAgents, franchisePrompts, globalPrompts, customAIAgents, createCustomAIAgentSchema } from "@shared/schema";
+import { plans, franchises, franchisePhoneNumbers, franchiseAgents, franchisePrompts, globalPrompts, customAIAgents, createCustomAIAgentSchema, users } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Serve static files from uploads directory
@@ -4872,17 +4873,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
         managerName: req.body.managerName || franchise.managerName,
         managerPhone: req.body.managerPhone || franchise.managerPhone,
         managerEmail: req.body.managerEmail || franchise.managerEmail,
+        currentPassword: req.body.currentPassword || "",
+        newPassword: req.body.newPassword || "",
+        confirmPassword: req.body.confirmPassword || "",
       };
 
       try {
         // Validar com schema
         const validatedData = editFranchiseProfileSchema.parse(updateData);
         
-        // Atualizar franquia
+        // Verificar se há alteração de senha
+        if (validatedData.newPassword && validatedData.currentPassword) {
+          // Verificar senha atual
+          const isCurrentPasswordValid = await bcrypt.compare(
+            validatedData.currentPassword, 
+            user.password
+          );
+          
+          if (!isCurrentPasswordValid) {
+            return res.status(400).json({ 
+              message: "Senha atual incorreta" 
+            });
+          }
+          
+          // Hash da nova senha
+          const hashedNewPassword = await bcrypt.hash(validatedData.newPassword, 10);
+          
+          // Atualizar senha do usuário
+          await db
+            .update(users)
+            .set({
+              password: hashedNewPassword,
+              updatedAt: sql`CURRENT_TIMESTAMP`,
+            })
+            .where(eq(users.id, userId));
+            
+          console.log('✅ Senha do usuário atualizada');
+        }
+        
+        // Atualizar dados da franquia (removendo campos de senha)
+        const { currentPassword, newPassword, confirmPassword, ...franchiseData } = validatedData;
+        
         await db
           .update(franchises)
           .set({
-            ...validatedData,
+            ...franchiseData,
             updatedAt: sql`CURRENT_TIMESTAMP`,
           })
           .where(eq(franchises.id, franchise.id));

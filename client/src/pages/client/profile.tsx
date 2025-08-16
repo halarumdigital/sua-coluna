@@ -7,6 +7,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
+import { Eye, EyeOff, Lock } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 // SCHEMA REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
 // import { editClientSchema } from "@shared/schema";
@@ -14,12 +16,15 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { User } from "lucide-react";
-import React from "react";
+import React, { useState } from "react";
 
 export default function ClientProfilePage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Buscar dados do perfil do cliente usando a nova rota específica
   const { data: clientData, isLoading, error } = useQuery({
@@ -79,6 +84,9 @@ export default function ClientProfilePage() {
       email: "",
       website: "",
       address: "",
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
     },
   });
 
@@ -103,6 +111,9 @@ export default function ClientProfilePage() {
         email: clientData.email || "",
         website: clientData.website || "",
         address: clientData.address || "",
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
       });
     }
   }, [clientData, form]);
@@ -439,6 +450,111 @@ export default function ClientProfilePage() {
                               <FormLabel>Website</FormLabel>
                               <FormControl>
                                 <Input {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Alteração de Senha */}
+                    <Separator className="my-6" />
+                    <div className="space-y-4">
+                      <div className="flex items-center space-x-2">
+                        <Lock className="h-5 w-5 text-gray-600" />
+                        <h4 className="text-base font-medium text-gray-900">Alterar Senha</h4>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Deixe os campos vazios se não desejar alterar a senha
+                      </p>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <FormField
+                          control={form.control}
+                          name="currentPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Senha Atual</FormLabel>
+                              <FormControl>
+                                <div className="relative">
+                                  <Input 
+                                    {...field} 
+                                    type={showCurrentPassword ? "text" : "password"}
+                                    placeholder="Digite sua senha atual"
+                                  />
+                                  <button
+                                    type="button"
+                                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                  >
+                                    {showCurrentPassword ? (
+                                      <EyeOff className="h-4 w-4" />
+                                    ) : (
+                                      <Eye className="h-4 w-4" />
+                                    )}
+                                  </button>
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="newPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Nova Senha</FormLabel>
+                              <FormControl>
+                                <div className="relative">
+                                  <Input 
+                                    {...field} 
+                                    type={showNewPassword ? "text" : "password"}
+                                    placeholder="Digite a nova senha"
+                                  />
+                                  <button
+                                    type="button"
+                                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                                    onClick={() => setShowNewPassword(!showNewPassword)}
+                                  >
+                                    {showNewPassword ? (
+                                      <EyeOff className="h-4 w-4" />
+                                    ) : (
+                                      <Eye className="h-4 w-4" />
+                                    )}
+                                  </button>
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="confirmPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Confirmar Nova Senha</FormLabel>
+                              <FormControl>
+                                <div className="relative">
+                                  <Input 
+                                    {...field} 
+                                    type={showConfirmPassword ? "text" : "password"}
+                                    placeholder="Confirme a nova senha"
+                                  />
+                                  <button
+                                    type="button"
+                                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                  >
+                                    {showConfirmPassword ? (
+                                      <EyeOff className="h-4 w-4" />
+                                    ) : (
+                                      <Eye className="h-4 w-4" />
+                                    )}
+                                  </button>
+                                </div>
                               </FormControl>
                               <FormMessage />
                             </FormItem>

@@ -31,7 +31,9 @@ import {
   User,
   Bot,
   Download,
-  RefreshCw
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from 'jspdf';
@@ -75,6 +77,8 @@ export default function ClientConversationsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedConversationData, setSelectedConversationData] = useState<Conversation | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationModalRef = useRef<HTMLDivElement>(null);
 
@@ -162,6 +166,17 @@ export default function ClientConversationsPage() {
 
   // Conversations are already filtered server-side
   const filteredConversations = conversations;
+  
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredConversations.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedConversations = filteredConversations.slice(startIndex, endIndex);
+  
+  // Reset to first page when search or filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchTerm, selectedInstanceKey]);
 
   const handleSendMessage = async (conversationId: string) => {
     toast({
@@ -387,7 +402,7 @@ export default function ClientConversationsPage() {
             <CardContent>
               <div className="text-2xl font-bold">{conversations.length}</div>
               <p className="text-xs text-muted-foreground">
-                Conversas ativas
+                {conversations.length === 1 ? 'Conversa ativa' : 'Conversas ativas'}
               </p>
             </CardContent>
           </Card>
@@ -458,7 +473,7 @@ export default function ClientConversationsPage() {
                           Buscando...
                         </>
                       ) : (
-                        `${filteredConversations.length} conversa${filteredConversations.length !== 1 ? 's' : ''} encontrada${filteredConversations.length !== 1 ? 's' : ''}`
+                        `${filteredConversations.length} conversa${filteredConversations.length !== 1 ? 's' : ''} encontrada${filteredConversations.length !== 1 ? 's' : ''} • Página ${currentPage} de ${totalPages}`
                       )}
                     </span>
                   </div>
@@ -556,72 +571,134 @@ export default function ClientConversationsPage() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-4 w-full">
-                {filteredConversations.map((conversation: Conversation) => (
-                  <div
-                    key={conversation.id}
-                    className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                      selectedConversation === conversation.id
-                        ? "bg-blue-50 border-blue-200"
-                        : "hover:bg-gray-50"
-                    }`}
-                    onClick={() => handleOpenConversation(conversation)}
-                  >
-                    <div className="flex items-center space-x-4">
-                      {/* Avatar */}
-                      <Avatar className="h-12 w-12">
-                        <AvatarImage src={conversation.avatar} />
-                        <AvatarFallback className="bg-blue-100 text-blue-600">
-                          {getInitials(conversation.contactName)}
-                        </AvatarFallback>
-                      </Avatar>
+              <>
+                <div className="space-y-4 w-full">
+                  {paginatedConversations.map((conversation: Conversation) => (
+                    <div
+                      key={conversation.id}
+                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                        selectedConversation === conversation.id
+                          ? "bg-blue-50 border-blue-200"
+                          : "hover:bg-gray-50"
+                      }`}
+                      onClick={() => handleOpenConversation(conversation)}
+                    >
+                      <div className="flex items-center space-x-4">
+                        {/* Avatar */}
+                        <Avatar className="h-12 w-12">
+                          <AvatarImage src={conversation.avatar} />
+                          <AvatarFallback className="bg-blue-100 text-blue-600">
+                            {getInitials(conversation.contactName)}
+                          </AvatarFallback>
+                        </Avatar>
 
-                      {/* Conversation Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <h3 className="font-medium text-gray-900 truncate">
-                              {conversation.contactName}
-                            </h3>
-                            {conversation.unreadCount > 0 && (
-                              <Badge className="bg-red-500 text-white">
-                                {conversation.unreadCount}
-                              </Badge>
-                            )}
+                        {/* Conversation Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <h3 className="font-medium text-gray-900 truncate">
+                                {conversation.contactName}
+                              </h3>
+                              {conversation.unreadCount > 0 && (
+                                <Badge className="bg-red-500 text-white">
+                                  {conversation.unreadCount}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {getStatusIcon(conversation.status)}
+                              <span className="text-sm text-gray-500">
+                                {new Date(conversation.lastMessageTime).toLocaleString('pt-BR', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex items-center space-x-2">
-                            {getStatusIcon(conversation.status)}
+                          
+                          <div className="flex items-center space-x-2 mt-1">
+                            <Phone className="h-3 w-3 text-gray-400" />
                             <span className="text-sm text-gray-500">
-                              {new Date(conversation.lastMessageTime).toLocaleString('pt-BR', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
+                              {conversation.contactPhone}
                             </span>
                           </div>
+                          
+                          <p className="text-sm text-gray-600 mt-1 truncate">
+                            {conversation.lastMessage}
+                          </p>
                         </div>
-                        
-                        <div className="flex items-center space-x-2 mt-1">
-                          <Phone className="h-3 w-3 text-gray-400" />
-                          <span className="text-sm text-gray-500">
-                            {conversation.contactPhone}
-                          </span>
-                        </div>
-                        
-                        <p className="text-sm text-gray-600 mt-1 truncate">
-                          {conversation.lastMessage}
-                        </p>
-                      </div>
 
-                                             {/* Status Badge */}
-                       <div className="flex items-center space-x-2">
-                         {getStatusBadge(conversation.status)}
-                       </div>
+                                               {/* Status Badge */}
+                         <div className="flex items-center space-x-2">
+                           {getStatusBadge(conversation.status)}
+                         </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-4 border-t">
+                    <div className="text-sm text-muted-foreground">
+                      Exibindo {startIndex + 1}-{Math.min(endIndex, filteredConversations.length)} de {filteredConversations.length} conversas
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Anterior
+                      </Button>
+                      
+                      <div className="flex items-center space-x-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                          .filter(page => {
+                            // Show first, last, current, and adjacent pages
+                            return page === 1 || 
+                                   page === totalPages || 
+                                   Math.abs(page - currentPage) <= 1;
+                          })
+                          .map((page, index, visiblePages) => {
+                            const prevPage = index > 0 ? visiblePages[index - 1] : 0;
+                            const showEllipsis = page - prevPage > 1;
+                            
+                            return (
+                              <div key={page} className="flex items-center">
+                                {showEllipsis && (
+                                  <span className="px-2 text-sm text-muted-foreground">…</span>
+                                )}
+                                <Button
+                                  variant={currentPage === page ? "default" : "outline"}
+                                  size="sm"
+                                  className="w-8 h-8 p-0"
+                                  onClick={() => setCurrentPage(page)}
+                                >
+                                  {page}
+                                </Button>
+                              </div>
+                            );
+                          })}
+                      </div>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage === totalPages}
+                      >
+                        Próxima
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

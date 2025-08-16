@@ -1,7 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 
+interface User {
+  id: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  role: "super_root" | "franchisor" | "admin" | "franchise" | "client" | "team";
+  active: boolean;
+  [key: string]: any;
+}
+
 export function useAuth() {
-  const { data: user, isLoading, error } = useQuery({
+  const { data: user, isLoading, error } = useQuery<User>({
     queryKey: ["/api/auth/user"],
     retry: false,
     refetchOnWindowFocus: false,

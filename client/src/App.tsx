@@ -78,7 +78,6 @@ function Router() {
       case "admin": // Backward compatibility
         return "/admin";
       case "franchise":
-      case "client": // Backward compatibility
         return "/franchise";
       case "team":
         return "/team";
@@ -153,7 +152,7 @@ function Router() {
       )}
 
       {/* Franchise Routes */}
-      {(user?.role === "franchise" || user?.role === "client") && (
+      {user?.role === "franchise" && (
         <>
           <Route path="/franchise" component={FranchiseDashboard} />
           <Route path="/franchise/clients" component={FranchiseClientsPage} />
@@ -163,16 +162,6 @@ function Router() {
           <Route path="/franchise/invoices" component={FranchiseInvoicesPage} />
           <Route path="/franchise/profile" component={FranchiseProfilePage} />
           <Route path="/franchise/calendar" component={FranchiseCalendarPage} />
-          
-          {/* Backward compatibility routes - redirect old /client paths to /franchise */}
-          <Route path="/client" component={FranchiseDashboard} />
-          <Route path="/client/clients" component={FranchiseClientsPage} />
-          <Route path="/client/ai" component={FranchiseAIPage} />
-          <Route path="/client/whatsapp" component={FranchiseWhatsAppPage} />
-          <Route path="/client/conversations" component={FranchiseConversationsPage} />
-          <Route path="/client/invoices" component={FranchiseInvoicesPage} />
-          <Route path="/client/profile" component={FranchiseProfilePage} />
-          <Route path="/client/calendar" component={FranchiseCalendarPage} />
         </>
       )}
 

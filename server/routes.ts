@@ -4397,8 +4397,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Transform Evolution API chat data to frontend format
           for (const chat of chats) {
             try {
-              // Extract contact info
-              const remoteJid = chat.id || chat.remoteJid || '';
+              // Extract contact info - prioritize remoteJid (real WhatsApp ID) over internal ID
+              const remoteJid = chat.remoteJid || chat.id || '';
               const contactPhone = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
               
               // Extract contact name with fallback to phone number

@@ -91,26 +91,13 @@ export default function ClientConversationsPage() {
   const handleSyncConversations = async () => {
     setIsSyncing(true);
     try {
-      const response = await fetch("/api/sync-whatsapp-chats", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Falha ao sincronizar conversas");
-      }
-
-      const result = await response.json();
+      // Force refresh of conversations from Evolution API
+      await refetch();
       
       toast({
         title: "Sincronização concluída",
-        description: `${result.newConversations} nova(s) conversa(s) sincronizada(s)`,
+        description: "Conversas atualizadas da Evolution API",
       });
-
-      // Refresh the conversations list
-      refetch();
     } catch (error) {
       console.error("Error syncing conversations:", error);
       toast({

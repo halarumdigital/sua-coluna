@@ -15,7 +15,7 @@ import fs from "fs/promises";
 import { db } from "./db";
 import { aiUsage } from "@shared/schema";
 import { sum, count, desc, sql, eq, and, ne, asc } from "drizzle-orm";
-import { plans, franchises, franchisePhoneNumbers, franchiseAgents, franchisePrompts, globalPrompts, customAIAgents, createCustomAIAgentSchema, users, googleCalendarSettings, googleCalendarSettingsSchema } from "@shared/schema";
+import { plans, franchises, franchisePhoneNumbers, franchiseAgents, franchisePrompts, globalPrompts, customAIAgents, createCustomAIAgentSchema, users, googleCalendarSettings, googleCalendarSettingsSchema, franchiseClients, createFranchiseClientSchema } from "@shared/schema";
 import { google } from "googleapis";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -5134,6 +5134,239 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating franchise profile:", error);
       res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
+  // Rotas para gerenciar clientes da franquia
+  // GET /api/franchise/clients - Listar clientes da franquia
+  app.get("/api/franchise/clients", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      
+      // Buscar franquia do usuário
+      const [franchise] = await db.select().from(franchises).where(eq(franchises.userId, userId));
+      
+      if (!franchise) {
+        return res.status(404).json({ message: "Franquia não encontrada" });
+      }
+
+      // Buscar clientes da franquia
+      const clients = await db.select()
+        .from(franchiseClients)
+        .where(eq(franchiseClients.franchiseId, franchise.id))
+        .orderBy(desc(franchiseClients.createdAt));
+
+      res.json(clients);
+    } catch (error) {
+      console.error("Error fetching franchise clients:", error);
+      res.status(500).json({ message: "Erro ao buscar clientes" });
+    }
+  });
+
+  // POST /api/franchise/clients - Criar novo cliente
+  app.post("/api/franchise/clients", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      
+      // Buscar franquia do usuário
+      const [franchise] = await db.select().from(franchises).where(eq(franchises.userId, userId));
+      
+      if (!franchise) {
+        return res.status(404).json({ message: "Franquia não encontrada" });
+      }
+
+      // Validar dados do cliente
+      const clientData = {
+        ...req.body,
+        franchiseId: franchise.id
+      };
+
+      // Validar se já existe cliente com o mesmo telefone na franquia
+      const [existingClient] = await db.select()
+        .from(franchiseClients)
+        .where(
+          and(
+            eq(franchiseClients.franchiseId, franchise.id),
+            eq(franchiseClients.phone, clientData.phone)
+          )
+        );
+
+      if (existingClient) {
+        return res.status(400).json({ message: "Já existe um cliente com este telefone" });
+      }
+
+      // Criar cliente
+      await db.insert(franchiseClients)
+        .values(clientData);
+
+      // Buscar o cliente criado (o mais recente da franquia com o mesmo telefone)
+      const [newClient] = await db.select()
+        .from(franchiseClients)
+        .where(
+          and(
+            eq(franchiseClients.franchiseId, franchise.id),
+            eq(franchiseClients.phone, clientData.phone)
+          )
+        )
+        .orderBy(desc(franchiseClients.createdAt))
+        .limit(1);
+
+      res.status(201).json(newClient);
+    } catch (error) {
+      console.error("Error creating franchise client:", error);
+      res.status(500).json({ message: "Erro ao criar cliente" });
+    }
+  });
+
+  // GET /api/franchise/clients/:id - Buscar cliente específico
+  app.get("/api/franchise/clients/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const clientId = req.params.id;
+      
+      // Buscar franquia do usuário
+      const [franchise] = await db.select().from(franchises).where(eq(franchises.userId, userId));
+      
+      if (!franchise) {
+        return res.status(404).json({ message: "Franquia não encontrada" });
+      }
+
+      // Buscar cliente específico da franquia
+      const [client] = await db.select()
+        .from(franchiseClients)
+        .where(
+          and(
+            eq(franchiseClients.id, clientId),
+            eq(franchiseClients.franchiseId, franchise.id)
+          )
+        );
+
+      if (!client) {
+        return res.status(404).json({ message: "Cliente não encontrado" });
+      }
+
+      res.json(client);
+    } catch (error) {
+      console.error("Error fetching franchise client:", error);
+      res.status(500).json({ message: "Erro ao buscar cliente" });
+    }
+  });
+
+  // PUT /api/franchise/clients/:id - Atualizar cliente
+  app.put("/api/franchise/clients/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const clientId = req.params.id;
+      
+      // Buscar franquia do usuário
+      const [franchise] = await db.select().from(franchises).where(eq(franchises.userId, userId));
+      
+      if (!franchise) {
+        return res.status(404).json({ message: "Franquia não encontrada" });
+      }
+
+      // Verificar se cliente existe e pertence à franquia
+      const [existingClient] = await db.select()
+        .from(franchiseClients)
+        .where(
+          and(
+            eq(franchiseClients.id, clientId),
+            eq(franchiseClients.franchiseId, franchise.id)
+          )
+        );
+
+      if (!existingClient) {
+        return res.status(404).json({ message: "Cliente não encontrado" });
+      }
+
+      // Verificar se o telefone não está sendo usado por outro cliente
+      if (req.body.phone && req.body.phone !== existingClient.phone) {
+        const [duplicateClient] = await db.select()
+          .from(franchiseClients)
+          .where(
+            and(
+              eq(franchiseClients.franchiseId, franchise.id),
+              eq(franchiseClients.phone, req.body.phone),
+              ne(franchiseClients.id, clientId)
+            )
+          );
+
+        if (duplicateClient) {
+          return res.status(400).json({ message: "Já existe um cliente com este telefone" });
+        }
+      }
+
+      // Atualizar cliente
+      await db.update(franchiseClients)
+        .set({
+          ...req.body,
+          updatedAt: new Date()
+        })
+        .where(
+          and(
+            eq(franchiseClients.id, clientId),
+            eq(franchiseClients.franchiseId, franchise.id)
+          )
+        );
+
+      // Buscar o cliente atualizado
+      const [updatedClient] = await db.select()
+        .from(franchiseClients)
+        .where(
+          and(
+            eq(franchiseClients.id, clientId),
+            eq(franchiseClients.franchiseId, franchise.id)
+          )
+        )
+        .limit(1);
+
+      res.json(updatedClient);
+    } catch (error) {
+      console.error("Error updating franchise client:", error);
+      res.status(500).json({ message: "Erro ao atualizar cliente" });
+    }
+  });
+
+  // DELETE /api/franchise/clients/:id - Deletar cliente
+  app.delete("/api/franchise/clients/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const clientId = req.params.id;
+      
+      // Buscar franquia do usuário
+      const [franchise] = await db.select().from(franchises).where(eq(franchises.userId, userId));
+      
+      if (!franchise) {
+        return res.status(404).json({ message: "Franquia não encontrada" });
+      }
+
+      // Verificar se cliente existe e pertence à franquia
+      const [existingClient] = await db.select()
+        .from(franchiseClients)
+        .where(
+          and(
+            eq(franchiseClients.id, clientId),
+            eq(franchiseClients.franchiseId, franchise.id)
+          )
+        );
+
+      if (!existingClient) {
+        return res.status(404).json({ message: "Cliente não encontrado" });
+      }
+
+      // Deletar cliente
+      await db.delete(franchiseClients)
+        .where(
+          and(
+            eq(franchiseClients.id, clientId),
+            eq(franchiseClients.franchiseId, franchise.id)
+          )
+        );
+
+      res.json({ message: "Cliente deletado com sucesso" });
+    } catch (error) {
+      console.error("Error deleting franchise client:", error);
+      res.status(500).json({ message: "Erro ao deletar cliente" });
     }
   });
 

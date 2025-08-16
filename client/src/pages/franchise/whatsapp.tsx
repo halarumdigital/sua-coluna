@@ -198,7 +198,7 @@ export default function ClientWhatsAppPage() {
   // Create instance mutation
   const createInstanceMutation = useMutation({
     mutationFn: async (data: { instanceName: string; phoneNumber: string }) => {
-      const response = await fetch("/api/client/whatsapp-instances", {
+      const response = await fetch("/api/franchise/whatsapp-instances", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -409,7 +409,7 @@ export default function ClientWhatsAppPage() {
   // Função para atualizar o status da instância no banco de dados
   const updateInstanceStatus = async (instanceId: string, status: string) => {
     try {
-      const response = await fetch(`/api/client/whatsapp-instances/${instanceId}/status`, {
+      const response = await fetch(`/api/franchise/whatsapp-instances/${instanceId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -716,7 +716,7 @@ export default function ClientWhatsAppPage() {
   // Função para deletar instância do banco de dados
   const deleteInstanceFromDatabase = async (instanceId: string): Promise<boolean> => {
     try {
-      const response = await fetch(`/api/client/whatsapp-instances/${instanceId}`, {
+      const response = await fetch(`/api/franchise/whatsapp-instances/${instanceId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -844,7 +844,7 @@ export default function ClientWhatsAppPage() {
   // Configure AI webhook mutation
   const configureAIWebhookMutation = useMutation({
     mutationFn: async (instanceKey: string) => {
-      const response = await fetch(`/api/client/whatsapp-instances/${instanceKey}/webhook`, {
+      const response = await fetch(`/api/franchise/whatsapp-instances/${instanceKey}/webhook`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -906,7 +906,7 @@ export default function ClientWhatsAppPage() {
   // Configurar WhatsApp instance
   const configureWhatsAppInstance = useMutation({
     mutationFn: async ({ instanceKey, settings }: { instanceKey: string; settings: any }) => {
-      const response = await fetch(`/api/client/whatsapp-instances/${instanceKey}/settings`, {
+      const response = await fetch(`/api/franchise/whatsapp-instances/${instanceKey}/settings`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -960,7 +960,7 @@ export default function ClientWhatsAppPage() {
   const getWebhookUrl = (instanceKey: string) => {
     // Use systemUrl from admin settings if available, otherwise fallback to current origin
     const baseUrl = adminSettings?.systemUrl || window.location.origin;
-    return `${baseUrl}/api/client/whatsapp-webhook/${instanceKey}`;
+    return `${baseUrl}/api/franchise/whatsapp-webhook/${instanceKey}`;
   };
 
   const formatDate = (dateString: string) => {
@@ -978,7 +978,7 @@ export default function ClientWhatsAppPage() {
   }
 
   return (
-    <Layout>
+    <Layout title="WhatsApp">
       {/* Modal de Confirmação de Exclusão */}
       <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
         <DialogContent className="max-w-2xl sm:max-w-lg">

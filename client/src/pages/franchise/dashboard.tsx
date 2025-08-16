@@ -18,18 +18,18 @@ import {
 export default function ClientDashboard() {
   const { user } = useAuth();
   
-  const { data: clients } = useQuery({
-    queryKey: ["/api/clients"],
+  const { data: clients = [] } = useQuery({
+    queryKey: ["/api/franchise/clients"],
   });
 
-  const { data: invoices, isLoading: invoicesLoading } = useQuery({
+  const { data: invoices = [], isLoading: invoicesLoading } = useQuery({
     queryKey: ["/api/invoices"],
   });
 
   // Find current client
   const currentClient = clients?.find((c: any) => c.userId === user?.id);
 
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats = {}, isLoading: statsLoading } = useQuery({
     queryKey: ["/api/stats/client", currentClient?.id],
     enabled: !!currentClient?.id,
   });

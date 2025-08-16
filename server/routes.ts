@@ -55,7 +55,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update WhatsApp instances webhooks
       await db.execute(sql`
         UPDATE whatsapp_instances 
-        SET webhook = CONCAT(${finalDomain}, '/api/client/whatsapp-webhook/', instance_key)
+        SET webhook = CONCAT(${finalDomain}, '/api/franchise/whatsapp-webhook/', instance_key)
         WHERE instance_key IS NOT NULL
       `);
       console.log('✅ whatsapp_instances webhooks atualizadas');
@@ -1177,7 +1177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Client routes for custom AI agents
-  app.get("/api/client/custom-agents", isAuthenticated, async (req: any, res) => {
+  app.get("/api/franchise/custom-agents", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -1206,7 +1206,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/client/custom-agents", isAuthenticated, async (req: any, res) => {
+  app.post("/api/franchise/custom-agents", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -1282,7 +1282,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/client/custom-agents/:id", isAuthenticated, async (req: any, res) => {
+  app.put("/api/franchise/custom-agents/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -1369,7 +1369,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/client/custom-agents/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/franchise/custom-agents/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -1410,7 +1410,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Client routes for instance-agent bindings
-  app.get("/api/client/instance-agent-bindings", isAuthenticated, async (req: any, res) => {
+  app.get("/api/franchise/instance-agent-bindings", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -1442,7 +1442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/client/instance-agent-bindings", isAuthenticated, async (req: any, res) => {
+  app.post("/api/franchise/instance-agent-bindings", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -1518,7 +1518,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/client/instance-agent-bindings/:bindingId", isAuthenticated, async (req: any, res) => {
+  app.put("/api/franchise/instance-agent-bindings/:bindingId", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -1564,7 +1564,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/client/instance-agent-bindings/:bindingId", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/franchise/instance-agent-bindings/:bindingId", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -3419,7 +3419,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Client WhatsApp routes
-  app.get("/api/client/whatsapp-settings", isAuthenticated, async (req: any, res) => {
+  app.get("/api/franchise/whatsapp-settings", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -3486,7 +3486,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Rota para processar PDFs de treinamento
-  app.post("/api/client/process-pdfs", isAuthenticated, async (req: any, res) => {
+  app.post("/api/franchise/process-pdfs", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -3755,7 +3755,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
 
-  app.post("/api/client/whatsapp-instances", isAuthenticated, async (req: any, res) => {
+  app.post("/api/franchise/whatsapp-instances", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -3829,7 +3829,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/client/whatsapp-instances/:instanceId/status", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/franchise/whatsapp-instances/:instanceId/status", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -3869,7 +3869,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/client/whatsapp-instances/:instanceId", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/franchise/whatsapp-instances/:instanceId", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -3921,7 +3921,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/client/whatsapp-instances/:instanceKey/webhook", isAuthenticated, async (req: any, res) => {
+  app.post("/api/franchise/whatsapp-instances/:instanceKey/webhook", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -3954,7 +3954,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Configure webhook URL
       const baseUrl = adminSettings.systemUrl || req.protocol + '://' + req.get('host');
-      const webhookUrl = `${baseUrl}/api/client/whatsapp-webhook/${instanceKey}`;
+      const webhookUrl = `${baseUrl}/api/franchise/whatsapp-webhook/${instanceKey}`;
       
       // Configure webhook in Evolution API
       const webhookConfig = {
@@ -4008,7 +4008,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/client/whatsapp-instances/:instanceKey/settings", isAuthenticated, async (req: any, res) => {
+  app.post("/api/franchise/whatsapp-instances/:instanceKey/settings", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -4074,7 +4074,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Client WhatsApp webhook endpoint
-  app.post("/api/client/whatsapp-webhook/:instanceKey", async (req: any, res) => {
+  app.post("/api/franchise/whatsapp-webhook/:instanceKey", async (req: any, res) => {
     try {
       const { instanceKey } = req.params;
       const webhookData = req.body;
@@ -4255,7 +4255,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get WhatsApp instances for client/franchise users
-  app.get("/api/client/whatsapp-instances", isAuthenticated, async (req: any, res) => {
+  app.get("/api/franchise/whatsapp-instances", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       const user = await storage.getUser(userId);
@@ -4320,7 +4320,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get conversations from Evolution API for client/franchise users
-  app.get("/api/client/conversations-evolution", isAuthenticated, async (req: any, res) => {
+  app.get("/api/franchise/conversations-evolution", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -4553,7 +4553,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get messages for a specific conversation from Evolution API
-  app.get("/api/client/conversations/:conversationId/messages", isAuthenticated, async (req: any, res) => {
+  app.get("/api/franchise/conversations/:conversationId/messages", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -4780,7 +4780,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Client profile routes
-  app.get("/api/client/profile", isAuthenticated, async (req: any, res) => {
+  app.get("/api/franchise/profile", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {
@@ -4837,7 +4837,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/client/profile", isAuthenticated, async (req: any, res) => {
+  app.put("/api/franchise/profile", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getCurrentUserId(req);
       if (!userId) {

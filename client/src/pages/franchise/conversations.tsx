@@ -119,7 +119,7 @@ export default function ClientConversationsPage() {
     queryKey: ["client-whatsapp-instances"],
     queryFn: async () => {
       console.log('🔍 Carregando instâncias WhatsApp...');
-      const response = await fetch("/api/client/whatsapp-instances", {
+      const response = await fetch("/api/franchise/whatsapp-instances", {
         credentials: "include",
       });
       
@@ -150,7 +150,7 @@ export default function ClientConversationsPage() {
       }
       
       const queryString = params.toString();
-      const url = `/api/client/conversations-evolution${queryString ? `?${queryString}` : ''}`;
+      const url = `/api/franchise/conversations-evolution${queryString ? `?${queryString}` : ''}`;
       
       const response = await fetch(url, {
         credentials: "include",
@@ -187,7 +187,7 @@ export default function ClientConversationsPage() {
 
   const handleArchiveConversation = async (conversationId: string) => {
     try {
-      const response = await fetch(`/api/client/conversations/${conversationId}/archive`, {
+      const response = await fetch(`/api/franchise/conversations/${conversationId}/archive`, {
         method: "POST",
         credentials: "include",
       });
@@ -338,7 +338,7 @@ export default function ClientConversationsPage() {
       
       console.log(`🔍 Buscando mensagens para conversa: ${selectedConversationData.id}`);
       
-      const response = await fetch(`/api/client/conversations/${selectedConversationData.id}/messages`, {
+      const response = await fetch(`/api/franchise/conversations/${selectedConversationData.id}/messages`, {
         credentials: "include",
       });
       

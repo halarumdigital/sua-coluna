@@ -60,7 +60,7 @@ export default function ClientAIPage() {
 
   // Fetch custom agents
   const { data: agents, isLoading: agentsLoading, error: agentsError } = useQuery({
-    queryKey: ["/api/client/custom-agents"],
+    queryKey: ["/api/franchise/custom-agents"],
     queryFn: async () => {
       console.log('Query executando, shouldFetchAgents:', shouldFetchAgents);
       
@@ -69,8 +69,8 @@ export default function ClientAIPage() {
         return [];
       }
       
-      console.log('Fazendo requisição para /api/client/custom-agents');
-      const response = await fetch("/api/client/custom-agents", {
+      console.log('Fazendo requisição para /api/franchise/custom-agents');
+      const response = await fetch("/api/franchise/custom-agents", {
         credentials: "include",
       });
       
@@ -79,7 +79,7 @@ export default function ClientAIPage() {
       if (!response.ok) {
         // Se for 404, retornar array vazio (API não implementada ainda)
         if (response.status === 404) {
-          console.warn('API /api/client/custom-agents não encontrada, retornando array vazio');
+          console.warn('API /api/franchise/custom-agents não encontrada, retornando array vazio');
           return [];
         }
         // Se for 403, usuário não tem permissão (provavelmente super_root)
@@ -105,8 +105,8 @@ export default function ClientAIPage() {
   const saveAgentMutation = useMutation({
     mutationFn: async (agentData: any) => {
       const url = editingAgent 
-        ? `/api/client/custom-agents/${editingAgent.id}`
-        : "/api/client/custom-agents";
+        ? `/api/franchise/custom-agents/${editingAgent.id}`
+        : "/api/franchise/custom-agents";
       const method = editingAgent ? "PUT" : "POST";
 
       console.log('Sending request to:', url, 'with method:', method);
@@ -161,7 +161,7 @@ export default function ClientAIPage() {
         title: "Sucesso",
         description: editingAgent ? "Agente atualizado com sucesso!" : "Agente criado com sucesso!",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/client/custom-agents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/franchise/custom-agents"] });
       setIsCreatingAgent(false);
       setEditingAgent(null);
       setAgentForm({
@@ -185,7 +185,7 @@ export default function ClientAIPage() {
   // Delete custom agent mutation
   const deleteAgentMutation = useMutation({
     mutationFn: async (agentId: string) => {
-      const response = await fetch(`/api/client/custom-agents/${agentId}`, {
+      const response = await fetch(`/api/franchise/custom-agents/${agentId}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -202,7 +202,7 @@ export default function ClientAIPage() {
         title: "Sucesso",
         description: "Agente deletado com sucesso!",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/client/custom-agents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/franchise/custom-agents"] });
     },
     onError: (error: Error) => {
       toast({
@@ -426,7 +426,7 @@ export default function ClientAIPage() {
       }
       
       // Enviar para o backend para processamento
-      const response = await fetch('/api/client/process-pdfs', {
+      const response = await fetch('/api/franchise/process-pdfs', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -453,7 +453,7 @@ export default function ClientAIPage() {
       
       console.log('✅ PDFs processados:', result.stats);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao processar PDFs:', error);
       toast({
         title: "Erro",
@@ -534,7 +534,7 @@ export default function ClientAIPage() {
                 <div>
                   <h3 className="font-medium">Backend API Necessária</h3>
                   <p className="text-sm mt-1">
-                    A rota <code className="bg-orange-100 px-1 rounded">/api/client/custom-agents</code> não foi encontrada. 
+                    A rota <code className="bg-orange-100 px-1 rounded">/api/franchise/custom-agents</code> não foi encontrada. 
                     É necessário implementar as rotas da API no backend para que esta funcionalidade funcione.
                   </p>
                   <p className="text-xs mt-2 text-orange-600">

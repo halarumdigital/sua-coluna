@@ -31,14 +31,14 @@ import AIPage from "@/pages/admin/ai";
 import WhatsAppPage from "@/pages/admin/whatsapp";
 import AdminMessages from "@/pages/admin/messages"; // Nova importação
 
-// Client Pages
-import ClientDashboard from "@/pages/client/dashboard";
-import ClientInvoicesPage from "@/pages/client/invoices";
-import ClientProfilePage from "@/pages/client/profile";
-import ClientClientsPage from "@/pages/client/clients";
-import ClientWhatsAppPage from "@/pages/client/whatsapp";
-import ClientConversationsPage from "@/pages/client/conversations";
-import ClientAIPage from "@/pages/client/ai";
+// Franchise Pages
+import FranchiseDashboard from "@/pages/franchise/dashboard";
+import FranchiseInvoicesPage from "@/pages/franchise/invoices";
+import FranchiseProfilePage from "@/pages/franchise/profile";
+import FranchiseClientsPage from "@/pages/franchise/clients";
+import FranchiseWhatsAppPage from "@/pages/franchise/whatsapp";
+import FranchiseConversationsPage from "@/pages/franchise/conversations";
+import FranchiseAIPage from "@/pages/franchise/ai";
 
 // Team Pages
 import TeamDashboard from "@/pages/team/dashboard";
@@ -78,7 +78,7 @@ function Router() {
         return "/admin";
       case "franchise":
       case "client": // Backward compatibility
-        return "/client";
+        return "/franchise";
       case "team":
         return "/team";
       default:
@@ -94,7 +94,7 @@ function Router() {
           const defaultRoute = getDefaultRoute();
           if (defaultRoute === "/super-root") return <SuperRootDashboard />;
           if (defaultRoute === "/admin") return <AdminDashboard />;
-          if (defaultRoute === "/client") return <ClientDashboard />;
+          if (defaultRoute === "/franchise") return <FranchiseDashboard />;
           if (defaultRoute === "/team") return <TeamDashboard />;
           return <Landing />;
         }}
@@ -151,16 +151,25 @@ function Router() {
         </>
       )}
 
-      {/* Franchise Routes (Client) */}
+      {/* Franchise Routes */}
       {(user?.role === "franchise" || user?.role === "client") && (
         <>
-          <Route path="/client" component={ClientDashboard} />
-          <Route path="/client/clients" component={ClientClientsPage} />
-          <Route path="/client/ai" component={ClientAIPage} />
-          <Route path="/client/whatsapp" component={ClientWhatsAppPage} />
-          <Route path="/client/conversations" component={ClientConversationsPage} />
-          <Route path="/client/invoices" component={ClientInvoicesPage} />
-          <Route path="/client/profile" component={ClientProfilePage} />
+          <Route path="/franchise" component={FranchiseDashboard} />
+          <Route path="/franchise/clients" component={FranchiseClientsPage} />
+          <Route path="/franchise/ai" component={FranchiseAIPage} />
+          <Route path="/franchise/whatsapp" component={FranchiseWhatsAppPage} />
+          <Route path="/franchise/conversations" component={FranchiseConversationsPage} />
+          <Route path="/franchise/invoices" component={FranchiseInvoicesPage} />
+          <Route path="/franchise/profile" component={FranchiseProfilePage} />
+          
+          {/* Backward compatibility routes - redirect old /client paths to /franchise */}
+          <Route path="/client" component={FranchiseDashboard} />
+          <Route path="/client/clients" component={FranchiseClientsPage} />
+          <Route path="/client/ai" component={FranchiseAIPage} />
+          <Route path="/client/whatsapp" component={FranchiseWhatsAppPage} />
+          <Route path="/client/conversations" component={FranchiseConversationsPage} />
+          <Route path="/client/invoices" component={FranchiseInvoicesPage} />
+          <Route path="/client/profile" component={FranchiseProfilePage} />
         </>
       )}
 

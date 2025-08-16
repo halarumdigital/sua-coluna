@@ -30,8 +30,8 @@ export default function ClientProfilePage() {
   const { data: clientData, isLoading, error } = useQuery({
     queryKey: ["client-profile"],
     queryFn: async () => {
-      console.log("🔍 Fazendo requisição para /api/client/profile");
-      const response = await apiRequest("GET", "/api/client/profile");
+      console.log("🔍 Fazendo requisição para /api/franchise/profile");
+      const response = await apiRequest("GET", "/api/franchise/profile");
       const data = await response.json();
       console.log("📥 Dados recebidos:", data);
       return data;
@@ -46,7 +46,7 @@ export default function ClientProfilePage() {
 
   const updateClientMutation = useMutation({
     mutationFn: async (data: any) => {
-      await apiRequest("PUT", "/api/client/profile", data);
+      await apiRequest("PUT", "/api/franchise/profile", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-profile"] });

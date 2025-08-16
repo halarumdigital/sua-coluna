@@ -49,7 +49,7 @@ export default function ClientClientsPage() {
   const { data: clients = [], isLoading: isLoadingClients } = useQuery({
     queryKey: ["client-clients"],
     queryFn: async () => {
-      const response = await fetch("/api/client/clients", {
+      const response = await fetch("/api/franchise/clients", {
         credentials: "include",
       });
       
@@ -82,7 +82,7 @@ export default function ClientClientsPage() {
 
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/client/clients/${clientId}`, {
+      const response = await fetch(`/api/franchise/clients/${clientId}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -121,7 +121,7 @@ export default function ClientClientsPage() {
   };
 
   return (
-    <Layout>
+    <Layout title="Clientes">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">

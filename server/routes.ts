@@ -4397,10 +4397,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Transform Evolution API chat data to frontend format
           for (const chat of chats) {
             try {
+              // Debug: Log chat structure to understand Evolution API response
+              console.log(`🔍 Estrutura do chat:`, {
+                id: chat.id,
+                remoteJid: chat.remoteJid,
+                name: chat.name,
+                pushName: chat.pushName,
+                contact: chat.contact ? {
+                  name: chat.contact.name,
+                  pushName: chat.contact.pushName,
+                  notify: chat.contact.notify
+                } : 'não encontrado',
+                lastMessage: chat.lastMessage ? {
+                  pushName: chat.lastMessage.pushName,
+                  key: chat.lastMessage.key
+                } : 'não encontrado'
+              });
+              
               // Extract contact info
               const remoteJid = chat.id || chat.remoteJid || '';
               const contactPhone = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
-              const contactName = chat.name || chat.contact?.name || chat.contact?.pushName || contactPhone;
+              
+              // Try to extract contact name from different possible fields
+              let contactName = 
+                chat.name || 
+                chat.pushName || 
+                chat.contact?.name || 
+                chat.contact?.pushName || 
+                chat.contact?.notify ||
+                chat.lastMessage?.pushName ||
+                contactPhone;
+                
+              // Clean up the contact name if it's still a technical ID
+              if (contactName === remoteJid || contactName === contactPhone) {
+                // Try to extract from last message if available
+                const lastMessage = chat.lastMessage || (chat.messages && chat.messages.length > 0 ? chat.messages[chat.messages.length - 1] : null);
+                if (lastMessage?.pushName && lastMessage.pushName !== contactPhone) {
+                  contactName = lastMessage.pushName;
+                }
+              }
+              
+              console.log(`👤 Nome extraído: "${contactName}" para contato ${contactPhone}`);
               
               // Get last message info
               const lastMessage = chat.lastMessage || (chat.messages && chat.messages.length > 0 ? chat.messages[chat.messages.length - 1] : null);

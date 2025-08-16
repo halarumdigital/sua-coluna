@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { PDFProcessor } from "./pdf-processor";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema, aiSettingsSchema } from "@shared/schema";
+import { insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema, aiSettingsSchema, editFranchiseProfileSchema } from "@shared/schema";
 import { openaiService } from "./openai";
 import { whatsappAIHandler } from "./whatsapp-ai-handler";
 import { whatsappService } from "./whatsapp";
@@ -4775,6 +4775,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Erro ao buscar mensagens", 
         error: error.message 
       });
+    }
+  });
+
+  // Client profile routes
+  app.get("/api/client/profile", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      // Verificar se o usuário tem role franchise/client
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchise' && user?.role !== 'client') {
+        return res.status(403).json({ 
+          message: "Access denied: only franchise users can access this route"
+        });
+      }
+
+      // Buscar dados da franquia
+      const franchise = await storage.getFranchiseByUserId(userId);
+      if (!franchise) {
+        return res.status(404).json({ message: "Franchise not found" });
+      }
+
+      // Mapear campos da franquia para campos esperados pelo frontend
+      const franchiseProfile = {
+        companyName: franchise.franchiseName,
+        legalName: franchise.franchiseName, // Para compatibilidade
+        cpfCnpj: franchise.franchiseCode, // Usando franchiseCode como identificador
+        taxId: '', // Campo vazio por compatibilidade
+        street: franchise.street,
+        number: franchise.number,
+        complement: franchise.complement || '',
+        neighborhood: franchise.neighborhood,
+        city: franchise.city,
+        state: franchise.state,
+        zipCode: franchise.zipCode,
+        contactPhone: franchise.contactPhone,
+        whatsapp: franchise.contactPhone, // Usando mesmo telefone
+        email: franchise.email,
+        website: '', // Campo vazio por compatibilidade
+        address: `${franchise.street}, ${franchise.number}${franchise.complement ? ', ' + franchise.complement : ''}, ${franchise.neighborhood}, ${franchise.city}/${franchise.state}`, // Endereço completo
+        
+        // Dados específicos da franquia
+        franchiseName: franchise.franchiseName,
+        franchiseCode: franchise.franchiseCode,
+        managerName: franchise.managerName,
+        managerPhone: franchise.managerPhone || '',
+        managerEmail: franchise.managerEmail || '',
+      };
+
+      console.log('✅ Perfil da franquia carregado:', franchise.franchiseName);
+      res.json(franchiseProfile);
+      
+    } catch (error) {
+      console.error("Error fetching franchise profile:", error);
+      res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
+  app.put("/api/client/profile", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      // Verificar se o usuário tem role franchise/client
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchise' && user?.role !== 'client') {
+        return res.status(403).json({ 
+          message: "Access denied: only franchise users can access this route"
+        });
+      }
+
+      // Buscar franquia existente
+      const franchise = await storage.getFranchiseByUserId(userId);
+      if (!franchise) {
+        return res.status(404).json({ message: "Franchise not found" });
+      }
+
+      // Validar dados recebidos usando campos compatíveis
+      const updateData = {
+        franchiseName: req.body.companyName || req.body.franchiseName || franchise.franchiseName,
+        street: req.body.street || franchise.street,
+        number: req.body.number || franchise.number,
+        complement: req.body.complement || franchise.complement,
+        neighborhood: req.body.neighborhood || franchise.neighborhood,
+        city: req.body.city || franchise.city,
+        state: req.body.state || franchise.state,
+        zipCode: req.body.zipCode || franchise.zipCode,
+        contactPhone: req.body.contactPhone || req.body.whatsapp || franchise.contactPhone,
+        email: req.body.email || franchise.email,
+        managerName: req.body.managerName || franchise.managerName,
+        managerPhone: req.body.managerPhone || franchise.managerPhone,
+        managerEmail: req.body.managerEmail || franchise.managerEmail,
+      };
+
+      try {
+        // Validar com schema
+        const validatedData = editFranchiseProfileSchema.parse(updateData);
+        
+        // Atualizar franquia
+        await db
+          .update(franchises)
+          .set({
+            ...validatedData,
+            updatedAt: sql`CURRENT_TIMESTAMP`,
+          })
+          .where(eq(franchises.id, franchise.id));
+
+        console.log('✅ Perfil da franquia atualizado:', franchise.franchiseName);
+        res.json({ message: "Profile updated successfully" });
+        
+      } catch (validationError) {
+        console.error("Validation error:", validationError);
+        return res.status(400).json({ 
+          message: "Invalid data",
+          errors: validationError.errors || validationError.message
+        });
+      }
+      
+    } catch (error) {
+      console.error("Error updating franchise profile:", error);
+      res.status(500).json({ message: "Failed to update profile" });
     }
   });
 

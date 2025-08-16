@@ -1178,3 +1178,33 @@ export type InsertWhatsappMessage = typeof whatsappMessages.$inferInsert;
 
 export type WhatsappConversation = typeof whatsappConversations.$inferSelect;
 export type InsertWhatsappConversation = typeof whatsappConversations.$inferInsert;
+
+// Franchise types
+export type Franchise = typeof franchises.$inferSelect;
+export type InsertFranchise = typeof franchises.$inferInsert;
+export type CreateFranchise = z.infer<typeof createFranchiseSchema>;
+
+// Schema para edição de perfil da franquia
+export const editFranchiseProfileSchema = z.object({
+  franchiseName: z.string().min(1, "Nome da franquia é obrigatório"),
+  
+  // Endereço
+  street: z.string().min(1, "Rua é obrigatória"),
+  number: z.string().min(1, "Número é obrigatório"),
+  complement: z.string().optional(),
+  neighborhood: z.string().min(1, "Bairro é obrigatório"),
+  city: z.string().min(1, "Cidade é obrigatória"),
+  state: z.string().min(1, "Estado é obrigatório"),
+  zipCode: z.string().min(1, "CEP é obrigatório"),
+
+  // Contatos
+  contactPhone: z.string().min(1, "Telefone de contato é obrigatório"),
+  email: z.string().email("Email inválido"),
+
+  // Responsável
+  managerName: z.string().min(1, "Nome do responsável é obrigatório"),
+  managerPhone: z.string().optional(),
+  managerEmail: z.string().email("Email do responsável inválido").optional().or(z.literal("")),
+});
+
+export type EditFranchiseProfile = z.infer<typeof editFranchiseProfileSchema>;

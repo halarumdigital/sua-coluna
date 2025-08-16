@@ -4272,6 +4272,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get WhatsApp instances for client/franchise users
+  app.get("/api/client/whatsapp-instances", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      const user = await storage.getUser(userId);
+      
+      if (!user || (user.role !== 'client' && user.role !== 'franchise')) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      console.log(`🔍 Buscando instâncias WhatsApp para usuário ${user.role}: ${userId}`);
+
+      let franchise;
+      if (user.role === 'client') {
+        franchise = await storage.getFranchiseByUserId(userId);
+      } else {
+        franchise = await storage.getFranchiseByManagerId(userId);
+      }
+
+      if (!franchise) {
+        return res.status(404).json({ message: "Franchise not found" });
+      }
+
+      console.log(`📍 Franquia encontrada: ${franchise.id} - ${franchise.franchiseName}`);
+
+      const instances = await storage.getWhatsappInstancesByFranchise(franchise.id);
+      console.log(`📱 Total de instâncias encontradas: ${instances.length}`);
+
+      // Verificar status de cada instância
+      const instancesWithStatus = await Promise.all(
+        instances.map(async (instance) => {
+          try {
+            const statusResult = await whatsappService.getInstanceStatus(instance.instanceKey);
+            return {
+              id: instance.id,
+              instanceKey: instance.instanceKey,
+              friendlyName: instance.friendlyName || instance.instanceKey,
+              isActive: instance.isActive,
+              status: statusResult.success ? statusResult.status : 'disconnected'
+            };
+          } catch (error) {
+            console.error(`Erro ao verificar status da instância ${instance.instanceKey}:`, error);
+            return {
+              id: instance.id,
+              instanceKey: instance.instanceKey,
+              friendlyName: instance.friendlyName || instance.instanceKey,
+              isActive: instance.isActive,
+              status: 'disconnected'
+            };
+          }
+        })
+      );
+
+      console.log(`📊 Instâncias processadas: ${instancesWithStatus.length}`);
+      
+      res.json(instancesWithStatus);
+    } catch (error: any) {
+      console.error("Erro ao buscar instâncias WhatsApp:", error);
+      res.status(500).json({ message: "Failed to fetch WhatsApp instances" });
+    }
+  });
+
   // Get conversations from Evolution API for client/franchise users
   app.get("/api/client/conversations-evolution", isAuthenticated, async (req: any, res) => {
     try {
@@ -4305,12 +4367,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get WhatsApp instances for this franchise
       const instances = await storage.getWhatsappInstancesByFranchise(franchise.id);
-      const activeInstances = instances.filter(instance => instance.isActive && instance.status === 'connected');
       
-      console.log(`📱 Instâncias encontradas: ${instances.length}, ativas e conectadas: ${activeInstances.length}`);
+      // Filter instances based on instanceKey parameter or get active instances
+      let targetInstances;
+      if (instanceKey && typeof instanceKey === 'string') {
+        targetInstances = instances.filter(instance => 
+          instance.instanceKey === instanceKey && instance.isActive
+        );
+        console.log(`📱 Filtrando por instância específica: ${instanceKey}`);
+      } else {
+        targetInstances = instances.filter(instance => instance.isActive && instance.status === 'connected');
+        console.log(`📱 Buscando em todas as instâncias ativas`);
+      }
+      
+      const activeInstances = targetInstances;
+      
+      console.log(`📱 Instâncias encontradas: ${instances.length}, alvo: ${activeInstances.length}`);
       
       if (activeInstances.length === 0) {
-        console.log(`⚠️  Nenhuma instância ativa encontrada`);
+        console.log(`⚠️  Nenhuma instância alvo encontrada`);
         return res.json([]);
       }
       
@@ -4388,7 +4463,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Apply filters if provided
-      const { search, startDate, endDate } = req.query;
+      const { search, startDate, endDate, instanceKey } = req.query;
       let filteredConversations = allConversations;
       
       // Search filter

@@ -47,6 +47,16 @@ interface Conversation {
   status: "active" | "archived" | "pending";
   unreadCount: number;
   avatar?: string;
+  instanceKey: string;
+  instanceName: string;
+}
+
+interface WhatsAppInstance {
+  id: string;
+  instanceKey: string;
+  friendlyName: string;
+  isActive: boolean;
+  status: 'connected' | 'disconnected' | 'connecting';
 }
 
 interface Message {
@@ -61,7 +71,7 @@ export default function ClientConversationsPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selectedInstanceKey, setSelectedInstanceKey] = useState<string>("");
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -116,9 +126,25 @@ export default function ClientConversationsPage() {
     }
   };
 
+  // Fetch WhatsApp instances
+  const { data: instances = [] } = useQuery<WhatsAppInstance[]>({
+    queryKey: ["client-whatsapp-instances"],
+    queryFn: async () => {
+      const response = await fetch("/api/client/whatsapp-instances", {
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        throw new Error("Falha ao carregar instâncias");
+      }
+      
+      return response.json();
+    },
+  });
+
   // Fetch conversations data diretamente da Evolution API
   const { data: conversations = [], isLoading, refetch } = useQuery({
-    queryKey: ["client-conversations", debouncedSearchTerm, startDate, endDate],
+    queryKey: ["client-conversations", debouncedSearchTerm, startDate, endDate, selectedInstanceKey],
     queryFn: async () => {
       // Build query parameters
       const params = new URLSearchParams();
@@ -133,6 +159,10 @@ export default function ClientConversationsPage() {
       
       if (endDate) {
         params.append("endDate", endDate);
+      }
+      
+      if (selectedInstanceKey) {
+        params.append("instanceKey", selectedInstanceKey);
       }
       
       const queryString = params.toString();
@@ -150,11 +180,8 @@ export default function ClientConversationsPage() {
     },
   });
 
-  // Apply only status filter locally (search and date filtering is done server-side)
-  const filteredConversations = conversations.filter((conversation: Conversation) => {
-    const matchesStatus = statusFilter === "all" || conversation.status === statusFilter;
-    return matchesStatus;
-  });
+  // Conversations are already filtered server-side
+  const filteredConversations = conversations;
 
   const handleSendMessage = async (conversationId: string) => {
     toast({
@@ -486,21 +513,23 @@ export default function ClientConversationsPage() {
                 
                 <div>
                   <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
+                    value={selectedInstanceKey}
+                    onChange={(e) => setSelectedInstanceKey(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="all">Todos os Status</option>
-                    <option value="active">Ativas</option>
-                    <option value="archived">Arquivadas</option>
-                    <option value="pending">Pendentes</option>
+                    <option value="">Todas as Instâncias</option>
+                    {instances.map((instance) => (
+                      <option key={instance.id} value={instance.instanceKey}>
+                        {instance.friendlyName} ({instance.status})
+                      </option>
+                    ))}
                   </select>
-                  <label className="text-xs text-muted-foreground mt-1 block">Status</label>
+                  <label className="text-xs text-muted-foreground mt-1 block">Instância WhatsApp</label>
                 </div>
               </div>
               
               {/* Clear filters button */}
-              {(searchTerm || startDate || endDate || statusFilter !== "all") && (
+              {(searchTerm || startDate || endDate || selectedInstanceKey) && (
                 <div className="flex justify-end">
                   <Button 
                     variant="outline" 
@@ -509,7 +538,7 @@ export default function ClientConversationsPage() {
                       setSearchTerm("");
                       setStartDate("");
                       setEndDate("");
-                      setStatusFilter("all");
+                      setSelectedInstanceKey("");
                     }}
                   >
                     Limpar Filtros
@@ -551,7 +580,7 @@ export default function ClientConversationsPage() {
                 <MessageCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-semibold">Nenhuma conversa encontrada</h3>
                 <p className="text-muted-foreground">
-                  {searchTerm || statusFilter !== "all" 
+                  {searchTerm || selectedInstanceKey 
                     ? "Tente ajustar os filtros de busca." 
                     : "Comece uma nova conversa para aparecer aqui."
                   }

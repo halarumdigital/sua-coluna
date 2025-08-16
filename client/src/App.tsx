@@ -78,6 +78,7 @@ function Router() {
       case "admin": // Backward compatibility
         return "/admin";
       case "franchise":
+      case "client": // Tratar client como franchise
         return "/franchise";
       case "team":
         return "/team";
@@ -152,7 +153,7 @@ function Router() {
       )}
 
       {/* Franchise Routes */}
-      {user?.role === "franchise" && (
+      {(user?.role === "franchise" || user?.role === "client") && (
         <>
           <Route path="/franchise" component={FranchiseDashboard} />
           <Route path="/franchise/clients" component={FranchiseClientsPage} />

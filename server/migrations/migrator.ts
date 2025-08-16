@@ -102,7 +102,7 @@ export class Migrator {
       return result.map((row: any) => row.id);
     } catch (error) {
       // Se a tabela não existir, retorna array vazio
-      if (error.code === 'ER_NO_SUCH_TABLE') {
+      if ((error as any).code === 'ER_NO_SUCH_TABLE') {
         return [];
       }
       console.error('❌ Erro ao buscar migrations executadas:', error);

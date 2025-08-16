@@ -21,6 +21,7 @@ import {
   Building2,
   Store,
   TrendingUp,
+  Calendar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -145,6 +146,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       title: "WhatsApp",
       href: "/client/whatsapp",
       icon: MessageCircle,
+    },
+    {
+      title: "Google",
+      href: "/client/calendar",
+      icon: Calendar,
     },
     {
       title: "Conversas",

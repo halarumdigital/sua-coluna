@@ -20,7 +20,9 @@ import {
   ExternalLink,
   Clock,
   MapPin,
-  User
+  User,
+  CreditCard,
+  FileImage
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -171,7 +173,7 @@ export default function CalendarPage() {
               Google Calendar
             </h1>
             <p className="text-muted-foreground">
-              Integre seu Google Calendar para agendamentos automáticos via WhatsApp
+              Integre seu Google Calendar para agendamentos automáticos via WhatsApp com confirmação por PIX
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -364,7 +366,7 @@ export default function CalendarPage() {
                 <div className="space-y-1">
                   <Label htmlFor="enabled">Ativar Integração</Label>
                   <div className="text-sm text-muted-foreground">
-                    Permite o agendamento automático via WhatsApp
+                    Permite o agendamento automático via WhatsApp após confirmação do PIX
                   </div>
                 </div>
                 <Switch
@@ -390,27 +392,47 @@ export default function CalendarPage() {
               <div>
                 <h4 className="font-semibold mb-2 flex items-center gap-2">
                   <User className="w-4 h-4" />
-                  Para o Cliente
+                  Processo para o Cliente
                 </h4>
                 <ul className="space-y-2 text-sm text-muted-foreground">
                   <li>• Cliente conversa com o agente via WhatsApp</li>
-                  <li>• Agente coleta: nome, data, horário, tipo de consulta</li>
-                  <li>• Agendamento é confirmado automaticamente</li>
-                  <li>• Cliente recebe confirmação no WhatsApp</li>
+                  <li>• Agente explica como funciona o agendamento</li>
+                  <li>• Cliente manifesta interesse em agendar</li>
+                  <li>• Agente informa sobre PIX de sinal de R$ 50,00</li>
+                  <li>• Cliente envia comprovante do PIX</li>
+                  <li>• Agente analisa e confirma o comprovante</li>
+                  <li>• Agendamento é realizado e confirmado</li>
                 </ul>
               </div>
               
               <div>
                 <h4 className="font-semibold mb-2 flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  Para Você
+                  <CreditCard className="w-4 h-4" />
+                  Processo de Pagamento
                 </h4>
                 <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li>• Evento aparece automaticamente no Google Calendar</li>
-                  <li>• Inclui dados do cliente e tipo de consulta</li>
-                  <li>• Notificações automáticas do Google</li>
-                  <li>• Integração com outros aplicativos Google</li>
+                  <li>• PIX de sinal obrigatório: R$ 50,00</li>
+                  <li>• Cliente envia comprovante via WhatsApp</li>
+                  <li>• Agente analisa automaticamente o comprovante</li>
+                  <li>• Evento só é criado após confirmação do pagamento</li>
+                  <li>• Dados do pagamento ficam no evento</li>
                 </ul>
+              </div>
+            </div>
+            
+            <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <div className="p-1 bg-amber-100 rounded-full">
+                  <FileImage className="w-4 h-4 text-amber-600" />
+                </div>
+                <div>
+                  <h5 className="font-medium text-amber-900 mb-1">Análise de Comprovantes</h5>
+                  <p className="text-sm text-amber-800">
+                    O agente é capaz de analisar comprovantes de PIX enviados como imagens, 
+                    extraindo informações como valor, data, hora e confirmando se o pagamento está correto 
+                    antes de realizar o agendamento.
+                  </p>
+                </div>
               </div>
             </div>
           </CardContent>

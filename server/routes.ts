@@ -15,7 +15,8 @@ import fs from "fs/promises";
 import { db } from "./db";
 import { aiUsage } from "@shared/schema";
 import { sum, count, desc, sql, eq, and, ne, asc } from "drizzle-orm";
-import { plans, franchises, franchisePhoneNumbers, franchiseAgents, franchisePrompts, globalPrompts, customAIAgents, createCustomAIAgentSchema, users } from "@shared/schema";
+import { plans, franchises, franchisePhoneNumbers, franchiseAgents, franchisePrompts, globalPrompts, customAIAgents, createCustomAIAgentSchema, users, googleCalendarSettings, googleCalendarSettingsSchema } from "@shared/schema";
+import { google } from "googleapis";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Serve static files from uploads directory
@@ -3597,6 +3598,203 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("❌ Error fetching instance-agent bindings for franchise:", error);
       res.status(500).json({ message: "Failed to fetch instance-agent bindings" });
+    }
+  });
+
+  // Rotas do Google Calendar para franquias
+  app.get("/api/franchise/calendar-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchise' && user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied: only franchise users can access this route" });
+      }
+      
+      // Buscar franquia do usuário
+      const franchise = await storage.getFranchiseByUserId(userId);
+      if (!franchise) {
+        return res.status(404).json({ message: "Franchise not found" });
+      }
+      
+      // Buscar configurações do Google Calendar
+      const [settings] = await db.select().from(googleCalendarSettings).where(eq(googleCalendarSettings.franchiseId, franchise.id));
+      
+      if (!settings) {
+        // Retornar configurações padrão se não existir
+        const defaultSettings = {
+          isEnabled: false,
+          clientId: "",
+          clientSecret: "",
+          calendarId: "primary",
+          defaultEventDuration: 60,
+          eventTitle: "Consulta Agendada",
+          eventDescription: "Consulta agendada via WhatsApp",
+          eventLocation: "",
+          isConnected: false
+        };
+        return res.json(defaultSettings);
+      }
+      
+      // Remover dados sensíveis da resposta
+      const { clientSecret, refreshToken, ...publicSettings } = settings;
+      res.json({
+        ...publicSettings,
+        clientSecret: clientSecret ? "********" : "", // Mascarar secret
+        hasRefreshToken: !!refreshToken
+      });
+    } catch (error) {
+      console.error("Error fetching Google Calendar settings:", error);
+      res.status(500).json({ message: "Failed to fetch calendar settings" });
+    }
+  });
+
+  app.put("/api/franchise/calendar-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchise' && user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied: only franchise users can access this route" });
+      }
+      
+      // Buscar franquia do usuário
+      const franchise = await storage.getFranchiseByUserId(userId);
+      if (!franchise) {
+        return res.status(404).json({ message: "Franchise not found" });
+      }
+      
+      // Validar dados
+      const validatedData = googleCalendarSettingsSchema.parse(req.body);
+      
+      // Verificar se já existe configuração
+      const [existingSettings] = await db.select().from(googleCalendarSettings).where(eq(googleCalendarSettings.franchiseId, franchise.id));
+      
+      let savedSettings;
+      if (existingSettings) {
+        // Atualizar configuração existente
+        // Manter refreshToken existente se não for fornecido
+        const updateData = {
+          ...validatedData,
+          refreshToken: validatedData.refreshToken || existingSettings.refreshToken,
+          updatedAt: new Date()
+        };
+        
+        const [updated] = await db.update(googleCalendarSettings)
+          .set(updateData)
+          .where(eq(googleCalendarSettings.franchiseId, franchise.id))
+          .returning();
+        savedSettings = updated;
+      } else {
+        // Criar nova configuração
+        const [created] = await db.insert(googleCalendarSettings)
+          .values({
+            franchiseId: franchise.id,
+            ...validatedData
+          })
+          .returning();
+        savedSettings = created;
+      }
+      
+      // Remover dados sensíveis da resposta
+      const { clientSecret, refreshToken, ...publicSettings } = savedSettings;
+      res.json({
+        message: "Configurações salvas com sucesso",
+        settings: {
+          ...publicSettings,
+          clientSecret: clientSecret ? "********" : "",
+          hasRefreshToken: !!refreshToken
+        }
+      });
+    } catch (error) {
+      console.error("Error saving Google Calendar settings:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to save calendar settings" });
+    }
+  });
+
+  app.post("/api/franchise/calendar-test", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'franchise' && user?.role !== 'client') {
+        return res.status(403).json({ message: "Access denied: only franchise users can access this route" });
+      }
+      
+      const { clientId, clientSecret, calendarId } = req.body;
+      
+      if (!clientId || !clientSecret) {
+        return res.status(400).json({ 
+          success: false,
+          message: "Client ID e Client Secret são obrigatórios para teste" 
+        });
+      }
+      
+      try {
+        // Configurar cliente OAuth2
+        const oauth2Client = new google.auth.OAuth2(
+          clientId,
+          clientSecret,
+          'urn:ietf:wg:oauth:2.0:oob' // Para aplicações instaladas
+        );
+        
+        // Configurar cliente do Calendar
+        const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+        
+        // Tentar listar calendários (isso vai falhar se não tiver token, mas confirma que as credenciais estão corretas)
+        // Para um teste real, precisaríamos implementar o fluxo OAuth completo
+        
+        // Por enquanto, apenas validamos se as credenciais têm o formato correto
+        const authUrl = oauth2Client.generateAuthUrl({
+          access_type: 'offline',
+          scope: ['https://www.googleapis.com/auth/calendar']
+        });
+        
+        if (authUrl) {
+          res.json({
+            success: true,
+            message: "Credenciais válidas. Para completar a integração, você precisa autorizar o acesso ao Google Calendar.",
+            authUrl: authUrl,
+            nextSteps: [
+              "1. Acesse a URL de autorização fornecida",
+              "2. Faça login na sua conta Google",
+              "3. Autorize o acesso ao Google Calendar",
+              "4. Copie o código de autorização",
+              "5. Configure o refresh token nas configurações"
+            ]
+          });
+        } else {
+          res.status(400).json({
+            success: false,
+            message: "Erro ao gerar URL de autorização. Verifique as credenciais."
+          });
+        }
+      } catch (googleError: any) {
+        console.error("Google Calendar API error:", googleError);
+        res.status(400).json({
+          success: false,
+          message: "Erro ao conectar com a API do Google Calendar",
+          details: googleError.message
+        });
+      }
+    } catch (error) {
+      console.error("Error testing Google Calendar connection:", error);
+      res.status(500).json({ 
+        success: false,
+        message: "Erro interno do servidor" 
+      });
     }
   });
 

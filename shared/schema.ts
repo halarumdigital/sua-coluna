@@ -1226,3 +1226,43 @@ export const editFranchiseProfileSchema = z.object({
 });
 
 export type EditFranchiseProfile = z.infer<typeof editFranchiseProfileSchema>;
+
+// Configurações do Google Calendar das franquias
+export const googleCalendarSettings = mysqlTable("google_calendar_settings", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  franchiseId: varchar("franchise_id", { length: 36 }).references(() => franchises.id).notNull(),
+  isEnabled: boolean("is_enabled").notNull().default(false),
+  clientId: varchar("client_id", { length: 500 }).notNull(),
+  clientSecret: varchar("client_secret", { length: 500 }).notNull(),
+  refreshToken: varchar("refresh_token", { length: 500 }),
+  calendarId: varchar("calendar_id", { length: 255 }).notNull().default("primary"),
+  defaultEventDuration: int("default_event_duration").notNull().default(60),
+  eventTitle: varchar("event_title", { length: 255 }).notNull().default("Consulta Agendada"),
+  eventDescription: text("event_description").default("Consulta agendada via WhatsApp"),
+  eventLocation: varchar("event_location", { length: 500 }),
+  isConnected: boolean("is_connected").notNull().default(false),
+  lastSync: timestamp("last_sync"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_calendar_settings_franchise").on(table.franchiseId),
+]);
+
+// Schema para configurações do Google Calendar
+export const googleCalendarSettingsSchema = z.object({
+  isEnabled: z.boolean().default(false),
+  clientId: z.string().min(1, "Client ID é obrigatório"),
+  clientSecret: z.string().min(1, "Client Secret é obrigatório"),
+  refreshToken: z.string().optional(),
+  calendarId: z.string().min(1, "Calendar ID é obrigatório").default("primary"),
+  defaultEventDuration: z.number().min(15).max(480).default(60),
+  eventTitle: z.string().min(1, "Título do evento é obrigatório").default("Consulta Agendada"),
+  eventDescription: z.string().default("Consulta agendada via WhatsApp"),
+  eventLocation: z.string().optional(),
+});
+
+export const insertGoogleCalendarSettingsSchema = createInsertSchema(googleCalendarSettings);
+
+export type GoogleCalendarSettings = typeof googleCalendarSettings.$inferSelect;
+export type InsertGoogleCalendarSettings = z.infer<typeof insertGoogleCalendarSettingsSchema>;
+export type GoogleCalendarSettingsForm = z.infer<typeof googleCalendarSettingsSchema>;

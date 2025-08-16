@@ -24,7 +24,7 @@ export default function ClientAIPage() {
   const { user } = useAuth();
 
   // Early return se não deveria renderizar esta página
-  if (location !== '/client/ai' || !user || (user as User).role === 'super_root' || ((user as User).role !== 'client' && (user as User).role !== 'franchise')) {
+  if (location !== '/franchise/ai' || !user || (user as User).role === 'super_root' || ((user as User).role !== 'client' && (user as User).role !== 'franchise')) {
     return null;
   }
 
@@ -45,7 +45,7 @@ export default function ClientAIPage() {
   const [pdfContents, setPdfContents] = useState<Array<{fileName: string, content: string}>>([]);
 
   // Determinar se deve executar a query
-  const shouldFetchAgents = location === '/client/ai' && 
+  const shouldFetchAgents = location === '/franchise/ai' && 
                            typeof window !== 'undefined' && 
                            user && (user as User).role !== 'super_root' &&
                            ((user as User).role === 'client' || (user as User).role === 'franchise');

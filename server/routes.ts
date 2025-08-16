@@ -4410,9 +4410,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 chat.contact?.notify ||
                 contactPhone;
                 
-              // If lastMessage pushName is "Você", it means it's from the system
-              // Try to get the real contact name from the lastMessage only if it's not "Você"
+              // Only use lastMessage pushName if the message is FROM the contact (not from us)
               if (chat.lastMessage?.pushName && 
+                  chat.lastMessage.key?.fromMe === false && // Must be from contact
                   chat.lastMessage.pushName !== "Você" && 
                   chat.lastMessage.pushName !== contactPhone) {
                 contactName = chat.lastMessage.pushName;
@@ -4429,6 +4429,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                       break; // Use the first valid name found
                     }
                   }
+                }
+                
+                // If STILL no good name found, use the phone number as the name
+                // (Don't exclude the conversation, just use phone as display name)
+                if (contactName === "Você") {
+                  contactName = contactPhone;
                 }
               }
               

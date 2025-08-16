@@ -4265,28 +4265,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`🔍 Buscando instâncias WhatsApp para usuário ${user.role}: ${userId}`);
 
+      // Get user's franchise
       let franchise;
-      if (user.role === 'client') {
-        // For clients, get their franchise through the client record
-        console.log(`🔍 Buscando client para userId: ${userId}`);
-        const client = await storage.getClientByUserId(userId);
-        console.log(`👤 Client encontrado:`, client ? { id: client.id, franchiseId: client.franchiseId } : 'não encontrado');
-        
-        if (client) {
-          console.log(`🏢 Buscando franquia com ID: ${client.franchiseId}`);
-          franchise = await storage.getFranchise(client.franchiseId);
-          console.log(`🏢 Franquia encontrada:`, franchise ? { id: franchise.id, businessName: franchise.businessName } : 'não encontrada');
-        }
-      } else if (user.role === 'franchise') {
-        // For franchise managers, get their franchise
+      if (user.role === 'franchise') {
+        franchise = await storage.getFranchiseByUserId(userId);
+      } else if (user.role === 'client') {
+        // For clients, get their franchise  
         franchise = await storage.getFranchiseByUserId(userId);
       }
 
       if (!franchise) {
-        return res.status(404).json({ message: "Franchise not found" });
+        console.log(`❌ Franquia não encontrada para usuário ${userId}`);
+        return res.status(404).json({ message: "Franquia não encontrada" });
       }
-
-      console.log(`📍 Franquia encontrada: ${franchise.id} - ${franchise.franchiseName}`);
+      
+      console.log(`📍 Franquia encontrada: ${franchise.id} - ${franchise.businessName}`);
 
       const instances = await storage.getWhatsappInstancesByFranchise(franchise.id);
       console.log(`📱 Total de instâncias encontradas: ${instances.length}`);

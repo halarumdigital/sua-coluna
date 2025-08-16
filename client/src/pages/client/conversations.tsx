@@ -665,7 +665,7 @@ export default function ClientConversationsPage() {
             {selectedConversationData && (
               <div className="flex flex-col flex-1 min-h-0">
                 {/* Messages Area */}
-                <ScrollArea className="flex-1 p-6 bg-gray-50 rounded-lg min-h-[400px] max-h-[70vh]">
+                <ScrollArea className="flex-1 p-6 bg-gray-50 rounded-lg h-[500px]">
                     {isLoadingMessages ? (
                       <div className="flex items-center justify-center py-8">
                         <Loader2 className="h-8 w-8 animate-spin" />

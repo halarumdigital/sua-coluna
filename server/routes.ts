@@ -4397,23 +4397,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Transform Evolution API chat data to frontend format
           for (const chat of chats) {
             try {
-              // Debug: Log chat structure to understand Evolution API response
-              console.log(`🔍 Estrutura do chat:`, {
-                id: chat.id,
-                remoteJid: chat.remoteJid,
-                name: chat.name,
-                pushName: chat.pushName,
-                contact: chat.contact ? {
-                  name: chat.contact.name,
-                  pushName: chat.contact.pushName,
-                  notify: chat.contact.notify
-                } : 'não encontrado',
-                lastMessage: chat.lastMessage ? {
-                  pushName: chat.lastMessage.pushName,
-                  key: chat.lastMessage.key
-                } : 'não encontrado'
-              });
-              
               // Extract contact info
               const remoteJid = chat.id || chat.remoteJid || '';
               const contactPhone = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
@@ -4425,20 +4408,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 chat.contact?.name || 
                 chat.contact?.pushName || 
                 chat.contact?.notify ||
-                chat.lastMessage?.pushName ||
                 contactPhone;
                 
-              // Clean up the contact name if it's still a technical ID
-              if (contactName === remoteJid || contactName === contactPhone) {
-                // Try to extract from last message if available
-                const lastMessage = chat.lastMessage || (chat.messages && chat.messages.length > 0 ? chat.messages[chat.messages.length - 1] : null);
-                if (lastMessage?.pushName && lastMessage.pushName !== contactPhone) {
-                  contactName = lastMessage.pushName;
+              // If lastMessage pushName is "Você", it means it's from the system
+              // Try to get the real contact name from the lastMessage only if it's not "Você"
+              if (chat.lastMessage?.pushName && 
+                  chat.lastMessage.pushName !== "Você" && 
+                  chat.lastMessage.pushName !== contactPhone) {
+                contactName = chat.lastMessage.pushName;
+              }
+              
+              // If still no good name, try to get a message from the contact (fromMe: false)
+              if (contactName === remoteJid || contactName === contactPhone || contactName === "Você") {
+                // Look for any message that came from the contact (not from us)
+                if (chat.messages && Array.isArray(chat.messages)) {
+                  for (const msg of chat.messages) {
+                    if (msg.key?.fromMe === false && msg.pushName && 
+                        msg.pushName !== contactPhone && msg.pushName !== "Você") {
+                      contactName = msg.pushName;
+                      break; // Use the first valid name found
+                    }
+                  }
                 }
               }
               
-              console.log(`👤 Nome extraído: "${contactName}" para contato ${contactPhone}`);
-              
+                      
               // Get last message info
               const lastMessage = chat.lastMessage || (chat.messages && chat.messages.length > 0 ? chat.messages[chat.messages.length - 1] : null);
               const lastMessageText = lastMessage?.message?.conversation || 
@@ -4447,7 +4441,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
                                     lastMessage?.text ||
                                     'Sem mensagens';
               
-              const lastMessageTime = lastMessage?.messageTimestamp || lastMessage?.timestamp || new Date().toISOString();
+              // Convert timestamp to proper date format
+              let lastMessageTime = new Date().toISOString();
+              if (lastMessage?.messageTimestamp) {
+                // messageTimestamp usually comes as Unix timestamp (seconds)
+                const timestamp = typeof lastMessage.messageTimestamp === 'string' ? 
+                  parseInt(lastMessage.messageTimestamp) : lastMessage.messageTimestamp;
+                lastMessageTime = new Date(timestamp * 1000).toISOString();
+              } else if (lastMessage?.timestamp) {
+                // timestamp might come as milliseconds or seconds
+                const timestamp = typeof lastMessage.timestamp === 'string' ? 
+                  parseInt(lastMessage.timestamp) : lastMessage.timestamp;
+                // If timestamp is less than 10 digits, it's likely in seconds
+                const multiplier = timestamp.toString().length <= 10 ? 1000 : 1;
+                lastMessageTime = new Date(timestamp * multiplier).toISOString();
+              }
               
               // Calculate unread count
               const unreadCount = chat.unreadCount || 0;
@@ -4570,76 +4578,171 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
       
-      // Try to find messages in each instance until we find the conversation
+      // The conversationId is the remoteJid (e.g., "554999214230@s.whatsapp.net")
+      console.log(`🔍 Buscando mensagens para remoteJid: ${conversationId}`);
+      
       let allMessages = [];
       
       for (const instance of activeInstances) {
         try {
-          console.log(`🔍 Buscando mensagens na instância: ${instance.instanceKey}`);
+          console.log(`🔍 Tentando instância: ${instance.instanceKey}`);
           
+          // First try using findMessagesFromChats which is more specific
+          const chatsResult = await whatsappService.findMessagesFromChats(instance.instanceKey, conversationId);
+          
+          if (chatsResult.success && chatsResult.data && Array.isArray(chatsResult.data)) {
+            // Extract messages from the chat data
+            let messages = [];
+            
+            for (const chat of chatsResult.data) {
+              if (chat.messages && Array.isArray(chat.messages)) {
+                messages = messages.concat(chat.messages);
+              } else if (chat.lastMessages && Array.isArray(chat.lastMessages)) {
+                messages = messages.concat(chat.lastMessages);
+              }
+            }
+            
+            console.log(`📬 ${messages.length} mensagens encontradas via findMessagesFromChats`);
+            
+            if (messages.length > 0) {
+              // Transform and sort messages
+              const transformedMessages = messages
+                .map(msg => {
+                  // Extract message content
+                  let content = '';
+                  if (msg.message?.conversation) {
+                    content = msg.message.conversation;
+                  } else if (msg.message?.extendedTextMessage?.text) {
+                    content = msg.message.extendedTextMessage.text;
+                  } else if (msg.body) {
+                    content = msg.body;
+                  } else if (msg.text) {
+                    content = msg.text;
+                  } else if (typeof msg.message === 'string') {
+                    content = msg.message;
+                  } else {
+                    content = 'Mensagem de mídia ou tipo não suportado';
+                  }
+                  
+                  // Determine if message is from user (outgoing) or contact (incoming)
+                  const isFromUser = msg.key?.fromMe || msg.fromMe || false;
+                  
+                  // Get timestamp and convert properly
+                  let timestamp = new Date().toISOString();
+                  if (msg.messageTimestamp) {
+                    const ts = typeof msg.messageTimestamp === 'string' ? 
+                      parseInt(msg.messageTimestamp) : msg.messageTimestamp;
+                    timestamp = new Date(ts * 1000).toISOString();
+                  } else if (msg.timestamp) {
+                    const ts = typeof msg.timestamp === 'string' ? 
+                      parseInt(msg.timestamp) : msg.timestamp;
+                    const multiplier = ts.toString().length <= 10 ? 1000 : 1;
+                    timestamp = new Date(ts * multiplier).toISOString();
+                  }
+                  
+                  // Determine message status
+                  let status = 'sent';
+                  if (msg.status) {
+                    switch (msg.status.toLowerCase()) {
+                      case 'pending':
+                        status = 'sent';
+                        break;
+                      case 'server':
+                      case 'delivered':
+                        status = 'delivered';
+                        break;
+                      case 'read':
+                        status = 'read';
+                        break;
+                      case 'error':
+                        status = 'failed';
+                        break;
+                      default:
+                        status = 'sent';
+                    }
+                  }
+                  
+                  return {
+                    id: msg.key?.id || msg.id || `msg_${Date.now()}_${Math.random()}`,
+                    content: content,
+                    timestamp: timestamp,
+                    isFromUser: isFromUser,
+                    status: status
+                  };
+                })
+                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()); // Sort by timestamp ascending
+              
+              allMessages = transformedMessages;
+              console.log(`✅ Sucesso! ${allMessages.length} mensagens transformadas e ordenadas`);
+              break; // Found messages, no need to check other instances
+            }
+          }
+          
+          // Fallback: try the original findMessages method
+          console.log(`🔄 Tentando método findMessages como fallback...`);
           const messagesResult = await whatsappService.findMessages(instance.instanceKey, conversationId, 1, 100);
           
-          if (messagesResult.success && messagesResult.data && Array.isArray(messagesResult.data)) {
+          if (messagesResult.success && messagesResult.data && Array.isArray(messagesResult.data) && messagesResult.data.length > 0) {
             const messages = messagesResult.data;
-            console.log(`📬 ${messages.length} mensagens encontradas na instância ${instance.instanceKey}`);
+            console.log(`📬 ${messages.length} mensagens encontradas via findMessages`);
             
-            // Transform Evolution API message data to frontend format
-            const transformedMessages = messages.map(msg => {
-              // Extract message content
-              let content = '';
-              if (msg.message?.conversation) {
-                content = msg.message.conversation;
-              } else if (msg.message?.extendedTextMessage?.text) {
-                content = msg.message.extendedTextMessage.text;
-              } else if (msg.body) {
-                content = msg.body;
-              } else if (msg.text) {
-                content = msg.text;
-              } else if (typeof msg.message === 'string') {
-                content = msg.message;
-              } else {
-                content = 'Mensagem de mídia ou tipo não suportado';
-              }
-              
-              // Determine if message is from user (outgoing) or contact (incoming)
-              const isFromUser = msg.key?.fromMe || msg.fromMe || false;
-              
-              // Get timestamp
-              const timestamp = msg.messageTimestamp || msg.timestamp || new Date().toISOString();
-              
-              // Determine message status
-              let status = 'sent';
-              if (msg.status) {
-                switch (msg.status.toLowerCase()) {
-                  case 'pending':
-                    status = 'sent';
-                    break;
-                  case 'server':
-                  case 'delivered':
-                    status = 'delivered';
-                    break;
-                  case 'read':
-                    status = 'read';
-                    break;
-                  case 'error':
-                    status = 'failed';
-                    break;
-                  default:
-                    status = 'sent';
+            // Transform messages with same logic as above
+            const transformedMessages = messages
+              .map(msg => {
+                let content = '';
+                if (msg.message?.conversation) {
+                  content = msg.message.conversation;
+                } else if (msg.message?.extendedTextMessage?.text) {
+                  content = msg.message.extendedTextMessage.text;
+                } else if (msg.body) {
+                  content = msg.body;
+                } else if (msg.text) {
+                  content = msg.text;
+                } else if (typeof msg.message === 'string') {
+                  content = msg.message;
+                } else {
+                  content = 'Mensagem de mídia ou tipo não suportado';
                 }
-              }
-              
-              return {
-                id: msg.key?.id || msg.id || `msg_${timestamp}`,
-                content: content,
-                timestamp: timestamp,
-                isFromUser: isFromUser,
-                status: status
-              };
-            });
+                
+                const isFromUser = msg.key?.fromMe || msg.fromMe || false;
+                
+                let timestamp = new Date().toISOString();
+                if (msg.messageTimestamp) {
+                  const ts = typeof msg.messageTimestamp === 'string' ? 
+                    parseInt(msg.messageTimestamp) : msg.messageTimestamp;
+                  timestamp = new Date(ts * 1000).toISOString();
+                } else if (msg.timestamp) {
+                  const ts = typeof msg.timestamp === 'string' ? 
+                    parseInt(msg.timestamp) : msg.timestamp;
+                  const multiplier = ts.toString().length <= 10 ? 1000 : 1;
+                  timestamp = new Date(ts * multiplier).toISOString();
+                }
+                
+                let status = 'sent';
+                if (msg.status) {
+                  switch (msg.status.toLowerCase()) {
+                    case 'pending': status = 'sent'; break;
+                    case 'server':
+                    case 'delivered': status = 'delivered'; break;
+                    case 'read': status = 'read'; break;
+                    case 'error': status = 'failed'; break;
+                    default: status = 'sent';
+                  }
+                }
+                
+                return {
+                  id: msg.key?.id || msg.id || `msg_${Date.now()}_${Math.random()}`,
+                  content: content,
+                  timestamp: timestamp,
+                  isFromUser: isFromUser,
+                  status: status
+                };
+              })
+              .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
             
             allMessages = transformedMessages;
-            break; // Found messages, no need to check other instances
+            console.log(`✅ Fallback sucesso! ${allMessages.length} mensagens encontradas`);
+            break;
           }
           
         } catch (instanceError) {

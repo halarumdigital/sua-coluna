@@ -4268,9 +4268,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let franchise;
       if (user.role === 'client') {
         // For clients, get their franchise through the client record
+        console.log(`🔍 Buscando client para userId: ${userId}`);
         const client = await storage.getClientByUserId(userId);
+        console.log(`👤 Client encontrado:`, client ? { id: client.id, franchiseId: client.franchiseId } : 'não encontrado');
+        
         if (client) {
+          console.log(`🏢 Buscando franquia com ID: ${client.franchiseId}`);
           franchise = await storage.getFranchise(client.franchiseId);
+          console.log(`🏢 Franquia encontrada:`, franchise ? { id: franchise.id, businessName: franchise.businessName } : 'não encontrada');
         }
       } else if (user.role === 'franchise') {
         // For franchise managers, get their franchise

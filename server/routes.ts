@@ -3753,25 +3753,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/client/whatsapp-instances", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = getCurrentUserId(req);
-      if (!userId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      
-      const user = await storage.getUser(userId);
-      if (user?.role !== 'client') {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      
-      const instances = await storage.getWhatsappInstancesByClient(userId);
-      res.json(instances);
-    } catch (error) {
-      console.error("Error fetching WhatsApp instances:", error);
-      res.status(500).json({ message: "Failed to fetch WhatsApp instances" });
-    }
-  });
 
   app.post("/api/client/whatsapp-instances", isAuthenticated, async (req: any, res) => {
     try {
@@ -4286,9 +4267,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       let franchise;
       if (user.role === 'client') {
+        // For clients, get their franchise through the client record
+        const client = await storage.getClientByUserId(userId);
+        if (client) {
+          franchise = await storage.getFranchise(client.franchiseId);
+        }
+      } else if (user.role === 'franchise') {
+        // For franchise managers, get their franchise
         franchise = await storage.getFranchiseByUserId(userId);
-      } else {
-        franchise = await storage.getFranchiseByManagerId(userId);
       }
 
       if (!franchise) {

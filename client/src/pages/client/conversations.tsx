@@ -124,18 +124,22 @@ export default function ClientConversationsPage() {
   };
 
   // Fetch WhatsApp instances
-  const { data: instances = [] } = useQuery<WhatsAppInstance[]>({
+  const { data: instances = [], isLoading: instancesLoading, error: instancesError } = useQuery<WhatsAppInstance[]>({
     queryKey: ["client-whatsapp-instances"],
     queryFn: async () => {
+      console.log('🔍 Carregando instâncias WhatsApp...');
       const response = await fetch("/api/client/whatsapp-instances", {
         credentials: "include",
       });
       
       if (!response.ok) {
+        console.error('❌ Erro ao carregar instâncias:', response.status);
         throw new Error("Falha ao carregar instâncias");
       }
       
-      return response.json();
+      const data = await response.json();
+      console.log('✅ Instâncias carregadas:', data);
+      return data;
     },
   });
 
@@ -480,15 +484,32 @@ export default function ClientConversationsPage() {
                   value={selectedInstanceKey}
                   onChange={(e) => setSelectedInstanceKey(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={instancesLoading}
                 >
-                  <option value="">Todas as Instâncias</option>
-                  {instances.map((instance) => (
-                    <option key={instance.id} value={instance.instanceKey}>
-                      {instance.friendlyName} ({instance.status})
-                    </option>
-                  ))}
+                  <option value="">
+                    {instancesLoading ? "Carregando instâncias..." : "Todas as Instâncias"}
+                  </option>
+                  {instances && instances.length > 0 ? (
+                    instances.map((instance) => (
+                      <option key={instance.id} value={instance.instanceKey}>
+                        {instance.friendlyName || instance.instanceKey} ({instance.status})
+                      </option>
+                    ))
+                  ) : (
+                    !instancesLoading && (
+                      <option disabled>Nenhuma instância encontrada</option>
+                    )
+                  )}
                 </select>
-                <label className="text-xs text-muted-foreground mt-1 block">Instância WhatsApp</label>
+                <label className="text-xs text-muted-foreground mt-1 block">
+                  Instância WhatsApp {instancesError && <span className="text-red-500">(Erro ao carregar)</span>}
+                </label>
+                {/* Debug info */}
+                {process.env.NODE_ENV === 'development' && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    Debug: {instances?.length || 0} instâncias carregadas
+                  </div>
+                )}
               </div>
               
               {/* Clear filters button */}

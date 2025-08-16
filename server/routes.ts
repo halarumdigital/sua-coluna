@@ -6,6 +6,7 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema, aiSettingsSchema } from "@shared/schema";
 import { openaiService } from "./openai";
 import { whatsappAIHandler } from "./whatsapp-ai-handler";
+import { whatsappService } from "./whatsapp";
 import { z } from "zod";
 import multer from "multer";
 import path from "path";
@@ -4267,6 +4268,301 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Erro ao criar instância do WhatsApp", 
         details: String(error),
         stack: error instanceof Error ? error.stack : undefined
+      });
+    }
+  });
+
+  // Get conversations from Evolution API for client/franchise users
+  app.get("/api/client/conversations-evolution", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== 'client' && user.role !== 'franchise')) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      console.log(`🔍 Buscando conversas da Evolution para usuário ${user.role}: ${userId}`);
+      
+      // Get user's franchise
+      let franchise;
+      if (user.role === 'franchise') {
+        franchise = await storage.getFranchiseByUserId(userId);
+      } else if (user.role === 'client') {
+        // For clients, get their franchise  
+        franchise = await storage.getFranchiseByUserId(userId);
+      }
+      
+      if (!franchise) {
+        console.log(`❌ Franquia não encontrada para usuário ${userId}`);
+        return res.status(404).json({ message: "Franquia não encontrada" });
+      }
+      
+      console.log(`📍 Franquia encontrada: ${franchise.id} - ${franchise.businessName}`);
+      
+      // Get WhatsApp instances for this franchise
+      const instances = await storage.getWhatsappInstancesByFranchise(franchise.id);
+      const activeInstances = instances.filter(instance => instance.isActive && instance.status === 'connected');
+      
+      console.log(`📱 Instâncias encontradas: ${instances.length}, ativas e conectadas: ${activeInstances.length}`);
+      
+      if (activeInstances.length === 0) {
+        console.log(`⚠️  Nenhuma instância ativa encontrada`);
+        return res.json([]);
+      }
+      
+      // Collect conversations from all active instances
+      const allConversations = [];
+      
+      for (const instance of activeInstances) {
+        try {
+          console.log(`🔍 Buscando chats da instância: ${instance.instanceKey}`);
+          
+          const chatsResult = await whatsappService.findChats(instance.instanceKey);
+          
+          if (!chatsResult.success) {
+            console.error(`❌ Erro ao buscar chats da instância ${instance.instanceKey}:`, chatsResult.error);
+            continue;
+          }
+          
+          const chats = Array.isArray(chatsResult.data) ? chatsResult.data : (chatsResult.data?.chats || []);
+          console.log(`📬 ${chats.length} chats encontrados na instância ${instance.instanceKey}`);
+          
+          // Transform Evolution API chat data to frontend format
+          for (const chat of chats) {
+            try {
+              // Extract contact info
+              const remoteJid = chat.id || chat.remoteJid || '';
+              const contactPhone = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+              const contactName = chat.name || chat.contact?.name || chat.contact?.pushName || contactPhone;
+              
+              // Get last message info
+              const lastMessage = chat.lastMessage || (chat.messages && chat.messages.length > 0 ? chat.messages[chat.messages.length - 1] : null);
+              const lastMessageText = lastMessage?.message?.conversation || 
+                                    lastMessage?.message?.extendedTextMessage?.text ||
+                                    lastMessage?.body ||
+                                    lastMessage?.text ||
+                                    'Sem mensagens';
+              
+              const lastMessageTime = lastMessage?.messageTimestamp || lastMessage?.timestamp || new Date().toISOString();
+              
+              // Calculate unread count
+              const unreadCount = chat.unreadCount || 0;
+              
+              // Determine status
+              let status = 'active';
+              if (chat.archived) {
+                status = 'archived';
+              } else if (unreadCount > 0) {
+                status = 'pending';
+              }
+              
+              const conversation = {
+                id: remoteJid,
+                contactName: contactName,
+                contactPhone: contactPhone,
+                lastMessage: lastMessageText.substring(0, 100), // Limit length
+                lastMessageTime: lastMessageTime,
+                status: status,
+                unreadCount: unreadCount,
+                avatar: chat.contact?.profilePictureUrl || null,
+                instanceKey: instance.instanceKey,
+                instanceName: instance.instanceName
+              };
+              
+              allConversations.push(conversation);
+              
+            } catch (chatError) {
+              console.error(`❌ Erro ao processar chat:`, chatError);
+              continue;
+            }
+          }
+          
+        } catch (instanceError) {
+          console.error(`❌ Erro ao processar instância ${instance.instanceKey}:`, instanceError);
+          continue;
+        }
+      }
+      
+      // Apply filters if provided
+      const { search, startDate, endDate } = req.query;
+      let filteredConversations = allConversations;
+      
+      // Search filter
+      if (search && typeof search === 'string') {
+        const searchTerm = search.toLowerCase();
+        filteredConversations = filteredConversations.filter(conv => 
+          conv.contactName.toLowerCase().includes(searchTerm) ||
+          conv.contactPhone.includes(searchTerm) ||
+          conv.lastMessage.toLowerCase().includes(searchTerm)
+        );
+      }
+      
+      // Date filters
+      if (startDate && typeof startDate === 'string') {
+        const start = new Date(startDate);
+        filteredConversations = filteredConversations.filter(conv => 
+          new Date(conv.lastMessageTime) >= start
+        );
+      }
+      
+      if (endDate && typeof endDate === 'string') {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999); // End of day
+        filteredConversations = filteredConversations.filter(conv => 
+          new Date(conv.lastMessageTime) <= end
+        );
+      }
+      
+      // Sort by last message time (most recent first)
+      filteredConversations.sort((a, b) => 
+        new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime()
+      );
+      
+      console.log(`✅ Retornando ${filteredConversations.length} conversas (${allConversations.length} total antes dos filtros)`);
+      
+      res.json(filteredConversations);
+      
+    } catch (error) {
+      console.error("❌ Error fetching conversations from Evolution:", error);
+      res.status(500).json({ 
+        message: "Erro ao buscar conversas", 
+        error: error.message 
+      });
+    }
+  });
+
+  // Get messages for a specific conversation from Evolution API
+  app.get("/api/client/conversations/:conversationId/messages", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== 'client' && user.role !== 'franchise')) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { conversationId } = req.params;
+      console.log(`🔍 Buscando mensagens para conversa: ${conversationId}`);
+      
+      // Get user's franchise
+      let franchise;
+      if (user.role === 'franchise') {
+        franchise = await storage.getFranchiseByUserId(userId);
+      } else if (user.role === 'client') {
+        franchise = await storage.getFranchiseByUserId(userId);
+      }
+      
+      if (!franchise) {
+        return res.status(404).json({ message: "Franquia não encontrada" });
+      }
+      
+      // Get WhatsApp instances for this franchise
+      const instances = await storage.getWhatsappInstancesByFranchise(franchise.id);
+      const activeInstances = instances.filter(instance => instance.isActive && instance.status === 'connected');
+      
+      if (activeInstances.length === 0) {
+        return res.json([]);
+      }
+      
+      // Try to find messages in each instance until we find the conversation
+      let allMessages = [];
+      
+      for (const instance of activeInstances) {
+        try {
+          console.log(`🔍 Buscando mensagens na instância: ${instance.instanceKey}`);
+          
+          const messagesResult = await whatsappService.findMessages(instance.instanceKey, conversationId, 1, 100);
+          
+          if (messagesResult.success && messagesResult.data && Array.isArray(messagesResult.data)) {
+            const messages = messagesResult.data;
+            console.log(`📬 ${messages.length} mensagens encontradas na instância ${instance.instanceKey}`);
+            
+            // Transform Evolution API message data to frontend format
+            const transformedMessages = messages.map(msg => {
+              // Extract message content
+              let content = '';
+              if (msg.message?.conversation) {
+                content = msg.message.conversation;
+              } else if (msg.message?.extendedTextMessage?.text) {
+                content = msg.message.extendedTextMessage.text;
+              } else if (msg.body) {
+                content = msg.body;
+              } else if (msg.text) {
+                content = msg.text;
+              } else if (typeof msg.message === 'string') {
+                content = msg.message;
+              } else {
+                content = 'Mensagem de mídia ou tipo não suportado';
+              }
+              
+              // Determine if message is from user (outgoing) or contact (incoming)
+              const isFromUser = msg.key?.fromMe || msg.fromMe || false;
+              
+              // Get timestamp
+              const timestamp = msg.messageTimestamp || msg.timestamp || new Date().toISOString();
+              
+              // Determine message status
+              let status = 'sent';
+              if (msg.status) {
+                switch (msg.status.toLowerCase()) {
+                  case 'pending':
+                    status = 'sent';
+                    break;
+                  case 'server':
+                  case 'delivered':
+                    status = 'delivered';
+                    break;
+                  case 'read':
+                    status = 'read';
+                    break;
+                  case 'error':
+                    status = 'failed';
+                    break;
+                  default:
+                    status = 'sent';
+                }
+              }
+              
+              return {
+                id: msg.key?.id || msg.id || `msg_${timestamp}`,
+                content: content,
+                timestamp: timestamp,
+                isFromUser: isFromUser,
+                status: status
+              };
+            });
+            
+            allMessages = transformedMessages;
+            break; // Found messages, no need to check other instances
+          }
+          
+        } catch (instanceError) {
+          console.error(`❌ Erro ao buscar mensagens na instância ${instance.instanceKey}:`, instanceError);
+          continue;
+        }
+      }
+      
+      // Sort messages by timestamp (oldest first)
+      allMessages.sort((a, b) => 
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+      
+      console.log(`✅ Retornando ${allMessages.length} mensagens para conversa ${conversationId}`);
+      
+      res.json(allMessages);
+      
+    } catch (error) {
+      console.error("❌ Error fetching messages from Evolution:", error);
+      res.status(500).json({ 
+        message: "Erro ao buscar mensagens", 
+        error: error.message 
       });
     }
   });

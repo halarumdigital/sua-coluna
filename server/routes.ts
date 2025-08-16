@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { PDFProcessor } from "./pdf-processor";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertTeamMemberSchema, insertProjectSchema, insertInvoiceSchema, aiSettingsSchema } from "@shared/schema";
 import { openaiService } from "./openai";
@@ -1220,11 +1221,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const validatedData = createCustomAIAgentSchema.parse(req.body);
+      
+      // Processar PDFs se houver dados
+      let pdfFiles = validatedData.pdfFiles || [];
+      let pdfContents = validatedData.pdfContents || [];
+      
+      if (validatedData.pdfData && validatedData.pdfData.length > 0) {
+        console.log(`🔄 Processando ${validatedData.pdfData.length} arquivo(s) PDF...`);
+        
+        try {
+          pdfContents = await PDFProcessor.processPDFContents(validatedData.pdfData);
+          pdfFiles = validatedData.pdfData.map(pdf => pdf.fileName);
+          
+          console.log(`✅ PDFs processados: ${pdfFiles.join(', ')}`);
+        } catch (error) {
+          console.error('❌ Erro ao processar PDFs:', error);
+          return res.status(400).json({ 
+            message: "Erro ao processar arquivos PDF", 
+            error: error.message 
+          });
+        }
+      }
+      
+      // Aprimorar prompt com conteúdo dos PDFs
+      const enhancedPrompt = PDFProcessor.enhancePromptWithPDFs(
+        validatedData.systemPrompt, 
+        pdfContents
+      );
 
       const result = await db
         .insert(customAIAgents)
         .values({
           ...validatedData,
+          systemPrompt: enhancedPrompt,
+          pdfFiles: JSON.stringify(pdfFiles),
+          pdfContents: JSON.stringify(pdfContents),
           userId,
         });
 
@@ -1278,11 +1309,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!existingAgent.length) {
         return res.status(404).json({ message: "Agente não encontrado" });
       }
+      
+      // Processar PDFs se houver dados
+      let pdfFiles = validatedData.pdfFiles || [];
+      let pdfContents = validatedData.pdfContents || [];
+      
+      if (validatedData.pdfData && validatedData.pdfData.length > 0) {
+        console.log(`🔄 Processando ${validatedData.pdfData.length} arquivo(s) PDF para atualização...`);
+        
+        try {
+          pdfContents = await PDFProcessor.processPDFContents(validatedData.pdfData);
+          pdfFiles = validatedData.pdfData.map(pdf => pdf.fileName);
+          
+          console.log(`✅ PDFs processados para atualização: ${pdfFiles.join(', ')}`);
+        } catch (error) {
+          console.error('❌ Erro ao processar PDFs:', error);
+          return res.status(400).json({ 
+            message: "Erro ao processar arquivos PDF", 
+            error: error.message 
+          });
+        }
+      }
+      
+      // Aprimorar prompt com conteúdo dos PDFs
+      const enhancedPrompt = PDFProcessor.enhancePromptWithPDFs(
+        validatedData.systemPrompt, 
+        pdfContents
+      );
 
       await db
         .update(customAIAgents)
         .set({
           ...validatedData,
+          systemPrompt: enhancedPrompt,
+          pdfFiles: JSON.stringify(pdfFiles),
+          pdfContents: JSON.stringify(pdfContents),
           updatedAt: new Date(),
         })
         .where(eq(customAIAgents.id, id));
@@ -3419,6 +3480,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching WhatsApp instances for franchise:", error);
       res.status(500).json({ message: "Failed to fetch WhatsApp instances" });
+    }
+  });
+
+  // Rota para processar PDFs de treinamento
+  app.post("/api/client/process-pdfs", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const { pdfData } = req.body;
+      
+      if (!pdfData || !Array.isArray(pdfData) || pdfData.length === 0) {
+        return res.status(400).json({ 
+          message: "Dados de PDF são obrigatórios",
+          expected: "Array de objetos com fileName e base64Data"
+        });
+      }
+      
+      console.log(`📝 Processando ${pdfData.length} arquivo(s) PDF...`);
+      
+      try {
+        const processedContents = await PDFProcessor.processPDFContents(pdfData);
+        
+        // Calcular estatísticas
+        const stats = processedContents.map(content => ({
+          fileName: content.fileName,
+          ...PDFProcessor.getContentStats(content.content)
+        }));
+        
+        console.log(`✅ Processamento concluído: ${processedContents.length} arquivos`);
+        
+        res.json({
+          success: true,
+          processedContents,
+          stats,
+          message: `${processedContents.length} arquivo(s) processado(s) com sucesso`
+        });
+        
+      } catch (pdfError) {
+        console.error('❌ Erro no processamento de PDF:', pdfError);
+        return res.status(400).json({
+          message: "Erro ao processar arquivos PDF",
+          error: pdfError.message
+        });
+      }
+      
+    } catch (error) {
+      console.error("Error processing PDFs:", error);
+      res.status(500).json({ message: "Erro interno do servidor" });
     }
   });
 

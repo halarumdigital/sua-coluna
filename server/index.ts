@@ -7,6 +7,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { runAutoMigrations } from "./migrations/auto-migrate";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 import path from "path";
 
 const app = express();
@@ -49,9 +51,55 @@ app.use((req, res, next) => {
   next();
 });
 
+// Função para garantir que as colunas PDF existam
+async function ensurePDFColumns() {
+  try {
+    console.log('🔧 Verificando colunas PDF...');
+    
+    // Verificar se as colunas já existem
+    const tableInfo = await db.execute(sql`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() 
+      AND TABLE_NAME = 'custom_ai_agents'
+      AND COLUMN_NAME IN ('pdf_files', 'pdf_contents')
+    `);
+    
+    const existingColumns = (tableInfo as any[]).map(row => row.COLUMN_NAME);
+    console.log('📊 Colunas PDF existentes:', existingColumns);
+    
+    // Adicionar pdf_files se não existir
+    if (!existingColumns.includes('pdf_files')) {
+      await db.execute(sql`
+        ALTER TABLE custom_ai_agents 
+        ADD COLUMN pdf_files JSON DEFAULT ('[]')
+      `);
+      console.log('✅ Coluna pdf_files adicionada');
+    }
+    
+    // Adicionar pdf_contents se não existir
+    if (!existingColumns.includes('pdf_contents')) {
+      await db.execute(sql`
+        ALTER TABLE custom_ai_agents 
+        ADD COLUMN pdf_contents JSON DEFAULT ('[]')
+      `);
+      console.log('✅ Coluna pdf_contents adicionada');
+    }
+    
+    console.log('🎉 Colunas PDF configuradas!');
+    
+  } catch (error) {
+    console.error('❌ Erro ao configurar colunas PDF:', error);
+    // Não falhar a aplicação por causa disso
+  }
+}
+
 (async () => {
   // Executa migrations automaticamente em desenvolvimento
   await runAutoMigrations();
+  
+  // Garantir que as colunas PDF existam
+  await ensurePDFColumns();
   
   const server = await registerRoutes(app);
 

@@ -284,7 +284,7 @@ export default function ClientAIPage() {
     const validatedData = {
       name: agentForm.name.trim(),
       description: agentForm.description?.trim() || "",
-      systemPrompt: enhancedPrompt,
+      systemPrompt: agentForm.systemPrompt.trim(),
       temperature: Number(agentForm.temperature),
       maxTokens: Number(agentForm.maxTokens),
       isActive: Boolean(agentForm.isActive),
@@ -414,51 +414,82 @@ export default function ClientAIPage() {
 
   const processPDFFiles = async (files: File[]) => {
     try {
-      const newContents: Array<{fileName: string, content: string}> = [];
+      // Preparar dados para enviar ao backend
+      const pdfData = [];
       
       for (const file of files) {
-        const content = await extractPDFContent(file);
-        newContents.push({
+        const base64Data = await extractPDFContent(file);
+        pdfData.push({
           fileName: file.name,
-          content: content
+          base64Data: base64Data
         });
       }
       
-      setPdfContents(prev => [...prev, ...newContents]);
+      // Enviar para o backend para processamento
+      const response = await fetch('/api/client/process-pdfs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ pdfData })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erro ao processar PDFs');
+      }
+      
+      const result = await response.json();
+      
+      // Adicionar conteúdos processados
+      setPdfContents(prev => [...prev, ...result.processedContents]);
       
       toast({
         title: "Sucesso",
-        description: `${files.length} arquivo(s) PDF processado(s) com sucesso!`,
+        description: result.message,
         variant: "default",
       });
+      
+      console.log('✅ PDFs processados:', result.stats);
       
     } catch (error) {
       console.error('Erro ao processar PDFs:', error);
       toast({
         title: "Erro",
-        description: "Erro ao processar arquivos PDF. Verifique se os arquivos são válidos.",
+        description: error.message || "Erro ao processar arquivos PDF.",
         variant: "destructive",
       });
     }
   };
 
   const extractPDFContent = async (file: File): Promise<string> => {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
       
       reader.onload = async function(e) {
         try {
-          // Por enquanto, retornamos uma mensagem simples
-          // Em uma implementação real, você usaria uma biblioteca como PDF.js
-          resolve(`Conteúdo do arquivo ${file.name} (extração implementada)`);
+          const arrayBuffer = e.target?.result as ArrayBuffer;
+          if (!arrayBuffer) {
+            throw new Error('Erro ao ler arquivo');
+          }
+          
+          // Converter para base64 para enviar ao backend
+          const base64 = btoa(
+            new Uint8Array(arrayBuffer)
+              .reduce((data, byte) => data + String.fromCharCode(byte), '')
+          );
+          
+          resolve(base64);
+          
         } catch (error) {
-          console.error('Erro ao extrair conteúdo do PDF:', error);
-          resolve(`Conteúdo do arquivo ${file.name} (erro na extração)`);
+          console.error('Erro ao processar PDF:', error);
+          reject(error);
         }
       };
       
-      reader.onerror = () => resolve(`Erro ao ler arquivo ${file.name}`);
-      reader.readAsText(file);
+      reader.onerror = () => reject(new Error(`Erro ao ler arquivo ${file.name}`));
+      reader.readAsArrayBuffer(file);
     });
   };
 

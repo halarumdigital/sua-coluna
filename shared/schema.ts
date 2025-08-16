@@ -456,6 +456,9 @@ export const customAIAgents = mysqlTable("custom_ai_agents", {
   maxTokens: int("max_tokens").notNull().default(1000),
   isActive: boolean("is_active").notNull().default(true),
   userId: varchar("user_id", { length: 36 }).references(() => users.id).notNull(),
+  // PDF Training fields
+  pdfFiles: json("pdf_files").default("[]"), // Array de nomes de arquivos PDF
+  pdfContents: json("pdf_contents").default("[]"), // Array de objetos {fileName, content}
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
 }, (table) => [
@@ -846,6 +849,17 @@ export const createCustomAIAgentSchema = z.object({
   systemPrompt: z.string().min(1, "Prompt do sistema é obrigatório"),
   temperature: z.number().min(0).max(2).default(0.7),
   maxTokens: z.number().min(1).max(4000).default(1000),
+  // PDF Training fields
+  pdfFiles: z.array(z.string()).optional().default([]),
+  pdfContents: z.array(z.object({
+    fileName: z.string(),
+    content: z.string()
+  })).optional().default([]),
+  // Campo para processamento de PDFs no frontend
+  pdfData: z.array(z.object({
+    fileName: z.string(),
+    base64Data: z.string()
+  })).optional(),
   isActive: z.boolean().default(true),
 });
 

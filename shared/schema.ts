@@ -1,15 +1,16 @@
 import { sql } from 'drizzle-orm';
 import {
   index,
-  json,
-  mysqlTable,
+  jsonb,
+  pgTable,
   timestamp,
   varchar,
   text,
   decimal,
   boolean,
-  int,
-} from "drizzle-orm/mysql-core";
+  integer,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -1227,6 +1228,45 @@ export const editFranchiseProfileSchema = z.object({
 
 export type EditFranchiseProfile = z.infer<typeof editFranchiseProfileSchema>;
 
+// Clientes finais das franquias (pessoas que fazem agendamentos)
+export const franchiseClients = mysqlTable("franchise_clients", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  franchiseId: varchar("franchise_id", { length: 36 }).references(() => franchises.id).notNull(),
+  
+  // Dados básicos do cliente final
+  fullName: varchar("full_name", { length: 255 }).notNull(), // Nome completo
+  phone: varchar("phone", { length: 20 }).notNull(), // Telefone (obrigatório para agendamento)
+  email: varchar("email", { length: 255 }), // Email (opcional)
+  cpf: varchar("cpf", { length: 14 }), // CPF (opcional)
+  
+  // Endereço (opcional)
+  street: varchar("street", { length: 255 }),
+  number: varchar("number", { length: 20 }),
+  complement: varchar("complement", { length: 100 }),
+  neighborhood: varchar("neighborhood", { length: 100 }),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 50 }),
+  zipCode: varchar("zip_code", { length: 10 }),
+  
+  // Informações de agendamento
+  lastAppointmentDate: timestamp("last_appointment_date"),
+  totalAppointments: int("total_appointments").notNull().default(0),
+  
+  // Observações
+  notes: text("notes"), // Observações gerais
+  source: varchar("source", { length: 50 }).notNull().default("whatsapp"), // whatsapp, phone, website, etc
+  
+  // Status
+  status: varchar("status", { length: 20 }).notNull().default("active"), // active, inactive
+  
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_franchise_clients_franchise").on(table.franchiseId),
+  index("idx_franchise_clients_phone").on(table.phone),
+  index("idx_franchise_clients_status").on(table.status),
+]);
+
 // Configurações do Google Calendar das franquias
 export const googleCalendarSettings = mysqlTable("google_calendar_settings", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
@@ -1266,3 +1306,33 @@ export const insertGoogleCalendarSettingsSchema = createInsertSchema(googleCalen
 export type GoogleCalendarSettings = typeof googleCalendarSettings.$inferSelect;
 export type InsertGoogleCalendarSettings = z.infer<typeof insertGoogleCalendarSettingsSchema>;
 export type GoogleCalendarSettingsForm = z.infer<typeof googleCalendarSettingsSchema>;
+
+// Franchise Client types
+export type FranchiseClient = typeof franchiseClients.$inferSelect;
+export type InsertFranchiseClient = typeof franchiseClients.$inferInsert;
+
+// Schema para criação de cliente da franquia
+export const createFranchiseClientSchema = z.object({
+  fullName: z.string().min(1, "Nome completo é obrigatório"),
+  phone: z.string().min(1, "Telefone é obrigatório"),
+  email: z.string().email("Email inválido").optional().or(z.literal("")),
+  cpf: z.string().optional(),
+  
+  // Endereço (opcional)
+  street: z.string().optional(),
+  number: z.string().optional(),
+  complement: z.string().optional(),
+  neighborhood: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+  
+  notes: z.string().optional(),
+  source: z.string().default("whatsapp"),
+});
+
+// Schema para atualização de cliente da franquia
+export const updateFranchiseClientSchema = createFranchiseClientSchema.partial();
+
+export type CreateFranchiseClient = z.infer<typeof createFranchiseClientSchema>;
+export type UpdateFranchiseClient = z.infer<typeof updateFranchiseClientSchema>;

@@ -27,7 +27,6 @@ import {
   Send,
   Archive,
   Filter,
-  Calendar,
   X,
   User,
   Bot,
@@ -73,8 +72,6 @@ export default function ClientConversationsPage() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [selectedInstanceKey, setSelectedInstanceKey] = useState<string>("");
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedConversationData, setSelectedConversationData] = useState<Conversation | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -144,21 +141,13 @@ export default function ClientConversationsPage() {
 
   // Fetch conversations data diretamente da Evolution API
   const { data: conversations = [], isLoading, refetch } = useQuery({
-    queryKey: ["client-conversations", debouncedSearchTerm, startDate, endDate, selectedInstanceKey],
+    queryKey: ["client-conversations", debouncedSearchTerm, selectedInstanceKey],
     queryFn: async () => {
       // Build query parameters
       const params = new URLSearchParams();
       
       if (debouncedSearchTerm.trim()) {
         params.append("search", debouncedSearchTerm.trim());
-      }
-      
-      if (startDate) {
-        params.append("startDate", startDate);
-      }
-      
-      if (endDate) {
-        params.append("endDate", endDate);
       }
       
       if (selectedInstanceKey) {
@@ -485,59 +474,31 @@ export default function ClientConversationsPage() {
                 )}
               </div>
               
-              {/* Date range filters */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="relative">
-                  <Calendar className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="date"
-                    placeholder="Data início"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="pl-8"
-                  />
-                  <label className="text-xs text-muted-foreground mt-1 block">Data início</label>
-                </div>
-                
-                <div className="relative">
-                  <Calendar className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="date"
-                    placeholder="Data fim"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="pl-8"
-                  />
-                  <label className="text-xs text-muted-foreground mt-1 block">Data fim</label>
-                </div>
-                
-                <div>
-                  <select
-                    value={selectedInstanceKey}
-                    onChange={(e) => setSelectedInstanceKey(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Todas as Instâncias</option>
-                    {instances.map((instance) => (
-                      <option key={instance.id} value={instance.instanceKey}>
-                        {instance.friendlyName} ({instance.status})
-                      </option>
-                    ))}
-                  </select>
-                  <label className="text-xs text-muted-foreground mt-1 block">Instância WhatsApp</label>
-                </div>
+              {/* Instance filter */}
+              <div>
+                <select
+                  value={selectedInstanceKey}
+                  onChange={(e) => setSelectedInstanceKey(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Todas as Instâncias</option>
+                  {instances.map((instance) => (
+                    <option key={instance.id} value={instance.instanceKey}>
+                      {instance.friendlyName} ({instance.status})
+                    </option>
+                  ))}
+                </select>
+                <label className="text-xs text-muted-foreground mt-1 block">Instância WhatsApp</label>
               </div>
               
               {/* Clear filters button */}
-              {(searchTerm || startDate || endDate || selectedInstanceKey) && (
+              {(searchTerm || selectedInstanceKey) && (
                 <div className="flex justify-end">
                   <Button 
                     variant="outline" 
                     size="sm"
                     onClick={() => {
                       setSearchTerm("");
-                      setStartDate("");
-                      setEndDate("");
                       setSelectedInstanceKey("");
                     }}
                   >
@@ -582,7 +543,7 @@ export default function ClientConversationsPage() {
                 <p className="text-muted-foreground">
                   {searchTerm || selectedInstanceKey 
                     ? "Tente ajustar os filtros de busca." 
-                    : "Comece uma nova conversa para aparecer aqui."
+                    : "Selecione uma instância WhatsApp para ver as conversas."
                   }
                 </p>
               </div>

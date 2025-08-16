@@ -4342,12 +4342,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Not authenticated" });
       }
       
+      // Extract query parameters
+      const { search, startDate, endDate, instanceKey } = req.query;
+      
       const user = await storage.getUser(userId);
       if (!user || (user.role !== 'client' && user.role !== 'franchise')) {
         return res.status(403).json({ message: "Access denied" });
       }
       
       console.log(`🔍 Buscando conversas da Evolution para usuário ${user.role}: ${userId}`);
+      console.log(`📋 Parâmetros: search=${search}, instanceKey=${instanceKey}`);
       
       // Get user's franchise
       let franchise;
@@ -4463,7 +4467,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Apply filters if provided
-      const { search, startDate, endDate, instanceKey } = req.query;
       let filteredConversations = allConversations;
       
       // Search filter

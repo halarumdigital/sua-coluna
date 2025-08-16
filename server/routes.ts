@@ -4401,16 +4401,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const remoteJid = chat.id || chat.remoteJid || '';
               const contactPhone = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
               
-              // Try to extract contact name from different possible fields
-              let contactName = 
-                chat.name || 
-                chat.pushName || 
-                chat.contact?.name || 
-                chat.contact?.pushName || 
-                chat.contact?.notify ||
-                contactPhone;
-                
-              // Only use lastMessage pushName if the message is FROM the contact (not from us)
+              // Extract contact name with fallback to phone number
+              let contactName = contactPhone; // Default to phone number
+              
+              // Try to get a real contact name from various fields
+              if (chat.name && chat.name !== contactPhone) {
+                contactName = chat.name;
+              } else if (chat.pushName && chat.pushName !== contactPhone && chat.pushName !== "Você") {
+                contactName = chat.pushName;
+              } else if (chat.contact?.name && chat.contact.name !== contactPhone) {
+                contactName = chat.contact.name;
+              } else if (chat.contact?.pushName && chat.contact.pushName !== contactPhone && chat.contact.pushName !== "Você") {
+                contactName = chat.contact.pushName;
+              } else if (chat.contact?.notify && chat.contact.notify !== contactPhone && chat.contact.notify !== "Você") {
+                contactName = chat.contact.notify;
+              }
+              
+              // Try to get name from last message ONLY if it's from the contact (not from us)
               if (chat.lastMessage?.pushName && 
                   chat.lastMessage.key?.fromMe === false && // Must be from contact
                   chat.lastMessage.pushName !== "Você" && 
@@ -4418,24 +4425,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 contactName = chat.lastMessage.pushName;
               }
               
-              // If still no good name, try to get a message from the contact (fromMe: false)
-              if (contactName === remoteJid || contactName === contactPhone || contactName === "Você") {
-                // Look for any message that came from the contact (not from us)
-                if (chat.messages && Array.isArray(chat.messages)) {
-                  for (const msg of chat.messages) {
-                    if (msg.key?.fromMe === false && msg.pushName && 
-                        msg.pushName !== contactPhone && msg.pushName !== "Você") {
-                      contactName = msg.pushName;
-                      break; // Use the first valid name found
-                    }
+              // If we still only have the phone number, try to find a name in message history
+              if (contactName === contactPhone && chat.messages && Array.isArray(chat.messages)) {
+                for (const msg of chat.messages) {
+                  if (msg.key?.fromMe === false && msg.pushName && 
+                      msg.pushName !== contactPhone && msg.pushName !== "Você") {
+                    contactName = msg.pushName;
+                    break; // Use the first valid name found
                   }
                 }
-                
-                // If STILL no good name found, use the phone number as the name
-                // (Don't exclude the conversation, just use phone as display name)
-                if (contactName === "Você") {
-                  contactName = contactPhone;
-                }
+              }
+              
+              // Final guarantee: contactName should NEVER be "Você" - always use phone as fallback
+              if (contactName === "Você" || !contactName) {
+                contactName = contactPhone;
               }
               
                       

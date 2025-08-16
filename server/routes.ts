@@ -5141,6 +5141,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/franchise/clients - Listar clientes da franquia
   app.get("/api/franchise/clients", isAuthenticated, async (req: any, res) => {
     try {
+      // Verificar se o usuário e as claims existem
+      if (!req.user || !req.user.claims || !req.user.claims.sub) {
+        return res.status(401).json({ message: "Usuário não autenticado" });
+      }
+      
       const userId = req.user.claims.sub;
       
       // Buscar franquia do usuário

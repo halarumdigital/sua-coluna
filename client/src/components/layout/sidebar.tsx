@@ -129,37 +129,37 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const clientMenuItems = [
     {
       title: "Dashboard",
-      href: "/client",
+      href: "/franchise",
       icon: BarChart3,
     },
     {
       title: "Clientes",
-      href: "/client/clients",
+      href: "/franchise/clients",
       icon: Users,
     },
     {
       title: "IA",
-      href: "/client/ai",
+      href: "/franchise/ai",
       icon: Bot,
     },
     {
       title: "WhatsApp",
-      href: "/client/whatsapp",
+      href: "/franchise/whatsapp",
       icon: MessageCircle,
     },
     {
       title: "Google",
-      href: "/client/calendar",
+      href: "/franchise/calendar",
       icon: Calendar,
     },
     {
       title: "Conversas",
-      href: "/client/conversations",
+      href: "/franchise/conversations",
       icon: MessageCircle,
     },
     {
       title: "Perfil",
-      href: "/client/profile",
+      href: "/franchise/profile",
       icon: User,
     },
   ];

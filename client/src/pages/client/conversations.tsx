@@ -35,6 +35,8 @@ import {
   RefreshCw
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface Conversation {
   id: string;
@@ -67,6 +69,7 @@ export default function ClientConversationsPage() {
   const [selectedConversationData, setSelectedConversationData] = useState<Conversation | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const conversationModalRef = useRef<HTMLDivElement>(null);
 
   // Debounce search term
   useEffect(() => {
@@ -234,48 +237,72 @@ export default function ClientConversationsPage() {
 
   const handleExportToPDF = async (conversation: Conversation) => {
     try {
-      // Buscar mensagens reais da conversa
-      const response = await fetch(`/api/client/conversations/${conversation.id}/messages`, {
-        credentials: "include",
+      if (!conversationModalRef.current) {
+        toast({
+          title: "Erro",
+          description: "Modal da conversa não encontrado",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Exportando PDF",
+        description: "Gerando arquivo PDF...",
       });
+
+      // Capturar o conteúdo visual do modal
+      const canvas = await html2canvas(conversationModalRef.current, {
+        scale: 2, // Melhor qualidade
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        width: conversationModalRef.current.scrollWidth,
+        height: conversationModalRef.current.scrollHeight,
+      });
+
+      // Criar PDF
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgData = canvas.toDataURL('image/png');
       
-      if (!response.ok) {
-        throw new Error("Falha ao carregar mensagens para exportação");
+      // Calcular dimensões para caber na página A4
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const imgX = (pdfWidth - imgWidth * ratio) / 2;
+      const imgY = 10; // Margem superior
+      
+      // Adicionar a imagem ao PDF
+      pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+      
+      // Se a imagem for muito grande, dividir em páginas
+      if (imgHeight * ratio > pdfHeight - 20) {
+        let remainingHeight = imgHeight * ratio - (pdfHeight - 20);
+        let pages = Math.ceil(remainingHeight / (pdfHeight - 20));
+        
+        for (let i = 1; i <= pages; i++) {
+          pdf.addPage();
+          const startY = -((pdfHeight - 20) * i);
+          pdf.addImage(imgData, 'PNG', imgX, startY, imgWidth * ratio, imgHeight * ratio);
+        }
       }
       
-      const messages = await response.json();
-      
-      // Criar conteúdo do PDF
-      const pdfContent = `
-        Conversa com ${conversation.contactName}
-        Telefone: ${conversation.contactPhone}
-        Data: ${new Date().toLocaleDateString('pt-BR')}
-        
-        ${messages.map((msg: Message) => `
-          ${msg.isFromUser ? 'Você' : conversation.contactName} (${new Date(msg.timestamp).toLocaleString('pt-BR')}):
-          ${msg.content}
-        `).join('\n\n')}
-      `;
-      
-      // Criar blob e download
-      const blob = new Blob([pdfContent], { type: 'text/plain' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `conversa-${conversation.contactName.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      // Salvar o PDF
+      const fileName = `conversa-${conversation.contactName.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(fileName);
       
       toast({
-        title: "Conversa Exportada",
-        description: "Conversa exportada com sucesso!",
+        title: "PDF Exportado",
+        description: "Conversa exportada como PDF com sucesso!",
       });
     } catch (error) {
+      console.error('Erro ao exportar PDF:', error);
       toast({
         title: "Erro",
-        description: "Erro ao exportar conversa",
+        description: "Erro ao exportar conversa como PDF",
         variant: "destructive",
       });
     }
@@ -603,7 +630,7 @@ export default function ClientConversationsPage() {
 
         {/* Conversation Modal */}
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-          <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] flex flex-col">
+          <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] flex flex-col" ref={conversationModalRef}>
             <DialogHeader className="flex-shrink-0">
               <div className="flex items-center justify-between">
                 <DialogTitle className="flex items-center space-x-3">
@@ -631,7 +658,7 @@ export default function ClientConversationsPage() {
                      onClick={() => handleExportToPDF(selectedConversationData)}
                    >
                      <Download className="h-4 w-4 mr-2" />
-                     Exportar
+                     Exportar PDF
                    </Button>
                  )}
                </div>
@@ -640,7 +667,7 @@ export default function ClientConversationsPage() {
             {selectedConversationData && (
               <div className="flex flex-col flex-1 min-h-0">
                 {/* Messages Area */}
-                <ScrollArea className="flex-1 p-6 bg-gray-50 rounded-lg h-[400px] max-h-[70vh]">
+                <ScrollArea className="flex-1 p-6 bg-gray-50 rounded-lg min-h-[400px] max-h-[70vh]">
                     {isLoadingMessages ? (
                       <div className="flex items-center justify-center py-8">
                         <Loader2 className="h-8 w-8 animate-spin" />
@@ -659,23 +686,25 @@ export default function ClientConversationsPage() {
                         {conversationMessages.map((message: Message) => (
                           <div
                             key={message.id}
-                            className={`flex ${message.isFromUser ? 'justify-end' : 'justify-start'}`}
+                            className={`flex ${message.isFromUser ? 'justify-end' : 'justify-start'} mb-4`}
                           >
                             <div
-                              className={`max-w-[85%] rounded-lg p-4 ${
+                              className={`max-w-[75%] rounded-2xl px-4 py-3 shadow-sm relative ${
                                 message.isFromUser
-                                  ? 'bg-blue-500 text-white shadow-md'
-                                  : 'bg-white border border-gray-200 shadow-sm'
+                                  ? 'bg-blue-500 text-white rounded-br-sm' 
+                                  : 'bg-white text-gray-900 border border-gray-200 rounded-bl-sm'
                               }`}
                             >
-                              <div className="flex items-center space-x-2 mb-1">
+                              <div className="flex items-center space-x-2 mb-2">
                                 {message.isFromUser ? (
-                                  <User className="h-3 w-3" />
+                                  <User className="h-3 w-3 opacity-75" />
                                 ) : (
-                                  <Bot className="h-3 w-3" />
+                                  <MessageCircle className="h-3 w-3 opacity-75" />
                                 )}
-                                <span className="text-xs opacity-70">
-                                  {new Date(message.timestamp).toLocaleString('pt-BR', {
+                                <span className={`text-xs ${ 
+                                  message.isFromUser ? 'text-blue-100' : 'text-gray-500'
+                                }`}>
+                                  {new Date(message.timestamp * 1000).toLocaleString('pt-BR', {
                                     day: '2-digit',
                                     month: '2-digit',
                                     hour: '2-digit',
@@ -683,9 +712,21 @@ export default function ClientConversationsPage() {
                                   })}
                                 </span>
                               </div>
-                              <p className="text-sm whitespace-pre-wrap break-words leading-relaxed max-w-full overflow-hidden">
+                              <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
                                 {message.content}
                               </p>
+                              {/* Cauda da mensagem estilo WhatsApp */}
+                              <div className={`absolute bottom-0 w-3 h-3 ${
+                                message.isFromUser 
+                                  ? 'right-0 transform translate-x-1 bg-blue-500' 
+                                  : 'left-0 transform -translate-x-1 bg-white border-l border-b border-gray-200'
+                              }`} 
+                              style={{
+                                clipPath: message.isFromUser 
+                                  ? 'polygon(0 0, 100% 0, 0 100%)' 
+                                  : 'polygon(100% 0, 0 0, 100% 100%)'
+                              }}
+                              />
                             </div>
                           </div>
                         ))}

@@ -36,8 +36,10 @@ import {
   ChevronRight
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { usePDFExport } from "@/hooks/usePDFExport";
+// Importações dinâmicas para evitar problemas com Rollup
+// import jsPDF from 'jspdf';
+// import html2canvas from 'html2canvas';
 
 interface Conversation {
   id: string;
@@ -70,6 +72,7 @@ interface Message {
 
 export default function ClientConversationsPage() {
   const { toast } = useToast();
+  const { exportToPDF, isExporting } = usePDFExport();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [selectedInstanceKey, setSelectedInstanceKey] = useState<string>("");
@@ -258,76 +261,21 @@ export default function ClientConversationsPage() {
   };
 
   const handleExportToPDF = async (conversation: Conversation) => {
-    try {
-      if (!conversationModalRef.current) {
-        toast({
-          title: "Erro",
-          description: "Modal da conversa não encontrado",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      toast({
-        title: "Exportando PDF",
-        description: "Gerando arquivo PDF...",
-      });
-
-      // Capturar o conteúdo visual do modal
-      const canvas = await html2canvas(conversationModalRef.current, {
-        scale: 2, // Melhor qualidade
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        width: conversationModalRef.current.scrollWidth,
-        height: conversationModalRef.current.scrollHeight,
-      });
-
-      // Criar PDF
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgData = canvas.toDataURL('image/png');
-      
-      // Calcular dimensões para caber na página A4
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const imgX = (pdfWidth - imgWidth * ratio) / 2;
-      const imgY = 10; // Margem superior
-      
-      // Adicionar a imagem ao PDF
-      pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
-      
-      // Se a imagem for muito grande, dividir em páginas
-      if (imgHeight * ratio > pdfHeight - 20) {
-        let remainingHeight = imgHeight * ratio - (pdfHeight - 20);
-        let pages = Math.ceil(remainingHeight / (pdfHeight - 20));
-        
-        for (let i = 1; i <= pages; i++) {
-          pdf.addPage();
-          const startY = -((pdfHeight - 20) * i);
-          pdf.addImage(imgData, 'PNG', imgX, startY, imgWidth * ratio, imgHeight * ratio);
-        }
-      }
-      
-      // Salvar o PDF
-      const fileName = `conversa-${conversation.contactName.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`;
-      pdf.save(fileName);
-      
-      toast({
-        title: "PDF Exportado",
-        description: "Conversa exportada como PDF com sucesso!",
-      });
-    } catch (error) {
-      console.error('Erro ao exportar PDF:', error);
+    if (!conversationModalRef.current) {
       toast({
         title: "Erro",
-        description: "Erro ao exportar conversa como PDF",
+        description: "Modal da conversa não encontrado",
         variant: "destructive",
       });
+      return;
     }
+
+    const filename = `conversa-${conversation.contactName.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`;
+    
+    await exportToPDF({
+      element: conversationModalRef.current,
+      filename
+    });
   };
 
   // Fetch messages for a conversation
@@ -731,9 +679,14 @@ export default function ClientConversationsPage() {
                      variant="outline"
                      size="sm"
                      onClick={() => handleExportToPDF(selectedConversationData)}
+                     disabled={isExporting}
                    >
-                     <Download className="h-4 w-4 mr-2" />
-                     Exportar PDF
+                     {isExporting ? (
+                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                     ) : (
+                       <Download className="h-4 w-4 mr-2" />
+                     )}
+                     {isExporting ? "Exportando..." : "Exportar PDF"}
                    </Button>
                  )}
                </div>

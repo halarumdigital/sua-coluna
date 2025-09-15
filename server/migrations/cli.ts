@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { Migrator } from './migrator';
+import { Migrator } from './migrator.js';
 import { join } from 'path';
 
 const migrator = new Migrator();

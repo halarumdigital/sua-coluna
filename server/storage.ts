@@ -1090,7 +1090,7 @@ export class DatabaseStorage implements IStorage {
     
     settings.forEach(setting => {
       switch (setting.settingKey) {
-        case 'ai_ChatGPT_api_key':
+        case 'ai_chatgpt_api_key':
           result.chatGptApiKey = setting.settingValue || "";
           break;
         case 'ai_temperature':
@@ -1115,7 +1115,7 @@ export class DatabaseStorage implements IStorage {
   async saveAISettings(settings: AISettings): Promise<void> {
     // Save each setting individually
     await Promise.all([
-      this.setSystemSetting('ai_ChatGPT_api_key', settings.chatGptApiKey, 'string'),
+      this.setSystemSetting('ai_chatgpt_api_key', settings.chatGptApiKey, 'string'),
       this.setSystemSetting('ai_temperature', settings.temperature.toString(), 'number'),
       this.setSystemSetting('ai_max_tokens', settings.maxTokens.toString(), 'number'),
       this.setSystemSetting('ai_model', settings.model, 'string'),

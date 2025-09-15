@@ -30,13 +30,6 @@ export class WhatsAppAIHandler {
         return;
       }
 
-      // Verificar se esta mensagem é uma resposta recente do nosso próprio sistema
-      const messageKey = `${instanceKey}-${phoneNumber}-${messageText}`;
-      if (this.isRecentResponse(messageKey)) {
-        console.log(`⏭️ Ignorando mensagem recente do sistema: ${messageKey}`);
-        return;
-      }
-
       // Verificar se é um comando de edição de cliente
       if (messageText.toLowerCase().startsWith('/editarcliente')) {
         console.log('📝 Detectado comando de edição de cliente');
@@ -47,7 +40,7 @@ export class WhatsAppAIHandler {
       // Verificar se a instância pertence a um cliente
       const instances = await storage.getWhatsappInstances();
       const instance = instances.find(inst => inst.instanceKey === instanceKey);
-      
+
       if (!instance) {
         console.log(`❌ Instância ${instanceKey} não encontrada`);
         return;
@@ -61,6 +54,35 @@ export class WhatsAppAIHandler {
       }
 
       console.log(`✅ Franquia encontrada: ${franchise.franchiseName}`);
+
+      // SEMPRE criar/atualizar card do kanban CRM quando um usuário envia uma mensagem (antes de verificar cooldown)
+      try {
+        const contactName = messageObj.key?.pushName || messageObj.pushName || `Cliente ${phoneNumber}`;
+        console.log(`📋 Criando/atualizando card do kanban para: ${phoneNumber}, nome: ${contactName}`);
+
+        // Usar timestamp da mensagem ou data atual
+        const messageTimestamp = new Date(messageObj.messageTimestamp ? messageObj.messageTimestamp * 1000 : Date.now());
+
+        const kanbanCard = await storage.createOrUpdateCrmKanbanCard(
+          instance.franchiseId,
+          phoneNumber,
+          contactName,
+          undefined, // conversationId será definido mais tarde
+          messageTimestamp
+        );
+        console.log(`✅ Card do kanban criado/atualizado: ${kanbanCard.id} - Status: ${kanbanCard.status}`);
+      } catch (error) {
+        console.error('❌ Erro ao criar/atualizar card do kanban:', error);
+        // Continuar o fluxo mesmo se falhar a criação do card
+      }
+
+      // Verificar se esta mensagem é uma resposta recente do nosso próprio sistema (apenas para AI)
+      const messageKey = `${instanceKey}-${phoneNumber}-${messageText}`;
+      if (this.isRecentResponse(messageKey)) {
+        console.log(`⏭️ Ignorando resposta automática da IA para mensagem recente: ${messageKey}`);
+        console.log(`📋 Mas card do kanban foi criado/atualizado normalmente`);
+        return;
+      }
 
       // Buscar agente de IA vinculado a esta instância
       const agentBindings = await storage.getFranchiseInstanceAgentBindings(franchise.id);
@@ -124,23 +146,6 @@ export class WhatsAppAIHandler {
         });
       }
 
-      // Criar ou atualizar card do kanban CRM quando um usuário envia uma mensagem
-      try {
-        const contactName = messageObj.key?.pushName || messageObj.pushName || `Cliente ${phoneNumber}`;
-        console.log(`📋 Criando/atualizando card do kanban para: ${phoneNumber}, nome: ${contactName}`);
-
-        const kanbanCard = await storage.createOrUpdateCrmKanbanCard(
-          instance.franchiseId,
-          phoneNumber,
-          contactName,
-          conversation.id,
-          timestamp
-        );
-        console.log(`✅ Card do kanban criado/atualizado: ${kanbanCard.id} - Status: ${kanbanCard.status}`);
-      } catch (error) {
-        console.error('❌ Erro ao criar/atualizar card do kanban:', error);
-        // Continuar o fluxo mesmo se falhar a criação do card
-      }
 
       // Buscar contexto de conversação (últimas mensagens)
       const conversationContext = await storage.getAgentContext(conversation.id, activeBinding.agentId, 50);

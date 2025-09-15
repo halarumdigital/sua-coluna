@@ -17,7 +17,8 @@
       "Bash(npm run:*)",
       "Bash(tsx check-franchise-clients-table.js:*)",
       "Bash(npx tsx:*)",
-      "Bash(tsx server/migrations/cli.ts run:*)"
+      "Bash(tsx server/migrations/cli.ts run:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

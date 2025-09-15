@@ -3,6 +3,10 @@ import { openaiService } from './openai';
 import { whatsappService } from './whatsapp';
 
 export class WhatsAppAIHandler {
+  // Cache para controlar respostas recentes e evitar loops
+  private recentResponses = new Map<string, number>();
+  private readonly RESPONSE_COOLDOWN = 30000; // 30 segundos
+
   async handleIncomingMessage(instanceKey: string, messageData: any): Promise<void> {
     try {
       console.log('🤖 Processando mensagem recebida para resposta automática...');
@@ -23,6 +27,13 @@ export class WhatsAppAIHandler {
 
       if (!phoneNumber || !messageText) {
         console.log('❌ Informações insuficientes da mensagem');
+        return;
+      }
+
+      // Verificar se esta mensagem é uma resposta recente do nosso próprio sistema
+      const messageKey = `${instanceKey}-${phoneNumber}-${messageText}`;
+      if (this.isRecentResponse(messageKey)) {
+        console.log(`⏭️ Ignorando mensagem recente do sistema: ${messageKey}`);
         return;
       }
 
@@ -163,6 +174,9 @@ Responda considerando todo o contexto da conversa acima.`;
         timestamp: new Date()
       });
 
+      // Registrar esta resposta no cache para evitar loops
+      this.registerResponse(messageKey, responseText);
+
       // Enviar resposta via WhatsApp
       const sendResult = await whatsappService.sendMessage(instanceKey, phoneNumber, responseText);
       
@@ -196,6 +210,36 @@ Responda considerando todo o contexto da conversa acima.`;
     }
   }
 
+  private isRecentResponse(messageKey: string): boolean {
+    const timestamp = this.recentResponses.get(messageKey);
+    if (!timestamp) return false;
+    
+    const isRecent = (Date.now() - timestamp) < this.RESPONSE_COOLDOWN;
+    if (isRecent) {
+      console.log(`🚫 Detectada resposta recente para ${messageKey}, ignorando para evitar loop`);
+    }
+    return isRecent;
+  }
+
+  private registerResponse(messageKey: string, responseText: string): void {
+    this.recentResponses.set(messageKey, Date.now());
+    
+    // Limpar entradas antigas periodicamente
+    if (this.recentResponses.size > 100) {
+      const cutoffTime = Date.now() - this.RESPONSE_COOLDOWN;
+      // Converter para array para compatibilidade com TypeScript mais antigo
+      const entries = Array.from(this.recentResponses.entries());
+      for (let i = 0; i < entries.length; i++) {
+        const [key, timestamp] = entries[i];
+        if (timestamp < cutoffTime) {
+          this.recentResponses.delete(key);
+        }
+      }
+    }
+    
+    console.log(`📝 Resposta registrada no cache: ${messageKey}`);
+  }
+
   async isAutoReplyEnabled(instanceKey: string): Promise<boolean> {
     try {
       // Por enquanto, sempre retorna true
@@ -211,7 +255,6 @@ Responda considerando todo o contexto da conversa acima.`;
     try {
       console.log(`📨 Processing client webhook for instance: ${instanceKey}`);
       console.log(`📋 Webhook event: ${webhookData.event}`);
-      console.log(`📋 Webhook data structure:`, JSON.stringify(webhookData, null, 2));
       
       // Process message events
       if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT') {
@@ -234,7 +277,6 @@ Responda considerando todo o contexto da conversa acima.`;
     try {
       console.log(`📨 Processing admin webhook for instance: ${instanceKey}`);
       console.log(`📋 Webhook event: ${webhookData.event}`);
-      console.log(`📋 Webhook data structure:`, JSON.stringify(webhookData, null, 2));
       
       // Process message events
       if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT') {

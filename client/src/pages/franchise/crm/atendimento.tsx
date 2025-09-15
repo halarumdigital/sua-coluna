@@ -226,8 +226,36 @@ const DroppableKanbanColumn = ({
 
 export default function AtendimentoPage() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [atendimentos, setAtendimentos] = useState<AtendimentoItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Fetch kanban cards from API
+  const { data: atendimentos = [], isLoading, refetch } = useQuery({
+    queryKey: ["crm-kanban-cards"],
+    queryFn: async () => {
+      const response = await fetch("/api/franchise/crm/kanban", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error("Falha ao carregar cards do kanban");
+      }
+
+      const data = await response.json();
+
+      // Transform the API data to match our interface
+      return data.map((card: any): AtendimentoItem => ({
+        id: card.id,
+        clienteName: card.clientName,
+        telefone: card.clientPhone,
+        tipo: card.type,
+        prioridade: card.priority as "alta" | "media" | "baixa",
+        dataAgendamento: card.scheduledDate,
+        horaAgendamento: card.scheduledTime,
+        observacoes: card.notes || "",
+        status: card.status as "novo" | "atendimento" | "agendado" | "finalizado",
+      }));
+    },
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -239,19 +267,37 @@ export default function AtendimentoPage() {
 
   const handleEdit = (id: string) => {
     console.log("Editar atendimento:", id);
-    // Implementar edição
+    // TODO: Implementar modal de edição
   };
 
-  const handleDelete = (id: string) => {
-    console.log("Excluir atendimento:", id);
-    // Implementar exclusão
+  const handleDelete = async (id: string) => {
+    if (!confirm("Tem certeza que deseja excluir este atendimento?")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/franchise/crm/kanban/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error("Falha ao excluir atendimento");
+      }
+
+      // Refresh the data
+      refetch();
+    } catch (error) {
+      console.error("Erro ao excluir atendimento:", error);
+      alert("Erro ao excluir atendimento");
+    }
   };
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
 
     if (!over) {
@@ -279,13 +325,28 @@ export default function AtendimentoPage() {
 
     // Update the status if it changed
     if (activeAtendimento.status !== newStatus) {
-      setAtendimentos(prev =>
-        prev.map(item =>
-          item.id === activeAtendimento.id
-            ? { ...item, status: newStatus }
-            : item
-        )
-      );
+      try {
+        const response = await fetch(`/api/franchise/crm/kanban/${activeAtendimento.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            status: newStatus,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Falha ao atualizar status do atendimento");
+        }
+
+        // Refresh the data to get the updated state
+        refetch();
+      } catch (error) {
+        console.error("Erro ao atualizar status:", error);
+        alert("Erro ao atualizar status do atendimento");
+      }
     }
 
     setActiveId(null);
@@ -329,13 +390,21 @@ export default function AtendimentoPage() {
           </CardContent>
         </Card>
 
+        {/* Loading state */}
+        {isLoading && (
+          <div className="flex justify-center items-center py-8">
+            <div className="text-gray-500">Carregando atendimentos...</div>
+          </div>
+        )}
+
         {/* Kanban Board */}
-        <DndContext
-          sensors={sensors}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
-        >
+        {!isLoading && (
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
           <div className="flex gap-6 overflow-x-auto pb-4">
             <DroppableKanbanColumn
               title="Novo"
@@ -385,6 +454,7 @@ export default function AtendimentoPage() {
             ) : null}
           </DragOverlay>
         </DndContext>
+        )}
       </div>
     </Layout>
   );

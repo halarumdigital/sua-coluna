@@ -5728,6 +5728,123 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Rotas para gerenciar cards do kanban CRM
+  // GET /api/franchise/crm/kanban - Listar cards do kanban da franquia
+  app.get("/api/franchise/crm/kanban", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Usuário não autenticado" });
+      }
+
+      // Buscar franquia do usuário
+      const [franchise] = await db.select().from(franchises).where(eq(franchises.userId, userId));
+
+      if (!franchise) {
+        return res.status(404).json({ message: "Franquia não encontrada" });
+      }
+
+      // Buscar cards do kanban da franquia
+      const kanbanCards = await storage.getCrmKanbanCards(franchise.id);
+
+      res.json(kanbanCards);
+    } catch (error) {
+      console.error("Error fetching kanban cards:", error);
+      res.status(500).json({ message: "Erro ao buscar cards do kanban" });
+    }
+  });
+
+  // POST /api/franchise/crm/kanban - Criar novo card do kanban
+  app.post("/api/franchise/crm/kanban", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Usuário não autenticado" });
+      }
+
+      // Buscar franquia do usuário
+      const [franchise] = await db.select().from(franchises).where(eq(franchises.userId, userId));
+
+      if (!franchise) {
+        return res.status(404).json({ message: "Franquia não encontrada" });
+      }
+
+      const cardData = {
+        ...req.body,
+        franchiseId: franchise.id,
+      };
+
+      const newCard = await storage.createCrmKanbanCard(cardData);
+
+      res.status(201).json(newCard);
+    } catch (error) {
+      console.error("Error creating kanban card:", error);
+      res.status(500).json({ message: "Erro ao criar card do kanban" });
+    }
+  });
+
+  // PUT /api/franchise/crm/kanban/:id - Atualizar card do kanban
+  app.put("/api/franchise/crm/kanban/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Usuário não autenticado" });
+      }
+      const cardId = req.params.id;
+
+      // Buscar franquia do usuário
+      const [franchise] = await db.select().from(franchises).where(eq(franchises.userId, userId));
+
+      if (!franchise) {
+        return res.status(404).json({ message: "Franquia não encontrada" });
+      }
+
+      // Verificar se o card pertence à franquia
+      const existingCard = await storage.getCrmKanbanCard(cardId);
+      if (!existingCard || existingCard.franchiseId !== franchise.id) {
+        return res.status(404).json({ message: "Card não encontrado" });
+      }
+
+      const updatedCard = await storage.updateCrmKanbanCard(cardId, req.body);
+
+      res.json(updatedCard);
+    } catch (error) {
+      console.error("Error updating kanban card:", error);
+      res.status(500).json({ message: "Erro ao atualizar card do kanban" });
+    }
+  });
+
+  // DELETE /api/franchise/crm/kanban/:id - Deletar card do kanban
+  app.delete("/api/franchise/crm/kanban/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Usuário não autenticado" });
+      }
+      const cardId = req.params.id;
+
+      // Buscar franquia do usuário
+      const [franchise] = await db.select().from(franchises).where(eq(franchises.userId, userId));
+
+      if (!franchise) {
+        return res.status(404).json({ message: "Franquia não encontrada" });
+      }
+
+      // Verificar se o card pertence à franquia
+      const existingCard = await storage.getCrmKanbanCard(cardId);
+      if (!existingCard || existingCard.franchiseId !== franchise.id) {
+        return res.status(404).json({ message: "Card não encontrado" });
+      }
+
+      await storage.deleteCrmKanbanCard(cardId);
+
+      res.json({ message: "Card deletado com sucesso" });
+    } catch (error) {
+      console.error("Error deleting kanban card:", error);
+      res.status(500).json({ message: "Erro ao deletar card do kanban" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

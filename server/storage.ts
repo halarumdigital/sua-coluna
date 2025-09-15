@@ -28,6 +28,7 @@ import {
   customAIAgents,
   agentConversationContext,
   franchiseClients,
+  crmKanbanCards,
   type User,
   type UpsertUser,
   // TIPOS REMOVIDOS - TABELAS NÃO MAIS UTILIZADAS
@@ -92,6 +93,10 @@ import {
   type InsertFranchiseClient,
   type CreateFranchiseClient,
   type UpdateFranchiseClient,
+  type CrmKanbanCard,
+  type InsertCrmKanbanCard,
+  type CreateCrmKanbanCard,
+  type UpdateCrmKanbanCard,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, count, sum, sql, like, gte, lte, or, between, asc } from "drizzle-orm";
@@ -3189,6 +3194,102 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error("Error ensuring whatsapp_instance_agent_bindings table:", error);
     }
+  }
+
+  // CRM Kanban Cards operations
+  async getCrmKanbanCards(franchiseId: string): Promise<CrmKanbanCard[]> {
+    return await db
+      .select()
+      .from(crmKanbanCards)
+      .where(eq(crmKanbanCards.franchiseId, franchiseId))
+      .orderBy(desc(crmKanbanCards.createdAt));
+  }
+
+  async getCrmKanbanCard(id: string): Promise<CrmKanbanCard | undefined> {
+    const [card] = await db
+      .select()
+      .from(crmKanbanCards)
+      .where(eq(crmKanbanCards.id, id))
+      .limit(1);
+    return card;
+  }
+
+  async getCrmKanbanCardByPhone(franchiseId: string, phone: string): Promise<CrmKanbanCard | undefined> {
+    const [card] = await db
+      .select()
+      .from(crmKanbanCards)
+      .where(and(
+        eq(crmKanbanCards.franchiseId, franchiseId),
+        eq(crmKanbanCards.clientPhone, phone)
+      ))
+      .limit(1);
+    return card;
+  }
+
+  async createCrmKanbanCard(cardData: InsertCrmKanbanCard): Promise<CrmKanbanCard> {
+    const [newCard] = await db
+      .insert(crmKanbanCards)
+      .values(cardData)
+      .returning();
+    return newCard;
+  }
+
+  async createOrUpdateCrmKanbanCard(
+    franchiseId: string,
+    phone: string,
+    name: string,
+    conversationId?: string,
+    lastMessageDate?: Date
+  ): Promise<CrmKanbanCard> {
+    // First try to find existing card
+    const existingCard = await this.getCrmKanbanCardByPhone(franchiseId, phone);
+
+    if (existingCard) {
+      // Update existing card with new message date
+      const updateData: Partial<InsertCrmKanbanCard> = {
+        lastMessageDate: lastMessageDate || new Date(),
+      };
+
+      // Update conversation ID if provided
+      if (conversationId) {
+        updateData.conversationId = conversationId;
+      }
+
+      await db
+        .update(crmKanbanCards)
+        .set(updateData)
+        .where(eq(crmKanbanCards.id, existingCard.id));
+
+      // Return updated card
+      return await this.getCrmKanbanCard(existingCard.id) as CrmKanbanCard;
+    } else {
+      // Create new card
+      const cardData: InsertCrmKanbanCard = {
+        franchiseId,
+        clientName: name,
+        clientPhone: phone,
+        type: "Consulta",
+        priority: "media",
+        status: "novo",
+        lastMessageDate: lastMessageDate || new Date(),
+        conversationId: conversationId || null,
+      };
+
+      return await this.createCrmKanbanCard(cardData);
+    }
+  }
+
+  async updateCrmKanbanCard(id: string, cardData: Partial<InsertCrmKanbanCard>): Promise<CrmKanbanCard> {
+    await db
+      .update(crmKanbanCards)
+      .set(cardData)
+      .where(eq(crmKanbanCards.id, id));
+
+    return await this.getCrmKanbanCard(id) as CrmKanbanCard;
+  }
+
+  async deleteCrmKanbanCard(id: string): Promise<void> {
+    await db.delete(crmKanbanCards).where(eq(crmKanbanCards.id, id));
   }
 
   private async ensureClientWhatsappInstanceAgentBindingsTable(): Promise<void> {

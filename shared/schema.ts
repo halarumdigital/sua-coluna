@@ -739,6 +739,8 @@ export const whatsappInstanceAgentBindingsRelations = relations(whatsappInstance
   agent: one(whatsappAgents, { fields: [whatsappInstanceAgentBindings.agentId], references: [whatsappAgents.id] }),
 }));
 
+
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -1349,3 +1351,65 @@ export const updateFranchiseClientSchema = createFranchiseClientSchema.partial()
 
 export type CreateFranchiseClient = z.infer<typeof createFranchiseClientSchema>;
 export type UpdateFranchiseClient = z.infer<typeof updateFranchiseClientSchema>;
+
+// CRM Kanban Cards - Cards de atendimento para o sistema CRM
+export const crmKanbanCards = mysqlTable("crm_kanban_cards", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`(uuid())`),
+  franchiseId: varchar("franchise_id", { length: 36 }).references(() => franchises.id).notNull(),
+
+  // Dados do cliente
+  clientName: varchar("client_name", { length: 255 }).notNull(),
+  clientPhone: varchar("client_phone", { length: 20 }).notNull(),
+
+  // Dados do atendimento
+  type: varchar("type", { length: 100 }).notNull().default("Consulta"),
+  priority: varchar("priority", { length: 20 }).notNull().default("media"), // alta, media, baixa
+  status: varchar("status", { length: 20 }).notNull().default("novo"), // novo, atendimento, agendado, finalizado
+
+  // Agendamento (opcional)
+  scheduledDate: timestamp("scheduled_date"),
+  scheduledTime: varchar("scheduled_time", { length: 10 }),
+
+  // Observações
+  notes: text("notes"),
+
+  // Dados de rastreamento
+  lastMessageDate: timestamp("last_message_date"),
+  conversationId: varchar("conversation_id", { length: 36 }).references(() => whatsappConversations.id),
+
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_crm_kanban_franchise").on(table.franchiseId),
+  index("idx_crm_kanban_phone").on(table.clientPhone),
+  index("idx_crm_kanban_status").on(table.status),
+  index("idx_crm_kanban_priority").on(table.priority),
+  index("idx_crm_kanban_conversation").on(table.conversationId),
+]);
+
+// Schema para criação de card do kanban
+export const createCrmKanbanCardSchema = z.object({
+  clientName: z.string().min(1, "Nome do cliente é obrigatório"),
+  clientPhone: z.string().min(1, "Telefone do cliente é obrigatório"),
+  type: z.string().default("Consulta"),
+  priority: z.enum(["alta", "media", "baixa"]).default("media"),
+  scheduledDate: z.string().optional(),
+  scheduledTime: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+// Schema para atualização de card do kanban
+export const updateCrmKanbanCardSchema = createCrmKanbanCardSchema.partial().extend({
+  status: z.enum(["novo", "atendimento", "agendado", "finalizado"]).optional(),
+});
+
+export type CrmKanbanCard = typeof crmKanbanCards.$inferSelect;
+export type InsertCrmKanbanCard = typeof crmKanbanCards.$inferInsert;
+export type CreateCrmKanbanCard = z.infer<typeof createCrmKanbanCardSchema>;
+export type UpdateCrmKanbanCard = z.infer<typeof updateCrmKanbanCardSchema>;
+
+// CRM Kanban Cards relations
+export const crmKanbanCardsRelations = relations(crmKanbanCards, ({ one }) => ({
+  franchise: one(franchises, { fields: [crmKanbanCards.franchiseId], references: [franchises.id] }),
+  conversation: one(whatsappConversations, { fields: [crmKanbanCards.conversationId], references: [whatsappConversations.id] }),
+}));

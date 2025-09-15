@@ -124,6 +124,24 @@ export class WhatsAppAIHandler {
         });
       }
 
+      // Criar ou atualizar card do kanban CRM quando um usuário envia uma mensagem
+      try {
+        const contactName = messageObj.key?.pushName || messageObj.pushName || `Cliente ${phoneNumber}`;
+        console.log(`📋 Criando/atualizando card do kanban para: ${phoneNumber}, nome: ${contactName}`);
+
+        const kanbanCard = await storage.createOrUpdateCrmKanbanCard(
+          instance.franchiseId,
+          phoneNumber,
+          contactName,
+          conversation.id,
+          timestamp
+        );
+        console.log(`✅ Card do kanban criado/atualizado: ${kanbanCard.id} - Status: ${kanbanCard.status}`);
+      } catch (error) {
+        console.error('❌ Erro ao criar/atualizar card do kanban:', error);
+        // Continuar o fluxo mesmo se falhar a criação do card
+      }
+
       // Buscar contexto de conversação (últimas mensagens)
       const conversationContext = await storage.getAgentContext(conversation.id, activeBinding.agentId, 50);
       console.log(`📖 Contexto encontrado: ${conversationContext.length} mensagens`);

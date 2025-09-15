@@ -17,10 +17,10 @@ async function configureWebhookEvents() {
   const instanceKey = 'deploy-gilliard';
   const webhookUrl = 'https://suacoluna.gilliard.dev.br/api/franchise/whatsapp-webhook/deploy-gilliard';
 
-  console.log('🔧 Configurando webhook para receber eventos de mensagem...\n');
+  console.log('🔧 Configurando webhook para receber eventos de mensagem e chat...\n');
 
   try {
-    // Configure webhook with all message events
+    // Configure webhook with all message and chat events
     const webhookConfig = {
       webhook: {
         enabled: true,
@@ -28,7 +28,10 @@ async function configureWebhookEvents() {
         events: [
           'MESSAGES_UPSERT',
           'MESSAGES_UPDATE',
-          'SEND_MESSAGE'
+          'SEND_MESSAGE',
+          'CHATS_UPSERT',
+          'CHATS_UPDATE',
+          'CHATS_SET'
         ],
         webhookByEvents: true,
         webhookBase64: false

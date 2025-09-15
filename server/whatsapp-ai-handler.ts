@@ -149,7 +149,7 @@ Responda considerando todo o contexto da conversa acima.`;
       }
 
       const responseText = aiResponse.response.trim();
-      console.log(`🤖 Resposta gerada: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);      
+      console.log(`🤖 Resposta gerada: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);       
 
       // Salvar resposta do agente no contexto
       await storage.addToAgentContext({
@@ -210,47 +210,20 @@ Responda considerando todo o contexto da conversa acima.`;
   async handleClientWebhook(instanceKey: string, webhookData: any): Promise<void> {
     try {
       console.log(`📨 Processing client webhook for instance: ${instanceKey}`);
+      console.log(`📋 Webhook event: ${webhookData.event}`);
       console.log(`📋 Webhook data structure:`, JSON.stringify(webhookData, null, 2));
       
-      // Check if this is a message event (only process upsert for new messages)
+      // Process message events
       if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT') {
-        // Handle different webhook data structures
-        let messages = [];
-        
-        if (webhookData.data?.messages) {
-          // Format: { data: { messages: [...] } }
-          messages = webhookData.data.messages;
-        } else if (webhookData.data?.key && webhookData.data?.message) {
-          // Format: Evolution API { data: { key, message } }
-          messages = [webhookData.data];
-        } else if (webhookData.messages) {
-          // Format: { messages: [...] }
-          messages = webhookData.messages;
-        } else if (webhookData.key && webhookData.message) {
-          // Format: Direct message object (Evolution API format)
-          messages = [webhookData];
-        }
-        
-        console.log(`📬 Processing ${messages.length} message(s)`);
-        
-        for (const message of messages) {
-          console.log(`📨 Message details:`, {
-            fromMe: message.key?.fromMe,
-            hasMessage: !!message.message,
-            messageType: message.messageType,
-            remoteJid: message.key?.remoteJid
-          });
-          
-          // Only process incoming messages (not sent by us)
-          if (!message.key?.fromMe && message.message) {
-            console.log(`✅ Processing incoming message from ${message.key.remoteJid}`);
-            await this.handleIncomingMessage(instanceKey, message);
-          } else {
-            console.log(`⏭️ Skipping message: fromMe=${message.key?.fromMe}, hasMessage=${!!message.message}`);
-          }
-        }
-      } else {
-        console.log(`⏭️ Skipping non-message event: ${webhookData.event}`);
+        await this.processMessageEvents(instanceKey, webhookData);
+      }
+      // Process chat events (new functionality)
+      else if (webhookData.event === 'chats.update' || webhookData.event === 'CHATS_UPDATE' ||
+               webhookData.event === 'chats.upsert' || webhookData.event === 'CHATS_UPSERT') {
+        await this.processChatEvents(instanceKey, webhookData);
+      }
+      else {
+        console.log(`⏭️ Skipping non-message/chat event: ${webhookData.event}`);
       }
     } catch (error) {
       console.error('❌ Error processing client webhook:', error);
@@ -260,31 +233,116 @@ Responda considerando todo o contexto da conversa acima.`;
   async handleAdminWebhook(instanceKey: string, webhookData: any): Promise<void> {
     try {
       console.log(`📨 Processing admin webhook for instance: ${instanceKey}`);
+      console.log(`📋 Webhook event: ${webhookData.event}`);
       console.log(`📋 Webhook data structure:`, JSON.stringify(webhookData, null, 2));
       
-      // Check if this is a message event (only process upsert for new messages)
+      // Process message events
       if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT') {
-        // Handle different webhook data structures
+        await this.processMessageEvents(instanceKey, webhookData);
+      }
+      // Process chat events (new functionality)
+      else if (webhookData.event === 'chats.update' || webhookData.event === 'CHATS_UPDATE' ||
+               webhookData.event === 'chats.upsert' || webhookData.event === 'CHATS_UPSERT') {
+        await this.processChatEvents(instanceKey, webhookData);
+      }
+      else {
+        console.log(`⏭️ Skipping non-message/chat event: ${webhookData.event}`);
+      }
+    } catch (error) {
+      console.error('❌ Error processing admin webhook:', error);
+    }
+  }
+
+  private async processMessageEvents(instanceKey: string, webhookData: any): Promise<void> {
+    try {
+      console.log(`📬 Processing message events for instance: ${instanceKey}`);
+      
+      // Handle different webhook data structures
+      let messages = [];
+      
+      if (webhookData.data?.messages) {
+        // Format: { data: { messages: [...] } }
+        messages = webhookData.data.messages;
+      } else if (webhookData.data?.key && webhookData.data?.message) {
+        // Format: Evolution API { data: { key, message } }
+        messages = [webhookData.data];
+      } else if (webhookData.messages) {
+        // Format: { messages: [...] }
+        messages = webhookData.messages;
+      } else if (webhookData.key && webhookData.message) {
+        // Format: Direct message object (Evolution API format)
+        messages = [webhookData];
+      }
+      
+      console.log(`📬 Processing ${messages.length} message(s)`);
+      
+      for (const message of messages) {
+        console.log(`📨 Message details:`, {
+          fromMe: message.key?.fromMe,
+          hasMessage: !!message.message,
+          messageType: message.messageType,
+          remoteJid: message.key?.remoteJid
+        });
+        
+        // Only process incoming messages (not sent by us)
+        if (!message.key?.fromMe && message.message) {
+          console.log(`✅ Processing incoming message from ${message.key.remoteJid}`);
+          await this.handleIncomingMessage(instanceKey, message);
+        } else {
+          console.log(`⏭️ Skipping message: fromMe=${message.key?.fromMe}, hasMessage=${!!message.message}`);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error processing message events:', error);
+    }
+  }
+
+  private async processChatEvents(instanceKey: string, webhookData: any): Promise<void> {
+    try {
+      console.log(`💬 Processing chat events for instance: ${instanceKey}`);
+      
+      // Extract chat data from different possible structures
+      let chats = [];
+      
+      if (webhookData.data?.chats) {
+        // Format: { data: { chats: [...] } }
+        chats = webhookData.data.chats;
+      } else if (webhookData.data?.key && webhookData.data?.message) {
+        // Format: Evolution API { data: { key, message } } - treat as single chat
+        chats = [webhookData.data];
+      } else if (webhookData.chats) {
+        // Format: { chats: [...] }
+        chats = webhookData.chats;
+      } else if (webhookData.key && webhookData.message) {
+        // Format: Direct chat object (Evolution API format)
+        chats = [webhookData];
+      }
+      
+      console.log(`💬 Processing ${chats.length} chat(s)`);
+      
+      for (const chat of chats) {
+        console.log(`💬 Chat details:`, {
+          id: chat.id,
+          remoteJid: chat.remoteJid,
+          hasMessages: !!chat.messages,
+          hasLastMessage: !!chat.lastMessage,
+          messageCount: chat.messages ? chat.messages.length : 0
+        });
+        
+        // Extract messages from chat
         let messages = [];
         
-        if (webhookData.data?.messages) {
-          // Format: { data: { messages: [...] } }
-          messages = webhookData.data.messages;
-        } else if (webhookData.data?.key && webhookData.data?.message) {
-          // Format: Evolution API { data: { key, message } }
-          messages = [webhookData.data];
-        } else if (webhookData.messages) {
-          // Format: { messages: [...] }
-          messages = webhookData.messages;
-        } else if (webhookData.key && webhookData.message) {
-          // Format: Direct message object (Evolution API format)
-          messages = [webhookData];
+        if (chat.messages && Array.isArray(chat.messages)) {
+          messages = chat.messages;
+        } else if (chat.lastMessage) {
+          messages = [chat.lastMessage];
         }
         
-        console.log(`📬 Processing ${messages.length} message(s)`);
+        console.log(`📨 Found ${messages.length} message(s) in chat`);
         
+        // Process each message in the chat
         for (const message of messages) {
-          console.log(`📨 Message details:`, {
+          console.log(`📨 Chat message details:`, {
             fromMe: message.key?.fromMe,
             hasMessage: !!message.message,
             messageType: message.messageType,
@@ -293,17 +351,15 @@ Responda considerando todo o contexto da conversa acima.`;
           
           // Only process incoming messages (not sent by us)
           if (!message.key?.fromMe && message.message) {
-            console.log(`✅ Processing incoming message from ${message.key.remoteJid}`);
+            console.log(`✅ Processing incoming chat message from ${message.key.remoteJid}`);
             await this.handleIncomingMessage(instanceKey, message);
           } else {
-            console.log(`⏭️ Skipping message: fromMe=${message.key?.fromMe}, hasMessage=${!!message.message}`);
+            console.log(`⏭️ Skipping chat message: fromMe=${message.key?.fromMe}, hasMessage=${!!message.message}`);
           }
         }
-      } else {
-        console.log(`⏭️ Skipping non-message event: ${webhookData.event}`);
       }
     } catch (error) {
-      console.error('❌ Error processing admin webhook:', error);
+      console.error('❌ Error processing chat events:', error);
     }
   }
 
@@ -369,4 +425,4 @@ Responda considerando todo o contexto da conversa acima.`;
   }
 }
 
-export const whatsappAIHandler = new WhatsAppAIHandler(); 
+export const whatsappAIHandler = new WhatsAppAIHandler();

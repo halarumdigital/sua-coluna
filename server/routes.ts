@@ -974,10 +974,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied - Admin/Franchisor only" });
       }
 
-      const { aiSettingsSchema } = await import("@shared/schema");
-      const validatedData = aiSettingsSchema.parse(req.body);
+      // Only super_root can modify all AI settings, admin/franchisor can only modify temperature and systemPrompt
+      if (user?.role === 'super_root') {
+        const { aiSettingsSchema } = await import("@shared/schema");
+        const validatedData = aiSettingsSchema.parse(req.body);
+        await storage.saveAISettings(validatedData);
+      } else {
+        // For admin/franchisor, only allow temperature and systemPrompt changes
+        const { adminAiSettingsSchema } = await import("@shared/schema");
+        const validatedData = adminAiSettingsSchema.parse(req.body);
+        
+        // Get current settings to preserve API key, tokens, and model
+        const currentSettings = await storage.getAISettings();
+        const mergedSettings = {
+          ...currentSettings,
+          temperature: validatedData.temperature,
+          systemPrompt: validatedData.systemPrompt,
+        };
+        
+        await storage.saveAISettings(mergedSettings);
+      }
 
-      await storage.saveAISettings(validatedData);
       res.json({ message: "Configurações de IA salvas com sucesso" });
     } catch (error) {
       console.error("Error saving AI settings:", error);
@@ -1739,8 +1756,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Franquia não encontrada" });
       }
 
-      const { createFranchiseSchema } = await import("@shared/schema");
-      const validatedData = createFranchiseSchema.parse(req.body);
+      const { updateFranchiseSchema } = await import("@shared/schema");
+      const validatedData = updateFranchiseSchema.parse(req.body);
 
       const updatedFranchise = await storage.updateFranchise(id, validatedData);
       res.json({

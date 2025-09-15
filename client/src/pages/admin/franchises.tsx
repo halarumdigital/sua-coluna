@@ -8,19 +8,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { createFranchiseSchema } from "@shared/schema";
+import { createFranchiseSchema, updateFranchiseSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Store, MapPin, User, Phone, Mail, Building } from "lucide-react";
+import { Plus, Search, Store, MapPin, User, Phone, Mail, Building, Edit, Power, PowerOff, MoreVertical } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 export default function FranchisesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [selectedFranchise, setSelectedFranchise] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -45,6 +48,49 @@ export default function FranchisesPage() {
       });
       setDialogOpen(false);
       form.reset();
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateFranchiseMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      await apiRequest("PUT", `/api/admin/franchises/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/franchises"] });
+      toast({
+        title: "Sucesso",
+        description: "Franquia atualizada com sucesso",
+      });
+      setEditDialogOpen(false);
+      editForm.reset();
+      setSelectedFranchise(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      await apiRequest("PUT", `/api/admin/franchises/${id}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/franchises"] });
+      toast({
+        title: "Sucesso",
+        description: "Status da franquia alterado com sucesso",
+      });
     },
     onError: (error) => {
       toast({
@@ -88,11 +134,75 @@ export default function FranchisesPage() {
     },
   });
 
+  const editForm = useForm({
+    resolver: zodResolver(updateFranchiseSchema),
+    defaultValues: {
+      firstName: "",
+      lastName: "",
+      email: "",
+      phone: "",
+      password: "",
+      franchiseName: "",
+      franchiseCode: "",
+      street: "",
+      number: "",
+      complement: "",
+      neighborhood: "",
+      city: "",
+      state: "",
+      zipCode: "",
+      contactPhone: "",
+      managerName: "",
+      managerPhone: "",
+      managerEmail: "",
+    },
+  });
+
   const onSubmit = (data: any) => {
     createFranchiseMutation.mutate(data);
   };
 
-  const filteredFranchises = franchises?.filter((franchise: any) =>
+  const onEditSubmit = (data: any) => {
+    if (selectedFranchise) {
+      const { password, ...editData } = data;
+      if (password && password.trim()) {
+        editData.password = password;
+      }
+      updateFranchiseMutation.mutate({ id: selectedFranchise.id, data: editData });
+    }
+  };
+
+  const handleEditFranchise = (franchise: any) => {
+    setSelectedFranchise(franchise);
+    editForm.reset({
+      firstName: franchise.firstName || "",
+      lastName: franchise.lastName || "",
+      email: franchise.email || "",
+      phone: franchise.phone || "",
+      password: "",
+      franchiseName: franchise.franchiseName || "",
+      franchiseCode: franchise.franchiseCode || "",
+      street: franchise.street || "",
+      number: franchise.number || "",
+      complement: franchise.complement || "",
+      neighborhood: franchise.neighborhood || "",
+      city: franchise.city || "",
+      state: franchise.state || "",
+      zipCode: franchise.zipCode || "",
+      contactPhone: franchise.contactPhone || "",
+      managerName: franchise.managerName || "",
+      managerPhone: franchise.managerPhone || "",
+      managerEmail: franchise.managerEmail || "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleToggleStatus = (franchise: any) => {
+    const newStatus = franchise.status === "active" ? "inactive" : "active";
+    toggleStatusMutation.mutate({ id: franchise.id, status: newStatus });
+  };
+
+  const filteredFranchises = (franchises as any[])?.filter((franchise: any) =>
     franchise.franchiseName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     franchise.franchiseCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     franchise.managerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -164,6 +274,41 @@ export default function FranchisesPage() {
       header: "Criado em",
       render: (value: string) => new Date(value).toLocaleDateString("pt-BR"),
     },
+    {
+      key: "actions",
+      header: "Ações",
+      render: (value: any, row: any) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm">
+              <MoreVertical className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => handleEditFranchise(row)}>
+              <Edit className="w-4 h-4 mr-2" />
+              Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => handleToggleStatus(row)}
+              className={row.status === "active" ? "text-orange-600" : "text-green-600"}
+            >
+              {row.status === "active" ? (
+                <>
+                  <PowerOff className="w-4 h-4 mr-2" />
+                  Desativar
+                </>
+              ) : (
+                <>
+                  <Power className="w-4 h-4 mr-2" />
+                  Ativar
+                </>
+              )}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
   ];
 
   if (isLoading) {
@@ -187,16 +332,16 @@ export default function FranchisesPage() {
         {planUsage && (
           <div className="flex flex-wrap gap-4 text-sm text-gray-700">
             <div className="px-3 py-2 bg-gray-50 rounded border">
-              Franquias: {planUsage.usage?.franchisesCount} / {planUsage.plan?.maxFranchises}
+              Franquias: {(planUsage as any).usage?.franchisesCount} / {(planUsage as any).plan?.maxFranchises}
             </div>
             <div className="px-3 py-2 bg-gray-50 rounded border">
-              Números: {planUsage.usage?.phoneNumbersCount} / {planUsage.plan?.maxPhoneNumbers}
+              Números: {(planUsage as any).usage?.phoneNumbersCount} / {(planUsage as any).plan?.maxPhoneNumbers}
             </div>
             <div className="px-3 py-2 bg-gray-50 rounded border">
-              Agentes: {planUsage.usage?.agentsCount} / {planUsage.plan?.maxAgents}
+              Agentes: {(planUsage as any).usage?.agentsCount} / {(planUsage as any).plan?.maxAgents}
             </div>
             <div className="px-3 py-2 bg-gray-50 rounded border">
-              Prompts: {(planUsage.usage?.franchisePromptsCount ?? 0) + (planUsage.usage?.globalPromptsCount ?? 0)} / {planUsage.plan?.maxPrompts}
+              Prompts: {((planUsage as any).usage?.franchisePromptsCount ?? 0) + ((planUsage as any).usage?.globalPromptsCount ?? 0)} / {(planUsage as any).plan?.maxPrompts}
             </div>
           </div>
         )}
@@ -213,13 +358,13 @@ export default function FranchisesPage() {
             <DialogTrigger asChild>
               <Button
                 disabled={
-                  planUsage && planUsage.usage?.franchisesCount >= planUsage.plan?.maxFranchises
+                  planUsage && (planUsage as any).usage?.franchisesCount >= (planUsage as any).plan?.maxFranchises
                 }
                 onClick={() => {
-                  if (planUsage && planUsage.usage?.franchisesCount >= planUsage.plan?.maxFranchises) {
+                  if (planUsage && (planUsage as any).usage?.franchisesCount >= (planUsage as any).plan?.maxFranchises) {
                     toast({
                       title: "Limite atingido",
-                      description: `Seu plano permite no máximo ${planUsage.plan?.maxFranchises} franquias.`,
+                      description: `Seu plano permite no máximo ${(planUsage as any).plan?.maxFranchises} franquias.`,
                       variant: "destructive",
                     });
                     return;
@@ -566,6 +711,351 @@ export default function FranchisesPage() {
                       disabled={createFranchiseMutation.isPending}
                     >
                       {createFranchiseMutation.isPending ? "Criando..." : "Criar Franquia"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+
+          {/* Edit Franchise Dialog */}
+          <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Editar Franquia</DialogTitle>
+              </DialogHeader>
+              <Form {...editForm}>
+                <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-6">
+                  {/* Dados do Responsável */}
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center space-x-2 mb-4">
+                        <User className="w-5 h-5 text-blue-500" />
+                        <h3 className="text-lg font-semibold">Dados do Responsável</h3>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormField
+                          control={editForm.control}
+                          name="firstName"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Nome *</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Nome do responsável" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={editForm.control}
+                          name="lastName"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Sobrenome *</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Sobrenome do responsável" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={editForm.control}
+                          name="email"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Email *</FormLabel>
+                              <FormControl>
+                                <Input type="email" placeholder="email@exemplo.com" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={editForm.control}
+                          name="phone"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Telefone *</FormLabel>
+                              <FormControl>
+                                <Input placeholder="(11) 99999-9999" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={editForm.control}
+                          name="password"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Nova Senha (opcional)</FormLabel>
+                              <FormControl>
+                                <Input type="password" placeholder="Deixe em branco para manter a atual" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Dados da Franquia */}
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center space-x-2 mb-4">
+                        <Store className="w-5 h-5 text-green-500" />
+                        <h3 className="text-lg font-semibold">Dados da Franquia</h3>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormField
+                          control={editForm.control}
+                          name="franchiseName"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Nome da Franquia *</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Nome da franquia" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={editForm.control}
+                          name="franchiseCode"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Código da Franquia *</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Código único da franquia" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={editForm.control}
+                          name="contactPhone"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Telefone de Contato *</FormLabel>
+                              <FormControl>
+                                <Input placeholder="(11) 99999-9999" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Endereço */}
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center space-x-2 mb-4">
+                        <MapPin className="w-5 h-5 text-orange-500" />
+                        <h3 className="text-lg font-semibold">Endereço</h3>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="md:col-span-2">
+                          <FormField
+                            control={editForm.control}
+                            name="street"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Rua *</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="Nome da rua" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                        <FormField
+                          control={editForm.control}
+                          name="number"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Número *</FormLabel>
+                              <FormControl>
+                                <Input placeholder="123" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={editForm.control}
+                          name="complement"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Complemento</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Apto, Sala, etc." {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={editForm.control}
+                          name="neighborhood"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Bairro *</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Nome do bairro" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={editForm.control}
+                          name="zipCode"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>CEP *</FormLabel>
+                              <FormControl>
+                                <Input placeholder="00000-000" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={editForm.control}
+                          name="city"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Cidade *</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Nome da cidade" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={editForm.control}
+                          name="state"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Estado *</FormLabel>
+                              <FormControl>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Selecione o estado" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="AC">Acre</SelectItem>
+                                    <SelectItem value="AL">Alagoas</SelectItem>
+                                    <SelectItem value="AP">Amapá</SelectItem>
+                                    <SelectItem value="AM">Amazonas</SelectItem>
+                                    <SelectItem value="BA">Bahia</SelectItem>
+                                    <SelectItem value="CE">Ceará</SelectItem>
+                                    <SelectItem value="DF">Distrito Federal</SelectItem>
+                                    <SelectItem value="ES">Espírito Santo</SelectItem>
+                                    <SelectItem value="GO">Goiás</SelectItem>
+                                    <SelectItem value="MA">Maranhão</SelectItem>
+                                    <SelectItem value="MT">Mato Grosso</SelectItem>
+                                    <SelectItem value="MS">Mato Grosso do Sul</SelectItem>
+                                    <SelectItem value="MG">Minas Gerais</SelectItem>
+                                    <SelectItem value="PA">Pará</SelectItem>
+                                    <SelectItem value="PB">Paraíba</SelectItem>
+                                    <SelectItem value="PR">Paraná</SelectItem>
+                                    <SelectItem value="PE">Pernambuco</SelectItem>
+                                    <SelectItem value="PI">Piauí</SelectItem>
+                                    <SelectItem value="RJ">Rio de Janeiro</SelectItem>
+                                    <SelectItem value="RN">Rio Grande do Norte</SelectItem>
+                                    <SelectItem value="RS">Rio Grande do Sul</SelectItem>
+                                    <SelectItem value="RO">Rondônia</SelectItem>
+                                    <SelectItem value="RR">Roraima</SelectItem>
+                                    <SelectItem value="SC">Santa Catarina</SelectItem>
+                                    <SelectItem value="SP">São Paulo</SelectItem>
+                                    <SelectItem value="SE">Sergipe</SelectItem>
+                                    <SelectItem value="TO">Tocantins</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Gerente da Franquia */}
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center space-x-2 mb-4">
+                        <Building className="w-5 h-5 text-purple-500" />
+                        <h3 className="text-lg font-semibold">Gerente da Franquia</h3>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormField
+                          control={editForm.control}
+                          name="managerName"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Nome do Gerente *</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Nome do gerente" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={editForm.control}
+                          name="managerPhone"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Telefone do Gerente</FormLabel>
+                              <FormControl>
+                                <Input placeholder="(11) 99999-9999" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={editForm.control}
+                          name="managerEmail"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Email do Gerente</FormLabel>
+                              <FormControl>
+                                <Input type="email" placeholder="gerente@exemplo.com" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <div className="flex justify-end space-x-4">
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={() => setEditDialogOpen(false)}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button 
+                      type="submit" 
+                      disabled={updateFranchiseMutation.isPending}
+                    >
+                      {updateFranchiseMutation.isPending ? "Salvando..." : "Salvar Alterações"}
                     </Button>
                   </div>
                 </form>

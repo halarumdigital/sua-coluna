@@ -893,6 +893,12 @@ export const aiSettingsSchema = z.object({
   systemPrompt: z.string().min(1, "Prompt do sistema é obrigatório").default("Você é um assistente útil e prestativo."),
 });
 
+// Schema for admin-level AI settings (without API key, tokens, and model)
+export const adminAiSettingsSchema = z.object({
+  temperature: z.number().min(0).max(2).default(0.7),
+  systemPrompt: z.string().min(1, "Prompt do sistema é obrigatório").default("Você é um assistente útil e prestativo."),
+});
+
 // Types
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -988,6 +994,7 @@ export type UserRole = typeof userRoles.$inferSelect;
 export type InsertUserRole = z.infer<typeof insertUserRoleSchema>;
 export type CreateRole = z.infer<typeof createRoleSchema>;
 export type AISettings = z.infer<typeof aiSettingsSchema>;
+export type AdminAISettings = z.infer<typeof adminAiSettingsSchema>;
 
 // WhatsApp Agents types
 export type WhatsappAgent = typeof whatsappAgents.$inferSelect;
@@ -1183,6 +1190,13 @@ export type InsertWhatsappConversation = typeof whatsappConversations.$inferInse
 export type Franchise = typeof franchises.$inferSelect;
 export type InsertFranchise = typeof franchises.$inferInsert;
 export type CreateFranchise = z.infer<typeof createFranchiseSchema>;
+
+// Schema para atualização parcial de franquia (usado pelo admin)
+export const updateFranchiseSchema = createFranchiseSchema.partial().extend({
+  status: z.enum(["active", "inactive", "suspended"]).optional(),
+});
+
+export type UpdateFranchise = z.infer<typeof updateFranchiseSchema>;
 
 // Schema para edição de perfil da franquia
 export const editFranchiseProfileSchema = z.object({

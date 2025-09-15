@@ -15,20 +15,17 @@ import { Badge } from "@/components/ui/badge";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, Thermometer, Hash, MessageSquare, Send, Loader2, Plus, Edit, Trash2, Play, Sparkles, Settings } from "lucide-react";
+import { Bot, Thermometer, MessageSquare, Send, Loader2, Plus, Edit, Trash2, Play, Sparkles, Settings } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import type { AISettings } from "@shared/schema";
 import { createGlobalPromptSchema } from "@shared/schema";
+import type { AdminAISettings } from "@shared/schema";
 
 export default function AdminAIPage() {
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
-    const [formData, setFormData] = useState<AISettings>({
-        chatGptApiKey: "",
+    const [formData, setFormData] = useState<AdminAISettings>({
         temperature: 0.7,
-        maxTokens: 1000,
-        model: "gpt-3.5-turbo",
         systemPrompt: "Você é um assistente útil e prestativo.",
     });
 
@@ -67,7 +64,10 @@ export default function AdminAIPage() {
     // Update form data when settings are loaded
     React.useEffect(() => {
         if (aiSettings) {
-            setFormData(aiSettings);
+            setFormData({
+                temperature: aiSettings.temperature,
+                systemPrompt: aiSettings.systemPrompt,
+            });
         }
     }, [aiSettings]);
 
@@ -109,7 +109,7 @@ export default function AdminAIPage() {
 
     // Save AI settings mutation
     const saveSettingsMutation = useMutation({
-        mutationFn: async (data: AISettings) => {
+        mutationFn: async (data: AdminAISettings) => {
             const response = await fetch("/api/admin/ai-settings", {
                 method: "POST",
                 headers: {
@@ -198,7 +198,7 @@ export default function AdminAIPage() {
         saveSettingsMutation.mutate(formData);
     };
 
-    const handleInputChange = (field: keyof AISettings, value: any) => {
+    const handleInputChange = (field: keyof AdminAISettings, value: any) => {
         setFormData(prev => ({
             ...prev,
             [field]: value,
@@ -287,7 +287,11 @@ export default function AdminAIPage() {
                 credentials: "include",
                 body: JSON.stringify({
                     message: testMessage,
-                    settings: formData
+                    settings: {
+                        ...aiSettings,
+                        temperature: formData.temperature,
+                        systemPrompt: formData.systemPrompt
+                    }
                 }),
             });
 
@@ -414,32 +418,6 @@ export default function AdminAIPage() {
                         </CardContent>
                     </Card>
 
-                    {/* Max Tokens */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Hash className="w-5 h-5" />
-                                Tokens
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-2">
-                                <Label htmlFor="maxTokens">Quantidade Máxima de Tokens</Label>
-                                <Input
-                                    id="maxTokens"
-                                    type="number"
-                                    min="1"
-                                    max="4000"
-                                    value={formData.maxTokens}
-                                    onChange={(e) => handleInputChange("maxTokens", parseInt(e.target.value))}
-                                    required
-                                />
-                                <p className="text-sm text-gray-500">
-                                    Define o tamanho máximo das respostas (1-4000 tokens)
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
 
                     {/* System Prompt */}
                     <Card>

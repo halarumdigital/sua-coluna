@@ -11,7 +11,9 @@
       "Bash(npm install:*)",
       "Bash(node:*)",
       "Bash(mysql:*)",
-      "Bash(npm run migration:status:*)"
+      "Bash(npm run migration:status:*)",
+      "Bash(npm run migration:create:*)",
+      "Bash(npm run migration:run:*)"
     ],
     "deny": [],
     "ask": []

@@ -3227,11 +3227,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createCrmKanbanCard(cardData: InsertCrmKanbanCard): Promise<CrmKanbanCard> {
-    const [newCard] = await db
-      .insert(crmKanbanCards)
-      .values(cardData)
-      .returning();
-    return newCard;
+    console.log('📝 Tentando criar card com dados:', JSON.stringify(cardData, null, 2));
+
+    try {
+      // MySQL doesn't support returning(), so we need to insert and then fetch
+      await db
+        .insert(crmKanbanCards)
+        .values(cardData);
+
+      console.log('✅ Insert executado com sucesso');
+
+      // Fetch the created card
+      const [newCard] = await db
+        .select()
+        .from(crmKanbanCards)
+        .where(
+          and(
+            eq(crmKanbanCards.franchiseId, cardData.franchiseId),
+            eq(crmKanbanCards.clientPhone, cardData.clientPhone)
+          )
+        )
+        .orderBy(desc(crmKanbanCards.createdAt))
+        .limit(1);
+
+      console.log('📋 Card criado:', newCard);
+      return newCard;
+    } catch (error) {
+      console.error('❌ Erro detalhado ao criar card:', error);
+      throw error;
+    }
   }
 
   async createOrUpdateCrmKanbanCard(
@@ -3241,8 +3265,17 @@ export class DatabaseStorage implements IStorage {
     conversationId?: string,
     lastMessageDate?: Date
   ): Promise<CrmKanbanCard> {
+    console.log('🔍 createOrUpdateCrmKanbanCard chamado com:', {
+      franchiseId,
+      phone,
+      name,
+      conversationId,
+      lastMessageDate
+    });
+
     // First try to find existing card
     const existingCard = await this.getCrmKanbanCardByPhone(franchiseId, phone);
+    console.log('🔍 Card existente encontrado?', existingCard ? 'SIM' : 'NÃO');
 
     if (existingCard) {
       // Update existing card with new message date

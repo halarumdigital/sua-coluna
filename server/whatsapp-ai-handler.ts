@@ -213,7 +213,8 @@ Responda considerando todo o contexto da conversa acima.`;
       console.log(`📋 Webhook data structure:`, JSON.stringify(webhookData, null, 2));
       
       // Check if this is a message event
-      if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT') {
+      if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT' ||
+          webhookData.event === 'messages.update' || webhookData.event === 'MESSAGES_UPDATE') {
         // Handle different webhook data structures
         let messages = [];
         
@@ -263,7 +264,8 @@ Responda considerando todo o contexto da conversa acima.`;
       console.log(`📋 Webhook data structure:`, JSON.stringify(webhookData, null, 2));
       
       // Check if this is a message event
-      if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT') {
+      if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT' ||
+          webhookData.event === 'messages.update' || webhookData.event === 'MESSAGES_UPDATE') {
         // Handle different webhook data structures
         let messages = [];
         

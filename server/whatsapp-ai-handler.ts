@@ -89,32 +89,33 @@ export class WhatsAppAIHandler {
       const messageId = messageObj.key?.id || `msg_${Date.now()}`;
       const timestamp = new Date(messageObj.messageTimestamp ? messageObj.messageTimestamp * 1000 : Date.now());
 
+      // Sempre verificar e criar cliente se necessário, independente de existir conversa
+      try {
+        const contactName = messageObj.key?.pushName || messageObj.pushName || `Cliente ${phoneNumber}`;
+        console.log(`👤 Verificando/criando cliente automaticamente para o telefone: ${phoneNumber}, nome: ${contactName}`);
+
+        const client = await storage.getOrCreateClientFromWhatsApp(
+          instance.franchiseId,
+          phoneNumber,
+          contactName,
+          {
+            source: "whatsapp",
+            notes: "Cliente criado automaticamente via mensagem no WhatsApp"
+          }
+        );
+        console.log(`✅ Cliente verificado/criado com sucesso: ${client.id} - ${client.fullName}`);
+      } catch (error) {
+        console.error('❌ Erro ao verificar/criar cliente automaticamente:', error);
+        // Continuar o fluxo mesmo se falhar a criação do cliente
+      }
+
       let conversation = await storage.getWhatsappConversationByChatId(instance.id, chatId);
       if (!conversation) {
-        // Criar cliente automaticamente ao receber primeira mensagem
-        try {
-          const contactName = messageObj.key?.pushName || messageObj.pushName || `Cliente ${phoneNumber}`;
-          console.log(`👤 Criando cliente automaticamente para o telefone: ${phoneNumber}, nome: ${contactName}`);
-          const client = await storage.createClientFromWhatsApp(
-            instance.franchiseId,
-            phoneNumber,
-            contactName,
-            {
-              source: "whatsapp",
-              notes: "Cliente criado automaticamente via primeira mensagem no WhatsApp"
-            }
-          );
-          console.log(`✅ Cliente criado com sucesso: ${client.id} - ${client.fullName}`);
-        } catch (error) {
-          console.error('❌ Erro ao criar cliente automaticamente:', error);
-          // Não interromper o fluxo se falhar a criação do cliente
-        }
-
         conversation = await storage.createWhatsappConversation({
           instanceId: instance.id,
           chatId: chatId,
           phoneNumber: phoneNumber,
-          contactName: phoneNumber,
+          contactName: messageObj.key?.pushName || messageObj.pushName || phoneNumber,
           lastMessage: messageText,
           lastMessageAt: timestamp,
           unreadCount: 1,

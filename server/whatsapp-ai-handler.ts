@@ -212,9 +212,8 @@ Responda considerando todo o contexto da conversa acima.`;
       console.log(`📨 Processing client webhook for instance: ${instanceKey}`);
       console.log(`📋 Webhook data structure:`, JSON.stringify(webhookData, null, 2));
       
-      // Check if this is a message event
-      if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT' ||
-          webhookData.event === 'messages.update' || webhookData.event === 'MESSAGES_UPDATE') {
+      // Check if this is a message event (only process upsert for new messages)
+      if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT') {
         // Handle different webhook data structures
         let messages = [];
         
@@ -263,9 +262,8 @@ Responda considerando todo o contexto da conversa acima.`;
       console.log(`📨 Processing admin webhook for instance: ${instanceKey}`);
       console.log(`📋 Webhook data structure:`, JSON.stringify(webhookData, null, 2));
       
-      // Check if this is a message event
-      if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT' ||
-          webhookData.event === 'messages.update' || webhookData.event === 'MESSAGES_UPDATE') {
+      // Check if this is a message event (only process upsert for new messages)
+      if (webhookData.event === 'messages.upsert' || webhookData.event === 'MESSAGES_UPSERT') {
         // Handle different webhook data structures
         let messages = [];
         

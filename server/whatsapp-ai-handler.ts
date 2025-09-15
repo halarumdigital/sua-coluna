@@ -37,6 +37,13 @@ export class WhatsAppAIHandler {
         return;
       }
 
+      // Verificar se é um comando de edição de cliente
+      if (messageText.toLowerCase().startsWith('/editarcliente')) {
+        console.log('📝 Detectado comando de edição de cliente');
+        await this.handleEditClientCommand(instanceKey, phoneNumber, messageText);
+        return;
+      }
+
       // Verificar se a instância pertence a um cliente
       const instances = await storage.getWhatsappInstances();
       const instance = instances.find(inst => inst.instanceKey === instanceKey);
@@ -84,6 +91,25 @@ export class WhatsAppAIHandler {
 
       let conversation = await storage.getWhatsappConversationByChatId(instance.id, chatId);
       if (!conversation) {
+        // Criar cliente automaticamente ao receber primeira mensagem
+        try {
+          const contactName = messageObj.key?.pushName || messageObj.pushName || `Cliente ${phoneNumber}`;
+          console.log(`👤 Criando cliente automaticamente para o telefone: ${phoneNumber}, nome: ${contactName}`);
+          const client = await storage.createClientFromWhatsApp(
+            instance.franchiseId,
+            phoneNumber,
+            contactName,
+            {
+              source: "whatsapp",
+              notes: "Cliente criado automaticamente via primeira mensagem no WhatsApp"
+            }
+          );
+          console.log(`✅ Cliente criado com sucesso: ${client.id} - ${client.fullName}`);
+        } catch (error) {
+          console.error('❌ Erro ao criar cliente automaticamente:', error);
+          // Não interromper o fluxo se falhar a criação do cliente
+        }
+
         conversation = await storage.createWhatsappConversation({
           instanceId: instance.id,
           chatId: chatId,
@@ -485,6 +511,104 @@ Responda considerando todo o contexto da conversa acima.`;
     } catch (error) {
       console.error(`❌ Erro ao buscar mensagens recentes para ${remoteJid}:`, error);
     }
+  }
+
+  private async handleEditClientCommand(instanceKey: string, phoneNumber: string, messageText: string): Promise<void> {
+    try {
+      console.log('📝 Processando comando de edição de cliente...');
+      
+      // Extrair parâmetros do comando
+      // Formato esperado: /editarcliente email=novo@email.com nome=Novo Nome
+      const params = this.extractCommandParameters(messageText);
+      
+      if (!params.email) {
+        const response = '❌ Por favor, informe o email do cliente. Exemplo: /editarcliente email=novo@email.com';
+        await whatsappService.sendMessage(instanceKey, phoneNumber, response);
+        return;
+      }
+
+      // Encontrar a instância
+      const instances = await storage.getWhatsappInstances();
+      const instance = instances.find(inst => inst.instanceKey === instanceKey);
+      
+      if (!instance) {
+        console.log(`❌ Instância ${instanceKey} não encontrada`);
+        const response = '❌ Instância não encontrada';
+        await whatsappService.sendMessage(instanceKey, phoneNumber, response);
+        return;
+      }
+
+      // Buscar cliente pelo telefone
+      const franchiseClients = await storage.getFranchiseClients(instance.franchiseId);
+      const client = franchiseClients.find(c => c.phone === phoneNumber);
+      
+      if (!client) {
+        console.log(`❌ Cliente não encontrado para o telefone: ${phoneNumber}`);
+        const response = '❌ Cliente não encontrado. Por favor, envie uma mensagem primeiro para criar seu cadastro.';
+        await whatsappService.sendMessage(instanceKey, phoneNumber, response);
+        return;
+      }
+
+      console.log(`✅ Cliente encontrado: ${client.fullName} (${client.email})`);
+
+      // Preparar dados para atualização
+      const updateData: any = {};
+      if (params.email) updateData.email = params.email;
+      if (params.nome) updateData.fullName = params.nome;
+      if (params.cpf) updateData.cpf = params.cpf;
+      if (params.rua) updateData.street = params.rua;
+      if (params.numero) updateData.number = params.numero;
+      if (params.complemento) updateData.complement = params.complemento;
+      if (params.bairro) updateData.neighborhood = params.bairro;
+      if (params.cidade) updateData.city = params.cidade;
+      if (params.estado) updateData.state = params.estado;
+      if (params.cep) updateData.zipCode = params.cep;
+
+      // Verificar se há algo para atualizar
+      if (Object.keys(updateData).length === 0) {
+        const response = '❌ Nenhum parâmetro válido informado. Use: /editarcliente email=novo@email.com nome=Novo Nome';
+        await whatsappService.sendMessage(instanceKey, phoneNumber, response);
+        return;
+      }
+
+      // Atualizar cliente
+      const updatedClient = await storage.updateFranchiseClient(client.id, updateData);
+      console.log(`✅ Cliente atualizado com sucesso: ${updatedClient.fullName}`);
+
+      // Enviar confirmação
+      const response = `✅ Cliente atualizado com sucesso!\n\n` +
+        `Nome: ${updatedClient.fullName}\n` +
+        `Email: ${updatedClient.email}\n` +
+        `Telefone: ${updatedClient.phone}\n\n` +
+        `Se precisar de mais alterações, use o comando /editarcliente novamente.`;
+      
+      await whatsappService.sendMessage(instanceKey, phoneNumber, response);
+      
+    } catch (error) {
+      console.error('❌ Erro ao processar comando de edição de cliente:', error);
+      const response = '❌ Ocorreu um erro ao processar seu comando. Por favor, tente novamente.';
+      await whatsappService.sendMessage(instanceKey, phoneNumber, response);
+    }
+  }
+
+  private extractCommandParameters(messageText: string): Record<string, string> {
+    const params: Record<string, string> = {};
+    
+    // Remover o comando do início
+    const commandText = messageText.replace(/^\/editarcliente\s*/i, '').trim();
+    
+    // Extrair parâmetros no formato chave=valor
+    const paramMatches = commandText.match(/(\w+)=([^\s]+)/g);
+    
+    if (paramMatches) {
+      paramMatches.forEach(match => {
+        const [key, value] = match.split('=');
+        params[key.toLowerCase()] = value;
+      });
+    }
+    
+    console.log('📋 Parâmetros extraídos:', params);
+    return params;
   }
 
   private async saveConversationAndMessage(instanceKey: string, phoneNumber: string, messageText: string, messageObj: any): Promise<void> {

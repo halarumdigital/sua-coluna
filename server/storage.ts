@@ -27,6 +27,7 @@ import {
   clientWhatsappInstanceAgentBindings,
   customAIAgents,
   agentConversationContext,
+  franchiseClients,
   type User,
   type UpsertUser,
   // TIPOS REMOVIDOS - TABELAS NÃO MAIS UTILIZADAS
@@ -87,6 +88,10 @@ import {
   // type InsertClientWhatsappInstanceAgentBinding,
   type AgentConversationContext,
   type InsertAgentConversationContext,
+  type FranchiseClient,
+  type InsertFranchiseClient,
+  type CreateFranchiseClient,
+  type UpdateFranchiseClient,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, count, sum, sql, like, gte, lte, or, between, asc } from "drizzle-orm";
@@ -341,21 +346,25 @@ export class DatabaseStorage implements IStorage {
     
     if (existingUser) {
       // Update existing user
-      const [updatedUser] = await db
+      await db
         .update(users)
         .set({
           ...userData,
           updatedAt: new Date(),
         })
-        .where(eq(users.id, userData.id))
-        .returning();
+        .where(eq(users.id, userData.id));
+      
+      // Get the updated user
+      const [updatedUser] = await db.select().from(users).where(eq(users.id, userData.id));
       return updatedUser;
     } else {
       // Insert new user
-      const [newUser] = await db
+      await db
         .insert(users)
-        .values(userData)
-        .returning();
+        .values(userData);
+      
+      // Get the newly created user
+      const [newUser] = await db.select().from(users).where(eq(users.email, userData.email)).limit(1);
       return newUser;
     }
   }
@@ -380,7 +389,7 @@ export class DatabaseStorage implements IStorage {
   }
   */
 
-  async getClientByUserId(userId: string): Promise<Client | undefined> {
+  async getClientByUserId(userId: string): Promise<any | undefined> {
     // Na nova estrutura, usuários não são diretamente clientes
     // Usuários podem ser donos de franquias, e clientes pertencem a franquias
     // Este método agora retorna undefined pois a relação mudou
@@ -465,16 +474,33 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createTeamMember(member: InsertTeamMember): Promise<TeamMember> {
-    const [newMember] = await db.insert(teamMembers).values(member).returning();
+    await db
+      .insert(teamMembers)
+      .values(member);
+    
+    // Get the newly created member
+    const [newMember] = await db
+      .select()
+      .from(teamMembers)
+      .where(eq(teamMembers.id, member.id))
+      .limit(1);
+    
     return newMember;
   }
 
   async updateTeamMember(id: string, member: Partial<InsertTeamMember>): Promise<TeamMember> {
-    const [updatedMember] = await db
+    await db
       .update(teamMembers)
       .set({ ...member, updatedAt: new Date() })
+      .where(eq(teamMembers.id, id));
+
+    // Get the updated member
+    const [updatedMember] = await db
+      .select()
+      .from(teamMembers)
       .where(eq(teamMembers.id, id))
-      .returning();
+      .limit(1);
+    
     return updatedMember;
   }
 
@@ -482,7 +508,8 @@ export class DatabaseStorage implements IStorage {
     await db.delete(teamMembers).where(eq(teamMembers.id, id));
   }
 
-  // Project operations
+  // Project operations - REMOVIDAS - TABELA PROJECTS NÃO MAIS UTILIZADA
+  /*
   async getProjects(): Promise<Project[]> {
     return await db.select().from(projects).orderBy(desc(projects.createdAt));
   }
@@ -530,8 +557,10 @@ export class DatabaseStorage implements IStorage {
   async deleteProject(id: string): Promise<void> {
     await db.delete(projects).where(eq(projects.id, id));
   }
+  */
 
-  // Invoice operations
+  // Invoice operations - REMOVIDAS - TABELA INVOICES NÃO MAIS UTILIZADA
+  /*
   async getInvoices(): Promise<Invoice[]> {
     return await db.select().from(invoices).orderBy(desc(invoices.createdAt));
   }
@@ -566,6 +595,7 @@ export class DatabaseStorage implements IStorage {
   async deleteInvoice(id: string): Promise<void> {
     await db.delete(invoices).where(eq(invoices.id, id));
   }
+  */
 
   // Dashboard stats
   async getAdminStats(): Promise<{
@@ -575,28 +605,27 @@ export class DatabaseStorage implements IStorage {
     teamMembers: number;
   }> {
     // const [clientCount] = await db.select({ count: count() }).from(clients); // TABELA REMOVIDA
-    const [revenueSum] = await db
-      .select({ sum: sum(invoices.amount) })
-      .from(invoices)
-      .where(eq(invoices.status, "paid"));
-    const [projectCount] = await db
-      .select({ count: count() })
-      .from(projects)
-      .where(eq(projects.status, "active"));
+    // const [revenueSum] = await db
+    //   .select({ sum: sum(invoices.amount) })
+    //   .from(invoices)
+    //   .where(eq(invoices.status, "paid"));
+    // const [projectCount] = await db
+    //   .select({ count: count() })
+    //   .from(projects)
+    //   .where(eq(projects.status, "active"));
     const [memberCount] = await db.select({ count: count() }).from(teamMembers);
 
     return {
       totalClients: 0, // TABELA CLIENTS REMOVIDA
-      totalRevenue: Number(revenueSum.sum || 0),
-      activeProjects: projectCount.count,
+      totalRevenue: 0, // TABELA INVOICES REMOVIDA
+      activeProjects: 0, // TABELA PROJECTS REMOVIDA
       teamMembers: memberCount.count,
     };
   }
 
   // MÉTODO REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
-// async getClientStats(clientId: string): Promise<{
-    // MÉTODO REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
-    /*
+  /*
+  async getClientStats(clientId: string): Promise<{
     pendingInvoices: number;
     totalOpen: number;
     nextDue: string | null;
@@ -631,20 +660,9 @@ export class DatabaseStorage implements IStorage {
     pendingTasks: number;
     completedToday: number;
   }> {
-    const [activeCount] = await db
-      .select({ count: count() })
-      .from(projects)
-      .innerJoin(projectAssignments, eq(projects.id, projectAssignments.projectId))
-      .where(
-        and(
-          eq(projectAssignments.teamMemberId, teamMemberId),
-          eq(projects.status, "active")
-        )
-      );
-
     // For now, using mock values for tasks as we don't have a tasks table
     return {
-      activeProjects: activeCount.count,
+      activeProjects: 0, // TABELA PROJECTS REMOVIDA
       pendingTasks: 12, // This would come from a tasks table in a real implementation
       completedToday: 8, // This would come from a tasks table in a real implementation
     };
@@ -844,7 +862,7 @@ export class DatabaseStorage implements IStorage {
     const hashedPassword = await bcrypt.hash(data.password, 10);
     
     // Create the user first
-    const [newUser] = await db
+    await db
       .insert(users)
       .values({
         email: data.email,
@@ -854,11 +872,17 @@ export class DatabaseStorage implements IStorage {
         password: hashedPassword,
         role: data.role,
         active: true,
-      })
-      .returning();
+      });
+    
+    // Get the created user
+    const [newUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, data.email))
+      .limit(1);
 
     // Create the team member linked to the user
-    const [newTeamMember] = await db
+    await db
       .insert(teamMembers)
       .values({
         userId: newUser.id,
@@ -866,13 +890,20 @@ export class DatabaseStorage implements IStorage {
         department: data.department,
         salary: data.salary ? data.salary.toString() : null,
         hireDate: data.hireDate ? new Date(data.hireDate) : new Date(),
-      })
-      .returning();
+      });
+    
+    // Get the newly created team member
+    const [newTeamMember] = await db
+      .select()
+      .from(teamMembers)
+      .where(eq(teamMembers.userId, newUser.id))
+      .limit(1);
 
     return newTeamMember;
   }
 
-  // Client with user creation
+  // Client with user creation - REMOVIDO - TABELA CLIENTS NÃO MAIS UTILIZADA
+  /*
   async createClientWithUser(data: any): Promise<Client> {
     const bcrypt = await import('bcrypt');
     
@@ -961,11 +992,12 @@ export class DatabaseStorage implements IStorage {
     const [newClient] = await db
       .select()
       .from(clients)
-      .where(eq(clients.id, newClient.id))
+      .where(eq(clients.userId, newUser.id))
       .limit(1);
 
     return newClient;
   }
+  */
 
   // Roles operations
   async getRoles(): Promise<UserRole[]> {
@@ -986,7 +1018,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createRole(data: any): Promise<UserRole> {
-    const [newRole] = await db
+    await db
       .insert(userRoles)
       .values({
         name: data.name,
@@ -995,13 +1027,20 @@ export class DatabaseStorage implements IStorage {
         permissions: JSON.stringify(data.permissions || []),
         isSystem: false,
         active: data.active,
-      })
-      .returning();
+      });
+    
+    // Get the newly created role
+    const [newRole] = await db
+      .select()
+      .from(userRoles)
+      .where(eq(userRoles.name, data.name))
+      .limit(1);
+    
     return newRole;
   }
 
   async updateRole(id: string, data: any): Promise<UserRole> {
-    const [updatedRole] = await db
+    await db
       .update(userRoles)
       .set({
         name: data.name,
@@ -1011,8 +1050,15 @@ export class DatabaseStorage implements IStorage {
         active: data.active,
         updatedAt: new Date(),
       })
+      .where(eq(userRoles.id, id));
+
+    // Get the updated role
+    const [updatedRole] = await db
+      .select()
+      .from(userRoles)
       .where(eq(userRoles.id, id))
-      .returning();
+      .limit(1);
+    
     return updatedRole;
   }
 
@@ -1044,7 +1090,7 @@ export class DatabaseStorage implements IStorage {
     
     settings.forEach(setting => {
       switch (setting.settingKey) {
-        case 'ai_chatgpt_api_key':
+        case 'ai_ChatGPT_api_key':
           result.chatGptApiKey = setting.settingValue || "";
           break;
         case 'ai_temperature':
@@ -1069,7 +1115,7 @@ export class DatabaseStorage implements IStorage {
   async saveAISettings(settings: AISettings): Promise<void> {
     // Save each setting individually
     await Promise.all([
-      this.setSystemSetting('ai_chatgpt_api_key', settings.chatGptApiKey, 'string'),
+      this.setSystemSetting('ai_ChatGPT_api_key', settings.chatGptApiKey, 'string'),
       this.setSystemSetting('ai_temperature', settings.temperature.toString(), 'number'),
       this.setSystemSetting('ai_max_tokens', settings.maxTokens.toString(), 'number'),
       this.setSystemSetting('ai_model', settings.model, 'string'),
@@ -1174,16 +1220,33 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createAIConfiguration(config: InsertAIConfiguration): Promise<AIConfiguration> {
-    const [newConfig] = await db.insert(aiConfigurations).values(config).returning();
+    await db
+      .insert(aiConfigurations)
+      .values(config);
+    
+    // Get the newly created configuration
+    const [newConfig] = await db
+      .select()
+      .from(aiConfigurations)
+      .where(eq(aiConfigurations.name, config.name))
+      .limit(1);
+    
     return newConfig;
   }
 
   async updateAIConfiguration(id: string, config: Partial<InsertAIConfiguration>): Promise<AIConfiguration> {
-    const [updatedConfig] = await db
+    await db
       .update(aiConfigurations)
       .set({ ...config, updatedAt: new Date() })
+      .where(eq(aiConfigurations.id, id));
+
+    // Get the updated configuration
+    const [updatedConfig] = await db
+      .select()
+      .from(aiConfigurations)
       .where(eq(aiConfigurations.id, id))
-      .returning();
+      .limit(1);
+    
     return updatedConfig;
   }
 
@@ -1360,7 +1423,8 @@ export class DatabaseStorage implements IStorage {
     const [updatedSettings] = await db
       .select()
       .from(whatsappApiSettings)
-      .where(eq(whatsappApiSettings.id, id));
+      .where(eq(whatsappApiSettings.id, id))
+      .limit(1);
 
     return updatedSettings;
   }
@@ -1437,7 +1501,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createWhatsappInstance(instance: InsertWhatsappInstance): Promise<WhatsappInstance> {
-    await db.insert(whatsappInstances).values(instance);
+    await db
+      .insert(whatsappInstances)
+      .values(instance);
 
     // Get the newly inserted instance
     const [newInstance] = await db
@@ -1463,7 +1529,8 @@ export class DatabaseStorage implements IStorage {
     const [updatedInstance] = await db
       .select()
       .from(whatsappInstances)
-      .where(eq(whatsappInstances.id, id));
+      .where(eq(whatsappInstances.id, id))
+      .limit(1);
 
     return updatedInstance;
   }
@@ -1502,11 +1569,16 @@ export class DatabaseStorage implements IStorage {
   async createAdminWhatsappInstance(instance: InsertAdminWhatsappInstance): Promise<AdminWhatsappInstance> {
     await this.ensureAdminWhatsappInstancesTable();
     // MySQL may not support RETURNING; do a follow-up select by unique key
-    await db.insert(adminWhatsappInstances).values(instance);
+    await db
+      .insert(adminWhatsappInstances)
+      .values(instance);
+    
     const [inserted] = await db
       .select()
       .from(adminWhatsappInstances)
-      .where(eq(adminWhatsappInstances.instanceKey, instance.instanceKey));
+      .where(eq(adminWhatsappInstances.instanceKey, instance.instanceKey))
+      .limit(1);
+    
     return inserted;
   }
 
@@ -1520,7 +1592,8 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db
       .select()
       .from(adminWhatsappInstances)
-      .where(eq(adminWhatsappInstances.id, id));
+      .where(eq(adminWhatsappInstances.id, id))
+      .limit(1);
 
     return updated;
   }
@@ -1576,7 +1649,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPlan(planData: CreatePlan): Promise<Plan> {
-    await db.insert(plans).values(planData);
+    await db
+      .insert(plans)
+      .values(planData);
     
     // Fetch the created plan by name since MySQL generates UUID for id
     const [newPlan] = await db
@@ -1599,7 +1674,8 @@ export class DatabaseStorage implements IStorage {
     const [updatedPlan] = await db
       .select()
       .from(plans)
-      .where(eq(plans.id, id));
+      .where(eq(plans.id, id))
+      .limit(1);
       
     return updatedPlan;
   }
@@ -1666,16 +1742,18 @@ export class DatabaseStorage implements IStorage {
       // Create user first
       const hashedPassword = await bcrypt.hash(franchisorData.password, 10);
       const userId = crypto.randomUUID();
-      await db.insert(users).values({
-        id: userId,
-        email: franchisorData.email,
-        firstName: franchisorData.firstName,
-        lastName: franchisorData.lastName,
-        phone: franchisorData.phone,
-        password: hashedPassword,
-        role: 'franchisor',
-        active: true,
-      });
+      await db
+        .insert(users)
+        .values({
+          id: userId,
+          email: franchisorData.email,
+          firstName: franchisorData.firstName,
+          lastName: franchisorData.lastName,
+          phone: franchisorData.phone,
+          password: hashedPassword,
+          role: 'franchisor',
+          active: true,
+        });
 
       const newUser = await this.getUser(userId);
       if (!newUser) {
@@ -1684,26 +1762,28 @@ export class DatabaseStorage implements IStorage {
 
       // Create franchisor
       const franchisorId = crypto.randomUUID();
-      await db.insert(franchisors).values({
-        id: franchisorId,
-        userId: newUser.id,
-        planId: franchisorData.planId,
-        companyName: franchisorData.companyName,
-        legalName: franchisorData.legalName,
-        cnpj: franchisorData.cnpj,
-        street: franchisorData.street,
-        number: franchisorData.number,
-        complement: franchisorData.complement,
-        neighborhood: franchisorData.neighborhood,
-        city: franchisorData.city,
-        state: franchisorData.state,
-        zipCode: franchisorData.zipCode,
-        contactPhone: franchisorData.contactPhone,
-        email: franchisorData.email,
-        website: franchisorData.website,
-        planStartDate: new Date(franchisorData.planStartDate),
-        planEndDate: franchisorData.planEndDate ? new Date(franchisorData.planEndDate) : null,
-      });
+      await db
+        .insert(franchisors)
+        .values({
+          id: franchisorId,
+          userId: newUser.id,
+          planId: franchisorData.planId,
+          companyName: franchisorData.companyName,
+          legalName: franchisorData.legalName,
+          cnpj: franchisorData.cnpj,
+          street: franchisorData.street,
+          number: franchisorData.number,
+          complement: franchisorData.complement,
+          neighborhood: franchisorData.neighborhood,
+          city: franchisorData.city,
+          state: franchisorData.state,
+          zipCode: franchisorData.zipCode,
+          contactPhone: franchisorData.contactPhone,
+          email: franchisorData.email,
+          website: franchisorData.website,
+          planStartDate: new Date(franchisorData.planStartDate),
+          planEndDate: franchisorData.planEndDate ? new Date(franchisorData.planEndDate) : null,
+        });
 
       const newFranchisor = await this.getFranchisor(franchisorId);
       if (!newFranchisor) {
@@ -1733,7 +1813,8 @@ export class DatabaseStorage implements IStorage {
         if (franchisorData.phone) userUpdateData.phone = franchisorData.phone;
 
         if (Object.keys(userUpdateData).length > 0) {
-          await db.update(users)
+          await db
+            .update(users)
             .set(userUpdateData)
             .where(eq(users.id, franchisor.userId));
         }
@@ -1759,7 +1840,8 @@ export class DatabaseStorage implements IStorage {
       if (franchisorData.planEndDate) franchisorUpdateData.planEndDate = franchisorData.planEndDate ? new Date(franchisorData.planEndDate) : null;
 
       if (Object.keys(franchisorUpdateData).length > 0) {
-        await db.update(franchisors)
+        await db
+          .update(franchisors)
           .set(franchisorUpdateData)
           .where(eq(franchisors.id, id));
       }
@@ -1829,45 +1911,59 @@ export class DatabaseStorage implements IStorage {
     try {
       // Create user first
       const hashedPassword = await bcrypt.hash(franchiseData.password, 10);
-      await db.insert(users).values({
-        email: franchiseData.email,
-        firstName: franchiseData.firstName,
-        lastName: franchiseData.lastName,
-        phone: franchiseData.phone,
-        password: hashedPassword,
-        role: 'franchise',
-        active: true,
-      });
+      await db
+        .insert(users)
+        .values({
+          email: franchiseData.email,
+          firstName: franchiseData.firstName,
+          lastName: franchiseData.lastName,
+          phone: franchiseData.phone,
+          password: hashedPassword,
+          role: 'franchise',
+          active: true,
+        });
 
       // Get the newly created user
-      const [newUser] = await db.select().from(users).where(eq(users.email, franchiseData.email)).orderBy(desc(users.createdAt)).limit(1);
+      const [newUser] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, franchiseData.email))
+        .orderBy(desc(users.createdAt))
+        .limit(1);
 
       if (!newUser) {
         throw new Error('Falha ao criar usuário da franquia');
       }
 
       // Create franchise
-      await db.insert(franchises).values({
-        franchisorId: franchisorId,
-        userId: newUser.id,
-        franchiseName: franchiseData.franchiseName,
-        franchiseCode: franchiseData.franchiseCode,
-        street: franchiseData.street,
-        number: franchiseData.number,
-        complement: franchiseData.complement,
-        neighborhood: franchiseData.neighborhood,
-        city: franchiseData.city,
-        state: franchiseData.state,
-        zipCode: franchiseData.zipCode,
-        contactPhone: franchiseData.contactPhone,
-        email: franchiseData.email,
-        managerName: franchiseData.managerName,
-        managerPhone: franchiseData.managerPhone,
-        managerEmail: franchiseData.managerEmail,
-      });
+      await db
+        .insert(franchises)
+        .values({
+          franchisorId: franchisorId,
+          userId: newUser.id,
+          franchiseName: franchiseData.franchiseName,
+          franchiseCode: franchiseData.franchiseCode,
+          street: franchiseData.street,
+          number: franchiseData.number,
+          complement: franchiseData.complement,
+          neighborhood: franchiseData.neighborhood,
+          city: franchiseData.city,
+          state: franchiseData.state,
+          zipCode: franchiseData.zipCode,
+          contactPhone: franchiseData.contactPhone,
+          email: franchiseData.email,
+          managerName: franchiseData.managerName,
+          managerPhone: franchiseData.managerPhone,
+          managerEmail: franchiseData.managerEmail,
+        });
 
       // Get the newly created franchise
-      const [newFranchise] = await db.select().from(franchises).where(eq(franchises.userId, newUser.id)).orderBy(desc(franchises.createdAt)).limit(1);
+      const [newFranchise] = await db
+        .select()
+        .from(franchises)
+        .where(eq(franchises.userId, newUser.id))
+        .orderBy(desc(franchises.createdAt))
+        .limit(1);
 
       if (!newFranchise) {
         throw new Error('Falha ao criar franquia');
@@ -1912,12 +2008,14 @@ export class DatabaseStorage implements IStorage {
       throw new Error(`Limite de números de telefone atingido para esta franquia (${plan.maxPhoneNumbers}).`);
     }
 
-    await db.insert(franchisePhoneNumbers).values({
-      franchiseId: franchiseId,
-      phoneNumber: phoneData.phoneNumber,
-      isPrimary: phoneData.isPrimary,
-      isActive: true,
-    });
+    await db
+      .insert(franchisePhoneNumbers)
+      .values({
+        franchiseId: franchiseId,
+        phoneNumber: phoneData.phoneNumber,
+        isPrimary: phoneData.isPrimary,
+        isActive: true,
+      });
 
     // Get the newly created phone number
     const [newPhoneNumber] = await db
@@ -1965,15 +2063,17 @@ export class DatabaseStorage implements IStorage {
       throw new Error(`Limite de agentes atingido para esta franquia (${plan.maxAgents}).`);
     }
 
-    await db.insert(franchiseAgents).values({
-      franchiseId: franchiseId,
-      name: agentData.name,
-      email: agentData.email,
-      phone: agentData.phone,
-      department: agentData.department,
-      specialties: JSON.stringify(agentData.specialties),
-      isActive: true,
-    });
+    await db
+      .insert(franchiseAgents)
+      .values({
+        franchiseId: franchiseId,
+        name: agentData.name,
+        email: agentData.email,
+        phone: agentData.phone,
+        department: agentData.department,
+        specialties: JSON.stringify(agentData.specialties),
+        isActive: true,
+      });
 
     // Get the newly created agent
     const [newAgent] = await db
@@ -2021,15 +2121,17 @@ export class DatabaseStorage implements IStorage {
       throw new Error(`Limite de prompts atingido para esta franquia (${plan.maxPrompts}).`);
     }
 
-    await db.insert(franchisePrompts).values({
-      franchiseId: franchiseId,
-      name: promptData.name,
-      description: promptData.description,
-      prompt: promptData.prompt,
-      category: promptData.category,
-      isDefault: promptData.isDefault,
-      isActive: true,
-    });
+    await db
+      .insert(franchisePrompts)
+      .values({
+        franchiseId: franchiseId,
+        name: promptData.name,
+        description: promptData.description,
+        prompt: promptData.prompt,
+        category: promptData.category,
+        isDefault: promptData.isDefault,
+        isActive: true,
+      });
 
     // Get the newly created prompt
     const [newPrompt] = await db
@@ -2089,7 +2191,8 @@ export class DatabaseStorage implements IStorage {
       const [updatedFranchise] = await db
         .select()
         .from(franchises)
-        .where(eq(franchises.id, id));
+        .where(eq(franchises.id, id))
+        .limit(1);
 
       return updatedFranchise;
     } catch (error) {
@@ -2132,13 +2235,24 @@ export class DatabaseStorage implements IStorage {
 
   async createWhatsappConversation(conversation: InsertWhatsappConversation): Promise<WhatsappConversation> {
     try {
-      const [newConversation] = await db
+      await db
         .insert(whatsappConversations)
         .values({
           ...conversation,
           createdAt: new Date(),
           updatedAt: new Date()
         });
+
+      // Get the newly created conversation
+      const [newConversation] = await db
+        .select()
+        .from(whatsappConversations)
+        .where(and(
+          eq(whatsappConversations.instanceId, conversation.instanceId),
+          eq(whatsappConversations.chatId, conversation.chatId)
+        ))
+        .orderBy(desc(whatsappConversations.createdAt))
+        .limit(1);
 
       return newConversation;
     } catch (error: any) {
@@ -2167,10 +2281,12 @@ export class DatabaseStorage implements IStorage {
       .set({ ...conversation, updatedAt: new Date() })
       .where(eq(whatsappConversations.id, id));
 
+    // Get the updated conversation
     const [updatedConversation] = await db
       .select()
       .from(whatsappConversations)
-      .where(eq(whatsappConversations.id, id));
+      .where(eq(whatsappConversations.id, id))
+      .limit(1);
 
     return updatedConversation;
   }
@@ -2186,6 +2302,7 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
+    // Get the updated conversation
     const [updatedConversation] = await db
       .select()
       .from(whatsappConversations)
@@ -2194,7 +2311,8 @@ export class DatabaseStorage implements IStorage {
           eq(whatsappConversations.instanceId, instanceId),
           eq(whatsappConversations.chatId, chatId)
         )
-      );
+      )
+      .limit(1);
 
     return updatedConversation;
   }
@@ -2232,7 +2350,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(whatsappInstances.franchiseId, clientId));
 
     // Build conditions array
-    const conditions = [eq(whatsappInstances.clientId, clientId)];
+    const conditions = [eq(whatsappInstances.franchiseId, clientId)];
 
     // Apply search filter (busca por nome do contato ou telefone)
     if (filters?.search) {
@@ -2282,9 +2400,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createWhatsappMessage(message: InsertWhatsappMessage): Promise<WhatsappMessage> {
-    const [newMessage] = await db
+    await db
       .insert(whatsappMessages)
       .values(message);
+    
+    // Get the newly created message
+    const [newMessage] = await db
+      .select()
+      .from(whatsappMessages)
+      .where(eq(whatsappMessages.messageId, message.messageId || ''))
+      .limit(1);
 
     return newMessage;
   }
@@ -2374,7 +2499,8 @@ export class DatabaseStorage implements IStorage {
     const [updatedConversation] = await db
       .select()
       .from(whatsappConversations)
-      .where(eq(whatsappConversations.id, id));
+      .where(eq(whatsappConversations.id, id))
+      .limit(1);
 
     return updatedConversation;
   }
@@ -2389,16 +2515,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createGlobalPrompt(franchisorId: string, promptData: CreateGlobalPrompt): Promise<GlobalPrompt> {
-    await db.insert(globalPrompts).values({
-      franchisorId: franchisorId,
-      name: promptData.name,
-      description: promptData.description,
-      prompt: promptData.prompt,
-      temperature: promptData.temperature,
-      category: promptData.category,
-      isDefault: promptData.isDefault,
-      isActive: true,
-    });
+    await db
+      .insert(globalPrompts)
+      .values({
+        franchisorId: franchisorId,
+        name: promptData.name,
+        description: promptData.description,
+        prompt: promptData.prompt,
+        temperature: promptData.temperature.toString(),
+        category: promptData.category,
+        isDefault: promptData.isDefault,
+        isActive: true,
+      });
 
     // Get the newly created prompt
     const [newPrompt] = await db
@@ -2415,19 +2543,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateGlobalPrompt(id: string, promptData: Partial<CreateGlobalPrompt>): Promise<GlobalPrompt> {
+    const updateData: any = { ...promptData, updatedAt: new Date() };
+    if (promptData.temperature !== undefined) {
+      updateData.temperature = promptData.temperature.toString();
+    }
+
     await db
       .update(globalPrompts)
-      .set({ 
-        ...promptData,
-        updatedAt: new Date() 
-      })
+      .set(updateData)
       .where(eq(globalPrompts.id, id));
 
     // Get the updated prompt
     const [updatedPrompt] = await db
       .select()
       .from(globalPrompts)
-      .where(eq(globalPrompts.id, id));
+      .where(eq(globalPrompts.id, id))
+      .limit(1);
 
     return updatedPrompt;
   }
@@ -2522,7 +2653,9 @@ export class DatabaseStorage implements IStorage {
 
   async createWhatsappAgent(agentData: InsertWhatsappAgent): Promise<WhatsappAgent> {
     await this.ensureWhatsappAgentsTable();
-    await db.insert(whatsappAgents).values(agentData);
+    await db
+      .insert(whatsappAgents)
+      .values(agentData);
     
     const [inserted] = await db
       .select()
@@ -2544,7 +2677,8 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db
       .select()
       .from(whatsappAgents)
-      .where(eq(whatsappAgents.id, id));
+      .where(eq(whatsappAgents.id, id))
+      .limit(1);
 
     return updated;
   }
@@ -2565,7 +2699,9 @@ export class DatabaseStorage implements IStorage {
 
   async createWhatsappInstanceAgentBinding(bindingData: InsertWhatsappInstanceAgentBinding): Promise<WhatsappInstanceAgentBinding> {
     await this.ensureWhatsappInstanceAgentBindingsTable();
-    await db.insert(whatsappInstanceAgentBindings).values(bindingData);
+    await db
+      .insert(whatsappInstanceAgentBindings)
+      .values(bindingData);
     
     const [inserted] = await db
       .select()
@@ -2590,7 +2726,8 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db
       .select()
       .from(whatsappInstanceAgentBindings)
-      .where(eq(whatsappInstanceAgentBindings.id, id));
+      .where(eq(whatsappInstanceAgentBindings.id, id))
+      .limit(1);
 
     return updated;
   }
@@ -2626,7 +2763,8 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db
       .select()
       .from(whatsappInstanceAgentBindings)
-      .where(eq(whatsappInstanceAgentBindings.id, id));
+      .where(eq(whatsappInstanceAgentBindings.id, id))
+      .limit(1);
 
     return updated;
   }
@@ -2653,7 +2791,7 @@ export class DatabaseStorage implements IStorage {
     return bindings;
   }
 
-  async getFranchiseInstanceAgentBindings(franchiseId: string): Promise<ClientWhatsappInstanceAgentBinding[]> {
+  async getFranchiseInstanceAgentBindings(franchiseId: string): Promise<WhatsappInstanceAgentBinding[]> {
     console.log('🔍 getFranchiseInstanceAgentBindings chamado com franchiseId:', franchiseId);
     
     await this.ensureClientWhatsappInstanceAgentBindingsTable();
@@ -2707,14 +2845,19 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async createClientWhatsappInstanceAgentBinding(bindingData: InsertClientWhatsappInstanceAgentBinding): Promise<ClientWhatsappInstanceAgentBinding> {
+  async createClientWhatsappInstanceAgentBinding(bindingData: InsertWhatsappInstanceAgentBinding): Promise<WhatsappInstanceAgentBinding> {
     console.log('📝 createClientWhatsappInstanceAgentBinding chamado com dados:', bindingData);
     
     await this.ensureClientWhatsappInstanceAgentBindingsTable();
     
     try {
       console.log('✅ Tabela verificada, inserindo dados...');
-      await db.insert(clientWhatsappInstanceAgentBindings).values(bindingData);
+      await db
+        .insert(clientWhatsappInstanceAgentBindings)
+        .values({
+          ...bindingData,
+          userId: bindingData.userId || 'default-user' // Provide default userId if not present
+        });
       console.log('✅ Dados inseridos com sucesso');
       
       console.log('🔍 Buscando dados inseridos...');
@@ -2736,7 +2879,7 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async updateClientWhatsappInstanceAgentBinding(id: string, bindingData: Partial<InsertClientWhatsappInstanceAgentBinding>): Promise<ClientWhatsappInstanceAgentBinding> {
+  async updateClientWhatsappInstanceAgentBinding(id: string, bindingData: Partial<InsertWhatsappInstanceAgentBinding>): Promise<WhatsappInstanceAgentBinding> {
     await this.ensureClientWhatsappInstanceAgentBindingsTable();
     await db
       .update(clientWhatsappInstanceAgentBindings)
@@ -2746,7 +2889,8 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db
       .select()
       .from(clientWhatsappInstanceAgentBindings)
-      .where(eq(clientWhatsappInstanceAgentBindings.id, id));
+      .where(eq(clientWhatsappInstanceAgentBindings.id, id))
+      .limit(1);
 
     return updated;
   }
@@ -2756,7 +2900,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(clientWhatsappInstanceAgentBindings).where(eq(clientWhatsappInstanceAgentBindings.id, id));
   }
 
-  async getClientInstanceAgentBindingById(id: string): Promise<ClientWhatsappInstanceAgentBinding | undefined> {
+  async getClientInstanceAgentBindingById(id: string): Promise<WhatsappInstanceAgentBinding | undefined> {
     await this.ensureClientWhatsappInstanceAgentBindingsTable();
     
     const [binding] = await db
@@ -2777,13 +2921,13 @@ export class DatabaseStorage implements IStorage {
 
   async getClientWhatsappAgents(clientId: string): Promise<GlobalPrompt[]> {
     // Get client's franchisor to access global prompts
-    const client = await this.getClient(clientId);
-    if (!client) {
+    const franchise = await this.getFranchise(clientId);
+    if (!franchise) {
       return [];
     }
 
     // Get user to find franchisor
-    const user = await this.getUser(client.userId);
+    const user = await this.getUser(franchise.userId);
     if (!user) {
       return [];
     }
@@ -2813,6 +2957,199 @@ export class DatabaseStorage implements IStorage {
       .where(eq(customAIAgents.id, id));
     
     return agent;
+  }
+
+  // ========================================
+  // FRANCHISE CLIENTS METHODS
+  // ========================================
+
+  // Franchise Clients operations
+  async getFranchiseClients(franchiseId: string): Promise<FranchiseClient[]> {
+    return await db
+      .select()
+      .from(franchiseClients)
+      .where(eq(franchiseClients.franchiseId, franchiseId))
+      .orderBy(desc(franchiseClients.createdAt));
+  }
+
+  async getFranchiseClient(id: string): Promise<FranchiseClient | undefined> {
+    const [client] = await db.select().from(franchiseClients).where(eq(franchiseClients.id, id));
+    return client;
+  }
+
+  async getFranchiseClientByEmail(email: string, franchiseId: string): Promise<FranchiseClient | undefined> {
+    const [client] = await db
+      .select()
+      .from(franchiseClients)
+      .where(and(
+        eq(franchiseClients.email, email),
+        eq(franchiseClients.franchiseId, franchiseId)
+      ));
+    return client;
+  }
+
+  async createFranchiseClient(franchiseId: string, clientData: CreateFranchiseClient): Promise<FranchiseClient> {
+    // Check if client with this email already exists for this franchise
+    const existingClient = await this.getFranchiseClientByEmail(clientData.email, franchiseId);
+    if (existingClient) {
+      throw new Error("Já existe um cliente cadastrado com este email para esta franquia");
+    }
+
+    await db
+      .insert(franchiseClients)
+      .values({
+        franchiseId: franchiseId,
+        fullName: clientData.fullName,
+        phone: clientData.phone,
+        email: clientData.email,
+        cpf: clientData.cpf,
+        street: clientData.street,
+        number: clientData.number,
+        complement: clientData.complement,
+        neighborhood: clientData.neighborhood,
+        city: clientData.city,
+        state: clientData.state,
+        zipCode: clientData.zipCode,
+        notes: clientData.notes,
+        source: clientData.source || "whatsapp",
+        status: "active",
+      });
+
+    // Get the newly created client
+    const [newClient] = await db
+      .select()
+      .from(franchiseClients)
+      .where(and(
+        eq(franchiseClients.franchiseId, franchiseId),
+        eq(franchiseClients.email, clientData.email)
+      ))
+      .orderBy(desc(franchiseClients.createdAt))
+      .limit(1);
+
+    return newClient;
+  }
+
+  async updateFranchiseClient(id: string, clientData: UpdateFranchiseClient): Promise<FranchiseClient> {
+    // Check if email is being changed and if it already exists
+    if (clientData.email) {
+      const existingClient = await this.getFranchiseClient(id);
+      if (existingClient && existingClient.email !== clientData.email) {
+        const emailExists = await this.getFranchiseClientByEmail(clientData.email, existingClient.franchiseId);
+        if (emailExists) {
+          throw new Error("Já existe um cliente cadastrado com este email para esta franquia");
+        }
+      }
+    }
+
+    await db
+      .update(franchiseClients)
+      .set({ ...clientData, updatedAt: new Date() })
+      .where(eq(franchiseClients.id, id));
+
+    // Get the updated client
+    const [updatedClient] = await db
+      .select()
+      .from(franchiseClients)
+      .where(eq(franchiseClients.id, id))
+      .limit(1);
+
+    return updatedClient;
+  }
+
+  async deleteFranchiseClient(id: string): Promise<void> {
+    await db.delete(franchiseClients).where(eq(franchiseClients.id, id));
+  }
+
+  // Method to automatically create client from WhatsApp conversation
+  async createClientFromWhatsApp(
+    franchiseId: string,
+    phoneNumber: string,
+    contactName?: string,
+    additionalData?: Partial<CreateFranchiseClient>
+  ): Promise<FranchiseClient> {
+    try {
+      // Check if client already exists with this phone number
+      const [existingClient] = await db
+        .select()
+        .from(franchiseClients)
+        .where(and(
+          eq(franchiseClients.franchiseId, franchiseId),
+          eq(franchiseClients.phone, phoneNumber)
+        ))
+        .limit(1);
+
+      if (existingClient) {
+        // Update client with new information if provided
+        if (contactName || additionalData) {
+          const updateData: any = {};
+          if (contactName) updateData.fullName = contactName;
+          if (additionalData) {
+            Object.assign(updateData, additionalData);
+          }
+          
+          await this.updateFranchiseClient(existingClient.id, updateData);
+          const updatedClient = await this.getFranchiseClient(existingClient.id);
+          if (!updatedClient) {
+            throw new Error("Falha ao recuperar cliente atualizado");
+          }
+          return updatedClient;
+        }
+        return existingClient;
+      }
+
+      // Create new client
+      const clientData: CreateFranchiseClient = {
+        fullName: contactName || `Cliente ${phoneNumber}`,
+        email: `${phoneNumber}@whatsapp.auto`,
+        phone: phoneNumber,
+        cpf: "",
+        street: "",
+        number: "",
+        complement: "",
+        neighborhood: "",
+        city: "",
+        state: "",
+        zipCode: "",
+        notes: "Cliente criado automaticamente via WhatsApp",
+        source: "whatsapp",
+        ...additionalData
+      };
+
+      return await this.createFranchiseClient(franchiseId, clientData);
+    } catch (error) {
+      console.error("Error creating client from WhatsApp:", error);
+      throw error;
+    }
+  }
+
+  // Method to get or create client from WhatsApp conversation
+  async getOrCreateClientFromWhatsApp(
+    franchiseId: string,
+    phoneNumber: string,
+    contactName?: string,
+    additionalData?: Partial<CreateFranchiseClient>
+  ): Promise<FranchiseClient> {
+    try {
+      // First try to find existing client
+      const [existingClient] = await db
+        .select()
+        .from(franchiseClients)
+        .where(and(
+          eq(franchiseClients.franchiseId, franchiseId),
+          eq(franchiseClients.phone, phoneNumber)
+        ))
+        .limit(1);
+
+      if (existingClient) {
+        return existingClient;
+      }
+
+      // If not found, create new client
+      return await this.createClientFromWhatsApp(franchiseId, phoneNumber, contactName, additionalData);
+    } catch (error) {
+      console.error("Error getting or creating client from WhatsApp:", error);
+      throw error;
+    }
   }
 
   private async ensureWhatsappAgentsTable(): Promise<void> {

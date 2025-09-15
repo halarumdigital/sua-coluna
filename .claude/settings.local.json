@@ -13,7 +13,10 @@
       "Bash(mysql:*)",
       "Bash(npm run migration:status:*)",
       "Bash(npm run migration:create:*)",
-      "Bash(npm run migration:run:*)"
+      "Bash(npm run migration:run:*)",
+      "Bash(npm run:*)",
+      "Bash(tsx check-franchise-clients-table.js:*)",
+      "Bash(npx tsx:*)"
     ],
     "deny": [],
     "ask": []

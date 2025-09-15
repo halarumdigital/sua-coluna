@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/layout/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,22 +28,38 @@ import { useToast } from "@/hooks/use-toast";
 
 interface Client {
   id: string;
-  companyName: string;
-  legalName: string;
-  cpfCnpj: string;
+  fullName: string;
+  phone: string;
   email: string;
-  contactPhone: string;
-  whatsapp: string;
+  cpf: string;
+  street: string;
+  number: string;
+  complement: string;
+  neighborhood: string;
   city: string;
   state: string;
+  zipCode: string;
+  notes: string;
+  source: string;
   status: string;
   createdAt: string;
 }
 
 export default function ClientClientsPage() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [editingClient, setEditingClient] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{
+    fullName: string;
+    phone: string;
+    email: string;
+  }>({
+    fullName: "",
+    phone: "",
+    email: ""
+  });
 
   // Fetch clients data
   const { data: clients = [], isLoading: isLoadingClients } = useQuery({
@@ -62,16 +78,63 @@ export default function ClientClientsPage() {
   });
 
   const filteredClients = clients.filter((client: Client) =>
-    client.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    client.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.contactPhone.includes(searchTerm)
+    client.phone.includes(searchTerm)
   );
 
-  const handleEditClient = (clientId: string) => {
-    // Implementar edição de cliente
-    toast({
-      title: "Editar Cliente",
-      description: `Editando cliente ${clientId}`,
+  const handleEditClient = (client: Client) => {
+    setEditingClient(client.id);
+    setEditForm({
+      fullName: client.fullName,
+      phone: client.phone,
+      email: client.email || ""
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingClient) return;
+
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/franchise/clients/${editingClient}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(editForm),
+      });
+
+      if (!response.ok) {
+        throw new Error("Falha ao atualizar cliente");
+      }
+
+      toast({
+        title: "Cliente Atualizado",
+        description: "Dados do cliente atualizados com sucesso!",
+      });
+
+      setEditingClient(null);
+      // Invalidate and refetch clients
+      queryClient.invalidateQueries({ queryKey: ["client-clients"] });
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar cliente",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingClient(null);
+    setEditForm({
+      fullName: "",
+      phone: "",
+      email: ""
     });
   };
 
@@ -96,8 +159,8 @@ export default function ClientClientsPage() {
         description: "Cliente excluído com sucesso!",
       });
 
-      // Refetch clients
-      window.location.reload();
+      // Invalidate and refetch clients
+      queryClient.invalidateQueries({ queryKey: ["client-clients"] });
     } catch (error) {
       toast({
         title: "Erro",
@@ -166,6 +229,36 @@ export default function ClientClientsPage() {
               </p>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Via WhatsApp</CardTitle>
+              <Phone className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {clients.filter((c: Client) => c.source === "whatsapp").length}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Clientes via WhatsApp
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Com Email</CardTitle>
+              <Mail className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {clients.filter((c: Client) => c.email && c.email.trim() !== "").length}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Clientes com email
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Search and Filters */}
@@ -212,10 +305,12 @@ export default function ClientClientsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Empresa</TableHead>
-                      <TableHead>Contato</TableHead>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Telefone</TableHead>
+                      <TableHead>Email</TableHead>
                       <TableHead>Localização</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Origem</TableHead>
                       <TableHead>Data Cadastro</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
@@ -224,42 +319,58 @@ export default function ClientClientsPage() {
                     {filteredClients.map((client: Client) => (
                       <TableRow key={client.id}>
                         <TableCell>
-                          <div>
-                            <div className="font-medium">{client.companyName}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {client.legalName}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {client.cpfCnpj}
-                            </div>
-                          </div>
+                          {editingClient === client.id ? (
+                            <Input
+                              value={editForm.fullName}
+                              onChange={(e) => setEditForm(prev => ({ ...prev, fullName: e.target.value }))}
+                              className="w-full"
+                            />
+                          ) : (
+                            <div className="font-medium">{client.fullName}</div>
+                          )}
                         </TableCell>
                         <TableCell>
-                          <div className="space-y-1">
-                            <div className="flex items-center text-sm">
-                              <Mail className="mr-2 h-3 w-3" />
-                              {client.email}
-                            </div>
+                          {editingClient === client.id ? (
+                            <Input
+                              value={editForm.phone}
+                              onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
+                              className="w-full"
+                            />
+                          ) : (
                             <div className="flex items-center text-sm">
                               <Phone className="mr-2 h-3 w-3" />
-                              {client.contactPhone}
+                              {client.phone}
                             </div>
-                            {client.whatsapp && (
-                              <div className="flex items-center text-sm">
-                                <Phone className="mr-2 h-3 w-3" />
-                                {client.whatsapp}
-                              </div>
-                            )}
-                          </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingClient === client.id ? (
+                            <Input
+                              value={editForm.email}
+                              onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                              className="w-full"
+                              type="email"
+                            />
+                          ) : (
+                            <div className="flex items-center text-sm">
+                              <Mail className="mr-2 h-3 w-3" />
+                              {client.email || "Não informado"}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center text-sm">
                             <MapPin className="mr-2 h-3 w-3" />
-                            {client.city}, {client.state}
+                            {client.city && client.state ? `${client.city}, ${client.state}` : "Não informado"}
                           </div>
                         </TableCell>
                         <TableCell>
                           {getStatusBadge(client.status)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {client.source === 'whatsapp' ? 'WhatsApp' : client.source}
+                          </Badge>
                         </TableCell>
                         <TableCell>
                           <div className="text-sm">
@@ -268,21 +379,44 @@ export default function ClientClientsPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end space-x-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEditClient(client.id)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteClient(client.id)}
-                              disabled={isLoading}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            {editingClient === client.id ? (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={handleSaveEdit}
+                                  disabled={isLoading}
+                                >
+                                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={handleCancelEdit}
+                                  disabled={isLoading}
+                                >
+                                  Cancelar
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEditClient(client)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteClient(client.id)}
+                                  disabled={isLoading}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

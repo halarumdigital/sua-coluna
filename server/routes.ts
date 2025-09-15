@@ -5484,12 +5484,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/franchise/clients - Listar clientes da franquia
   app.get("/api/franchise/clients", isAuthenticated, async (req: any, res) => {
     try {
-      // Verificar se o usuário e as claims existem
-      if (!req.user || !req.user.claims || !req.user.claims.sub) {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
         return res.status(401).json({ message: "Usuário não autenticado" });
       }
-      
-      const userId = req.user.claims.sub;
       
       // Buscar franquia do usuário
       const [franchise] = await db.select().from(franchises).where(eq(franchises.userId, userId));
@@ -5514,7 +5512,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST /api/franchise/clients - Criar novo cliente
   app.post("/api/franchise/clients", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Usuário não autenticado" });
+      }
       
       // Buscar franquia do usuário
       const [franchise] = await db.select().from(franchises).where(eq(franchises.userId, userId));
@@ -5569,7 +5570,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/franchise/clients/:id - Buscar cliente específico
   app.get("/api/franchise/clients/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Usuário não autenticado" });
+      }
       const clientId = req.params.id;
       
       // Buscar franquia do usuário
@@ -5603,7 +5607,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // PUT /api/franchise/clients/:id - Atualizar cliente
   app.put("/api/franchise/clients/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Usuário não autenticado" });
+      }
       const clientId = req.params.id;
       
       // Buscar franquia do usuário
@@ -5678,7 +5685,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // DELETE /api/franchise/clients/:id - Deletar cliente
   app.delete("/api/franchise/clients/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Usuário não autenticado" });
+      }
       const clientId = req.params.id;
       
       // Buscar franquia do usuário

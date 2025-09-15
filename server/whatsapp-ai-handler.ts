@@ -316,6 +316,9 @@ Responda considerando todo o contexto da conversa acima.`;
       } else if (webhookData.key && webhookData.message) {
         // Format: Direct chat object (Evolution API format)
         chats = [webhookData];
+      } else if (Array.isArray(webhookData.data)) {
+        // Format: data is an array of chat objects (from logs)
+        chats = webhookData.data;
       }
       
       console.log(`💬 Processing ${chats.length} chat(s)`);
@@ -328,6 +331,13 @@ Responda considerando todo o contexto da conversa acima.`;
           hasLastMessage: !!chat.lastMessage,
           messageCount: chat.messages ? chat.messages.length : 0
         });
+        
+        // Se o chat não tem mensagens embutidas, precisamos buscar as mensagens recentes
+        if (!chat.messages && !chat.lastMessage) {
+          console.log(`🔍 Chat ${chat.remoteJid} não tem mensagens embutidas, buscando mensagens recentes...`);
+          await this.fetchAndProcessRecentMessages(instanceKey, chat.remoteJid);
+          continue;
+        }
         
         // Extract messages from chat
         let messages = [];
@@ -360,6 +370,32 @@ Responda considerando todo o contexto da conversa acima.`;
       }
     } catch (error) {
       console.error('❌ Error processing chat events:', error);
+    }
+  }
+
+  private async fetchAndProcessRecentMessages(instanceKey: string, remoteJid: string): Promise<void> {
+    try {
+      console.log(`🔍 Buscando mensagens recentes para ${remoteJid}...`);
+      
+      // Buscar mensagens usando o serviço do WhatsApp
+      const messagesResult = await whatsappService.findMessages(instanceKey, remoteJid, 1, 10);
+      
+      if (messagesResult.success && messagesResult.data && Array.isArray(messagesResult.data)) {
+        const messages = messagesResult.data;
+        console.log(`📨 Encontradas ${messages.length} mensagens recentes para ${remoteJid}`);
+        
+        // Processar apenas mensagens de entrada (não enviadas por nós)
+        const incomingMessages = messages.filter(msg => !msg.key?.fromMe && msg.message);
+        
+        for (const message of incomingMessages) {
+          console.log(`✅ Processando mensagem recente de ${message.key?.remoteJid}`);
+          await this.handleIncomingMessage(instanceKey, message);
+        }
+      } else {
+        console.log(`⚠️ Não foi possível buscar mensagens para ${remoteJid}:`, messagesResult.error);
+      }
+    } catch (error) {
+      console.error(`❌ Erro ao buscar mensagens recentes para ${remoteJid}:`, error);
     }
   }
 

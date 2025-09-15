@@ -402,6 +402,7 @@ export default function SuperRootAI() {
                     </Card>
                 )}
 
+
                 <form onSubmit={handleSubmit} className="space-y-6">
                     {/* API Key */}
                     <Card>
@@ -456,7 +457,19 @@ export default function SuperRootAI() {
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-2">
-                                <Label htmlFor="model">Versão do Modelo</Label>
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="model">Versão do Modelo</Label>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/super-root/ai-models"] })}
+                                        className="text-xs"
+                                    >
+                                        <RefreshCw className="w-3 h-3 mr-1" />
+                                        Atualizar
+                                    </Button>
+                                </div>
                                 <Select
                                     value={formData.model}
                                     onValueChange={(value) => handleInputChange("model", value)}

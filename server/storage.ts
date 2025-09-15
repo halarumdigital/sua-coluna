@@ -1576,16 +1576,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPlan(planData: CreatePlan): Promise<Plan> {
-    const [newPlan] = await db.insert(plans).values(planData).returning();
+    await db.insert(plans).values(planData);
+    
+    // Fetch the created plan by name since MySQL generates UUID for id
+    const [newPlan] = await db
+      .select()
+      .from(plans)
+      .where(eq(plans.name, planData.name))
+      .orderBy(desc(plans.createdAt))
+      .limit(1);
+      
     return newPlan;
   }
 
   async updatePlan(id: string, planData: Partial<CreatePlan>): Promise<Plan> {
-    const [updatedPlan] = await db
+    await db
       .update(plans)
       .set(planData)
-      .where(eq(plans.id, id))
-      .returning();
+      .where(eq(plans.id, id));
+    
+    // Fetch the updated plan since MySQL doesn't support returning
+    const [updatedPlan] = await db
+      .select()
+      .from(plans)
+      .where(eq(plans.id, id));
+      
     return updatedPlan;
   }
 

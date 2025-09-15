@@ -112,12 +112,18 @@ export default function SuperRootPlans() {
       
       const method = editingPlan ? 'PUT' : 'POST';
       
+      // Convert string values to numbers where needed
+      const submitData = {
+        ...formData,
+        monthlyPrice: parseFloat(formData.monthlyPrice),
+      };
+      
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(submitData),
       });
 
       if (response.ok) {
@@ -271,7 +277,7 @@ export default function SuperRootPlans() {
                 </div>
                 
                 <div>
-                  <Label htmlFor="maxPhoneNumbers">Máx. Números por Franquia</Label>
+                  <Label htmlFor="maxPhoneNumbers">Máx. WhatsApp por Franquia</Label>
                   <Input
                     id="maxPhoneNumbers"
                     type="number"
@@ -400,7 +406,7 @@ export default function SuperRootPlans() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-2">
                     <Phone className="h-4 w-4" />
-                    Números
+                    WhatsApp
                   </span>
                   <Badge variant="outline">{plan.maxPhoneNumbers}</Badge>
                 </div>

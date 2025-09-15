@@ -776,14 +776,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied - Super Root only" });
       }
 
-      // Return available AI models
-      const models = [
-        { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo" },
-        { id: "gpt-4", name: "GPT-4" },
-        { id: "gpt-4-turbo", name: "GPT-4 Turbo" },
-        { id: "gpt-4o", name: "GPT-4o" },
-      ];
-
+      // Get available models from OpenAI service
+      const models = await openaiService.getAvailableModels();
       res.json(models);
     } catch (error) {
       console.error("Error fetching AI models:", error);
@@ -1006,14 +1000,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied - Admin/Franchisor only" });
       }
 
-      // Return available AI models
-      const models = [
-        { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo" },
-        { id: "gpt-4", name: "GPT-4" },
-        { id: "gpt-4-turbo", name: "GPT-4 Turbo" },
-        { id: "gpt-4o", name: "GPT-4o" },
-      ];
-
+      // Get available models from OpenAI service
+      const models = await openaiService.getAvailableModels();
       res.json(models);
     } catch (error) {
       console.error("Error fetching AI models:", error);

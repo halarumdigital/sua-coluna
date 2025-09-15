@@ -850,6 +850,18 @@ export default function ClientWhatsAppPage() {
           "Content-Type": "application/json",
         },
         credentials: "include",
+        body: JSON.stringify({
+          webhook: {
+            enabled: true,
+            events: [
+              "MESSAGES_UPSERT",
+              "MESSAGES_UPDATE",
+              "SEND_MESSAGE"
+            ],
+            webhookByEvents: true,
+            webhookBase64: false
+          }
+        }),
       });
 
       if (!response.ok) {
@@ -862,7 +874,7 @@ export default function ClientWhatsAppPage() {
     onSuccess: (data) => {
       toast({
         title: "IA Configurada",
-        description: "Webhook da IA configurado com sucesso!",
+        description: "Webhook da IA configurado com sucesso! A instância agora receberá eventos de mensagem.",
       });
       queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
     },

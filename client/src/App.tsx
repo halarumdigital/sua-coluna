@@ -40,6 +40,7 @@ import FranchiseWhatsAppPage from "@/pages/franchise/whatsapp";
 import FranchiseConversationsPage from "@/pages/franchise/conversations";
 import FranchiseAIPage from "@/pages/franchise/ai";
 import FranchiseCalendarPage from "@/pages/franchise/calendar";
+import FranchiseAtendimentoPage from "@/pages/franchise/crm/atendimento";
 
 // Team Pages
 import TeamDashboard from "@/pages/team/dashboard";
@@ -157,6 +158,7 @@ function Router() {
         <>
           <Route path="/franchise" component={FranchiseDashboard} />
           <Route path="/franchise/clients" component={FranchiseClientsPage} />
+          <Route path="/franchise/crm/atendimento" component={FranchiseAtendimentoPage} />
           <Route path="/franchise/ai" component={FranchiseAIPage} />
           <Route path="/franchise/whatsapp" component={FranchiseWhatsAppPage} />
           <Route path="/franchise/conversations" component={FranchiseConversationsPage} />

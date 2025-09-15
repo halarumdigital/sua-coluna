@@ -118,6 +118,63 @@ export default function CalendarPage() {
     },
   });
 
+  // OAuth connection mutation
+  const oauthConnectionMutation = useMutation({
+    mutationFn: async (oauthData?: any) => {
+      const dataToSend = oauthData || formData;
+      const response = await apiRequest("POST", "/api/franchise/calendar-oauth", dataToSend);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      if (data.authUrl) {
+        // Open OAuth URL in new window
+        const authWindow = window.open(data.authUrl, 'google-oauth', 'width=500,height=600');
+        
+        // Listen for the OAuth completion
+        const checkClosed = setInterval(() => {
+          if (authWindow?.closed) {
+            clearInterval(checkClosed);
+            // Refresh settings to see if connection was successful
+            queryClient.invalidateQueries({ queryKey: ["/api/franchise/calendar-settings"] });
+            toast({
+              title: "Verifique a conexão",
+              description: "Atualizando status da integração...",
+            });
+          }
+        }, 1000);
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro na conexão OAuth",
+        description: error.message || "Erro ao iniciar conexão com Google",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Disconnect mutation
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/franchise/calendar-disconnect");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/franchise/calendar-settings"] });
+      toast({
+        title: "Desconectado",
+        description: "Google Calendar foi desconectado com sucesso.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao desconectar",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleInputChange = (field: keyof GoogleCalendarSettings, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
@@ -130,6 +187,38 @@ export default function CalendarPage() {
     setIsTestingConnection(true);
     testConnectionMutation.mutate();
     setTimeout(() => setIsTestingConnection(false), 2000);
+  };
+
+  const handleOAuthConnect = () => {
+    // Use current settings if formData is empty
+    const currentData = {
+      clientId: formData.clientId || settings?.clientId,
+      clientSecret: formData.clientSecret || settings?.clientSecret,
+      calendarId: formData.calendarId || settings?.calendarId || 'primary'
+    };
+    
+    if (!currentData.clientId || !currentData.clientSecret) {
+      toast({
+        title: "Credenciais necessárias",
+        description: "Configure primeiro o Client ID e Client Secret",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Update formData with current settings before making OAuth call
+    setFormData(prev => ({
+      ...prev,
+      ...currentData
+    }));
+    
+    oauthConnectionMutation.mutate(currentData);
+  };
+
+  const handleDisconnect = () => {
+    if (window.confirm("Tem certeza que deseja desconectar do Google Calendar?")) {
+      disconnectMutation.mutate();
+    }
   };
 
   const getConnectionStatus = () => {
@@ -227,6 +316,80 @@ export default function CalendarPage() {
                 </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* OAuth Connection Section */}
+        <Card className="border-2 border-dashed border-gray-300">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ExternalLink className="w-5 h-5" />
+              Conectar com Google Calendar
+            </CardTitle>
+            <div className="text-sm text-muted-foreground">
+              Para criar eventos automaticamente, conecte sua conta do Google Calendar
+            </div>
+          </CardHeader>
+          <CardContent>
+            {settings?.isConnected ? (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-green-100 rounded-full">
+                    <Check className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-green-900">Google Calendar Conectado</h4>
+                    <p className="text-sm text-green-700">
+                      Eventos serão criados automaticamente após confirmação do PIX
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={handleOAuthConnect}>
+                    Reconectar
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="text-red-600 hover:text-red-700"
+                    onClick={handleDisconnect}
+                  >
+                    Desconectar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <div className="p-3 bg-blue-100 rounded-full w-12 h-12 mx-auto mb-4">
+                  <Calendar className="w-6 h-6 text-blue-600" />
+                </div>
+                <h4 className="font-medium text-gray-900 mb-2">
+                  Conecte sua conta Google
+                </h4>
+                <p className="text-sm text-gray-600 mb-4">
+                  Autorize o acesso ao seu Google Calendar para permitir a criação automática de eventos
+                </p>
+                <Button 
+                  size="lg"
+                  className="bg-[#4285f4] hover:bg-[#3367d6] text-white"
+                  disabled={!settings?.clientId || !settings?.clientSecret}
+                  onClick={handleOAuthConnect}
+                >
+                  <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                    <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                  Conectar com Google
+                </Button>
+                {(!settings?.clientId || !settings?.clientSecret) && (
+                  <p className="text-xs text-orange-600 mt-2">
+                    Configure primeiro as credenciais da API Google abaixo
+                  </p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 

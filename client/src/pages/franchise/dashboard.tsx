@@ -5,6 +5,7 @@ import Layout from "@/components/layout/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { apiRequest } from "@/lib/queryClient";
 import {
   LineChart,
   Line,
@@ -60,40 +61,7 @@ const tiposConsultaData = [
   { tipo: 'Exame', quantidade: 15 },
 ];
 
-const proximosAgendamentos = [
-  {
-    id: 1,
-    paciente: "Maria Silva",
-    tipo: "Consulta Inicial",
-    horario: "09:00",
-    data: "Hoje",
-    urgencia: "normal"
-  },
-  {
-    id: 2,
-    paciente: "João Santos",
-    tipo: "Retorno",
-    horario: "10:30",
-    data: "Hoje", 
-    urgencia: "normal"
-  },
-  {
-    id: 3,
-    paciente: "Ana Costa",
-    tipo: "Fisioterapia",
-    horario: "14:00",
-    data: "Amanhã",
-    urgencia: "alta"
-  },
-  {
-    id: 4,
-    paciente: "Pedro Lima",
-    tipo: "Acupuntura",
-    horario: "16:00",
-    data: "Amanhã",
-    urgencia: "normal"
-  }
-];
+// Dados simulados removidos - agora vem da API do Google Calendar
 
 const StatsCard = ({ title, value, subtitle, icon: Icon, trend, trendValue, color = "blue" }: any) => {
   const colorClasses = {
@@ -134,11 +102,81 @@ const StatsCard = ({ title, value, subtitle, icon: Icon, trend, trendValue, colo
 export default function MedicalDashboard() {
   const { user } = useAuth();
 
+  // Fetch calendar events
+  const { data: calendarEvents = [], isLoading: eventsLoading } = useQuery({
+    queryKey: ["/api/franchise/calendar-events"],
+    queryFn: async () => {
+      try {
+        const response = await apiRequest("GET", "/api/franchise/calendar-events");
+        return response.json();
+      } catch (error) {
+        console.warn("Error fetching calendar events:", error);
+        return []; // Return empty array on error
+      }
+    },
+  });
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
     }).format(value);
+  };
+
+  // Format calendar events for display
+  const formatCalendarEvents = (events: any[]) => {
+    const now = new Date();
+    const today = now.toDateString();
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toDateString();
+
+    return events.map(event => {
+      const eventDate = new Date(event.start);
+      const eventDateString = eventDate.toDateString();
+      
+      let displayDate = eventDate.toLocaleDateString("pt-BR");
+      if (eventDateString === today) {
+        displayDate = "Hoje";
+      } else if (eventDateString === tomorrow) {
+        displayDate = "Amanhã";
+      }
+      
+      // Extract patient name from event summary or description
+      let pacienteName = "Paciente";
+      if (event.summary) {
+        // Try to extract name from common patterns
+        const summaryLower = event.summary.toLowerCase();
+        if (summaryLower.includes("consulta")) {
+          const words = event.summary.split(" ");
+          const consultaIndex = words.findIndex(word => word.toLowerCase().includes("consulta"));
+          if (consultaIndex > 0) {
+            pacienteName = words.slice(0, consultaIndex).join(" ");
+          }
+        } else {
+          pacienteName = event.summary;
+        }
+      }
+      
+      // Try to determine event type
+      let tipo = "Consulta";
+      if (event.summary) {
+        const summaryLower = event.summary.toLowerCase();
+        if (summaryLower.includes("fisio")) tipo = "Fisioterapia";
+        else if (summaryLower.includes("acupuntura")) tipo = "Acupuntura";
+        else if (summaryLower.includes("retorno")) tipo = "Retorno";
+        else if (summaryLower.includes("inicial")) tipo = "Consulta Inicial";
+        else if (summaryLower.includes("pilates")) tipo = "Pilates Clínico";
+      }
+      
+      return {
+        id: event.id,
+        paciente: pacienteName,
+        tipo: tipo,
+        horario: eventDate.toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit' }),
+        data: displayDate,
+        urgencia: "normal", // Default urgency
+        fullEvent: event
+      };
+    }).slice(0, 4); // Limit to 4 events
   };
 
   const getUrgenciaBadge = (urgencia: string) => {
@@ -361,45 +399,67 @@ export default function MedicalDashboard() {
         {/* Próximos Agendamentos */}
         <Card className="shadow-lg">
           <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-blue-600" />
-                Próximos Agendamentos
-              </CardTitle>
-              <Button variant="outline" size="sm">
-                Ver agenda completa
-              </Button>
-            </div>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-blue-600" />
+              Próximos Agendamentos
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {proximosAgendamentos.map((agendamento) => (
-                <div
-                  key={agendamento.id}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
-                >
-                  <div className="flex items-center space-x-4">
-                    <div className="p-2 bg-blue-100 rounded-full">
-                      <Heart className="w-5 h-5 text-blue-600" />
+            {eventsLoading ? (
+              <div className="flex items-center justify-center h-32">
+                <div className="text-center">
+                  <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                  <p className="text-gray-600">Carregando agendamentos...</p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {formatCalendarEvents(calendarEvents).length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="p-3 bg-gray-100 rounded-full w-12 h-12 mx-auto mb-3">
+                      <Calendar className="w-6 h-6 text-gray-400" />
                     </div>
-                    <div>
-                      <h4 className="font-semibold text-gray-900">{agendamento.paciente}</h4>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <span>{agendamento.tipo}</span>
-                        <span>•</span>
-                        <span>{agendamento.data} às {agendamento.horario}</span>
+                    <p className="text-gray-600">Nenhum agendamento encontrado</p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Configure sua integração com Google Calendar para ver seus agendamentos aqui
+                    </p>
+                  </div>
+                ) : (
+                  formatCalendarEvents(calendarEvents).map((agendamento) => (
+                    <div
+                      key={agendamento.id}
+                      className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center space-x-4">
+                        <div className="p-2 bg-blue-100 rounded-full">
+                          <Heart className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-gray-900">{agendamento.paciente}</h4>
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <span>{agendamento.tipo}</span>
+                            <span>•</span>
+                            <span>{agendamento.data} às {agendamento.horario}</span>
+                          </div>
+                          {agendamento.fullEvent.location && (
+                            <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                              <span>📍</span>
+                              <span>{agendamento.fullEvent.location}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {getUrgenciaBadge(agendamento.urgencia)}
+                        <Button variant="ghost" size="sm">
+                          Ver detalhes
+                        </Button>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {getUrgenciaBadge(agendamento.urgencia)}
-                    <Button variant="ghost" size="sm">
-                      Ver detalhes
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  ))
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

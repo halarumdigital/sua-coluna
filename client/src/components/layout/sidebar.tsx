@@ -22,6 +22,7 @@ import {
   Store,
   TrendingUp,
   Calendar,
+  UserCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -136,6 +137,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       title: "Clientes",
       href: "/franchise/clients",
       icon: Users,
+    },
+    {
+      title: "CRM",
+      icon: UserCircle,
+      submenu: [
+        { title: "Atendimento", href: "/franchise/crm/atendimento" },
+      ],
     },
     {
       title: "IA",

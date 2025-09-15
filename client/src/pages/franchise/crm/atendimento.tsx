@@ -1,0 +1,391 @@
+import React, { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import Layout from "@/components/layout/layout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Search,
+  User,
+  Clock,
+  Calendar,
+  Phone,
+  MoreVertical,
+  Edit,
+  Trash2
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import {
+  CSS,
+} from "@dnd-kit/utilities";
+
+interface AtendimentoItem {
+  id: string;
+  clienteName: string;
+  telefone: string;
+  tipo: string;
+  prioridade: "alta" | "media" | "baixa";
+  dataAgendamento?: string;
+  horaAgendamento?: string;
+  observacoes: string;
+  status: "novo" | "atendimento" | "agendado" | "finalizado";
+}
+
+
+const DraggableAtendimentoCard = ({ atendimento, onEdit, onDelete, isDragging = false }: {
+  atendimento: AtendimentoItem;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
+  isDragging?: boolean;
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: atendimento.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <AtendimentoCard atendimento={atendimento} onEdit={onEdit} onDelete={onDelete} />
+    </div>
+  );
+};
+
+const AtendimentoCard = ({ atendimento, onEdit, onDelete }: {
+  atendimento: AtendimentoItem;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
+}) => {
+  const getPrioridadeBadge = (prioridade: string) => {
+    const prioridadeMap = {
+      alta: { label: "Alta", className: "bg-red-100 text-red-800 border-red-200" },
+      media: { label: "Média", className: "bg-yellow-100 text-yellow-800 border-yellow-200" },
+      baixa: { label: "Baixa", className: "bg-green-100 text-green-800 border-green-200" },
+    };
+
+    const prioridadeInfo = prioridadeMap[prioridade as keyof typeof prioridadeMap];
+
+    return (
+      <Badge variant="outline" className={prioridadeInfo.className}>
+        {prioridadeInfo.label}
+      </Badge>
+    );
+  };
+
+  return (
+    <Card className="mb-3 hover:shadow-md transition-shadow cursor-pointer">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+              <User className="w-4 h-4 text-blue-600" />
+            </div>
+            <div>
+              <h4 className="font-semibold text-sm text-gray-900">{atendimento.clienteName}</h4>
+              <p className="text-xs text-gray-500 flex items-center">
+                <Phone className="w-3 h-3 mr-1" />
+                {atendimento.telefone}
+              </p>
+            </div>
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                <MoreVertical className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onEdit(atendimento.id)}>
+                <Edit className="w-4 h-4 mr-2" />
+                Editar
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => onDelete(atendimento.id)}
+                className="text-red-600"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex justify-between items-center">
+            <span className="text-xs font-medium text-gray-700">{atendimento.tipo}</span>
+            {getPrioridadeBadge(atendimento.prioridade)}
+          </div>
+
+          {atendimento.dataAgendamento && (
+            <div className="flex items-center text-xs text-gray-600">
+              <Calendar className="w-3 h-3 mr-1" />
+              {new Date(atendimento.dataAgendamento).toLocaleDateString("pt-BR")} às {atendimento.horaAgendamento}
+            </div>
+          )}
+
+          <p className="text-xs text-gray-600 line-clamp-2">{atendimento.observacoes}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+const DroppableKanbanColumn = ({
+  title,
+  status,
+  atendimentos,
+  colorClass,
+  onEdit,
+  onDelete,
+  activeId
+}: {
+  title: string;
+  status: string;
+  atendimentos: AtendimentoItem[];
+  colorClass: string;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
+  activeId: string | null;
+}) => {
+  const filteredAtendimentos = atendimentos.filter(item => item.status === status);
+  const { isOver, setNodeRef } = useDroppable({
+    id: status,
+  });
+
+  return (
+    <div className="flex-1 min-w-80">
+      <Card className="h-full">
+        <CardHeader className={`pb-3 ${colorClass}`}>
+          <CardTitle className="text-white text-base flex items-center justify-between">
+            {title}
+            <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
+              {filteredAtendimentos.length}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent
+          ref={setNodeRef}
+          className={`p-4 space-y-3 max-h-96 overflow-y-auto min-h-32 transition-colors ${
+            isOver ? 'bg-gray-50' : ''
+          }`}
+        >
+          <SortableContext items={filteredAtendimentos.map(item => item.id)} strategy={verticalListSortingStrategy}>
+            {filteredAtendimentos.map((atendimento) => (
+              <DraggableAtendimentoCard
+                key={atendimento.id}
+                atendimento={atendimento}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                isDragging={activeId === atendimento.id}
+              />
+            ))}
+          </SortableContext>
+          {filteredAtendimentos.length === 0 && (
+            <div className="text-center py-8 text-gray-400">
+              <p className="text-sm">Nenhum atendimento</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default function AtendimentoPage() {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [atendimentos, setAtendimentos] = useState<AtendimentoItem[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  const handleEdit = (id: string) => {
+    console.log("Editar atendimento:", id);
+    // Implementar edição
+  };
+
+  const handleDelete = (id: string) => {
+    console.log("Excluir atendimento:", id);
+    // Implementar exclusão
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over) {
+      setActiveId(null);
+      return;
+    }
+
+    const activeAtendimento = atendimentos.find(item => item.id === active.id);
+    if (!activeAtendimento) {
+      setActiveId(null);
+      return;
+    }
+
+    // Determine the target status based on the drop zone
+    const overContainer = over.id as string;
+    let newStatus: AtendimentoItem['status'];
+
+    // If dropped on another card, find which column it belongs to
+    if (overContainer !== 'novo' && overContainer !== 'atendimento' && overContainer !== 'agendado' && overContainer !== 'finalizado') {
+      const overAtendimento = atendimentos.find(item => item.id === overContainer);
+      newStatus = overAtendimento?.status || activeAtendimento.status;
+    } else {
+      newStatus = overContainer as AtendimentoItem['status'];
+    }
+
+    // Update the status if it changed
+    if (activeAtendimento.status !== newStatus) {
+      setAtendimentos(prev =>
+        prev.map(item =>
+          item.id === activeAtendimento.id
+            ? { ...item, status: newStatus }
+            : item
+        )
+      );
+    }
+
+    setActiveId(null);
+  };
+
+  const handleDragCancel = () => {
+    setActiveId(null);
+  };
+
+  const filteredAtendimentos = atendimentos.filter(atendimento =>
+    atendimento.clienteName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    atendimento.telefone.includes(searchTerm) ||
+    atendimento.tipo.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <Layout title="CRM - Atendimento">
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Atendimento</h1>
+            <p className="text-gray-600">Gerencie o fluxo de atendimentos da sua clínica</p>
+          </div>
+        </div>
+
+        {/* Search and Filters */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Buscar por cliente, telefone ou tipo..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Kanban Board */}
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <div className="flex gap-6 overflow-x-auto pb-4">
+            <DroppableKanbanColumn
+              title="Novo"
+              status="novo"
+              atendimentos={filteredAtendimentos}
+              colorClass="bg-blue-600"
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              activeId={activeId}
+            />
+            <DroppableKanbanColumn
+              title="Atendimento"
+              status="atendimento"
+              atendimentos={filteredAtendimentos}
+              colorClass="bg-yellow-600"
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              activeId={activeId}
+            />
+            <DroppableKanbanColumn
+              title="Agendado"
+              status="agendado"
+              atendimentos={filteredAtendimentos}
+              colorClass="bg-purple-600"
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              activeId={activeId}
+            />
+            <DroppableKanbanColumn
+              title="Finalizado"
+              status="finalizado"
+              atendimentos={filteredAtendimentos}
+              colorClass="bg-green-600"
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              activeId={activeId}
+            />
+          </div>
+
+          <DragOverlay>
+            {activeId ? (
+              <AtendimentoCard
+                atendimento={atendimentos.find(item => item.id === activeId)!}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      </div>
+    </Layout>
+  );
+}

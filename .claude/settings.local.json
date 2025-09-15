@@ -6,7 +6,10 @@
       "Bash(npm run dev:*)",
       "Bash(netstat:*)",
       "Bash(findstr:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Read(//c/Users/Gilliard/Desktop/print/**)",
+      "Bash(npm install:*)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

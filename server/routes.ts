@@ -4302,9 +4302,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      
+
       const user = await storage.getUser(userId);
-      if (user?.role !== 'client') {
+      if (user?.role !== 'franchise') {
         return res.status(403).json({ message: "Access denied" });
       }
       

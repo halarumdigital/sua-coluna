@@ -1541,7 +1541,60 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteWhatsappInstance(id: string): Promise<void> {
-    await db.delete(whatsappInstances).where(eq(whatsappInstances.id, id));
+    try {
+      console.log(`🗑️ Iniciando exclusão da instância WhatsApp: ${id}`);
+
+      // First delete all related records to avoid foreign key constraint errors
+
+      // Delete agent conversation context
+      console.log(`🔍 Deletando contextos de conversação...`);
+      const deletedContexts = await db.delete(agentConversationContext).where(eq(agentConversationContext.instanceId, id));
+      console.log(`✅ Deletados ${deletedContexts.rowsAffected || 0} contextos`);
+
+      // First, get all conversations for this instance to delete their messages
+      console.log(`🔍 Buscando conversas da instância...`);
+      const conversations = await db.select({ id: whatsappConversations.id })
+        .from(whatsappConversations)
+        .where(eq(whatsappConversations.instanceId, id));
+      console.log(`📋 Encontradas ${conversations.length} conversas`);
+
+      // Delete messages from all conversations of this instance
+      if (conversations.length > 0) {
+        console.log(`📨 Deletando mensagens das conversas...`);
+        for (const conversation of conversations) {
+          const deletedMessages = await db.delete(whatsappMessages)
+            .where(eq(whatsappMessages.conversationId, conversation.id));
+          console.log(`✅ Deletadas ${deletedMessages.rowsAffected || 0} mensagens da conversa ${conversation.id}`);
+        }
+      }
+
+      // Delete WhatsApp conversations
+      console.log(`💬 Deletando conversas WhatsApp...`);
+      const deletedConversations = await db.delete(whatsappConversations).where(eq(whatsappConversations.instanceId, id));
+      console.log(`✅ Deletadas ${deletedConversations.rowsAffected || 0} conversas`);
+
+      // Delete client instance-agent bindings
+      console.log(`🔗 Deletando vinculações cliente-agente...`);
+      const deletedBindings = await db.delete(clientWhatsappInstanceAgentBindings).where(eq(clientWhatsappInstanceAgentBindings.instanceId, id));
+      console.log(`✅ Deletadas ${deletedBindings.rowsAffected || 0} vinculações`);
+
+      // Update franchise phone numbers to remove reference
+      console.log(`📞 Atualizando números de telefone da franquia...`);
+      const updatedPhones = await db.update(franchisePhoneNumbers)
+        .set({ whatsappInstanceId: null })
+        .where(eq(franchisePhoneNumbers.whatsappInstanceId, id));
+      console.log(`✅ Atualizados ${updatedPhones.rowsAffected || 0} números`);
+
+      // Finally delete the instance
+      console.log(`🗂️ Deletando instância WhatsApp...`);
+      const deletedInstance = await db.delete(whatsappInstances).where(eq(whatsappInstances.id, id));
+      console.log(`✅ Instância deletada: ${deletedInstance.rowsAffected || 0} registros`);
+
+      console.log(`🎉 Exclusão da instância ${id} concluída com sucesso!`);
+    } catch (error) {
+      console.error(`❌ Erro ao excluir instância ${id}:`, error);
+      throw error;
+    }
   }
 
   // Admin WhatsApp Instances operations

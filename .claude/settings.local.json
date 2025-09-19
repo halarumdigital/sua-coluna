@@ -18,7 +18,10 @@
       "Bash(tsx check-franchise-clients-table.js:*)",
       "Bash(npx tsx:*)",
       "Bash(tsx server/migrations/cli.ts run:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(env)",
+      "Bash(find:*)",
+      "Bash(tasklist:*)"
     ],
     "deny": [],
     "ask": []

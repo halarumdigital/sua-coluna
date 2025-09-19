@@ -52,6 +52,7 @@ interface AtendimentoItem {
   horaAgendamento?: string;
   observacoes: string;
   status: "novo" | "atendimento" | "agendado" | "finalizado";
+  lastMessageDate?: string;
 }
 
 
@@ -146,13 +147,19 @@ const AtendimentoCard = ({ atendimento, onEdit, onDelete }: {
         <div className="space-y-2">
           <div className="flex justify-between items-center">
             <span className="text-xs font-medium text-gray-700">{atendimento.tipo}</span>
-            {getPrioridadeBadge(atendimento.prioridade)}
           </div>
+
+          {atendimento.lastMessageDate && (
+            <div className="flex items-center text-xs text-gray-500">
+              <Clock className="w-3 h-3 mr-1" />
+              Última mensagem: {new Date(atendimento.lastMessageDate).toLocaleDateString("pt-BR")} às {new Date(atendimento.lastMessageDate).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            </div>
+          )}
 
           {atendimento.dataAgendamento && (
             <div className="flex items-center text-xs text-gray-600">
               <Calendar className="w-3 h-3 mr-1" />
-              {new Date(atendimento.dataAgendamento).toLocaleDateString("pt-BR")} às {atendimento.horaAgendamento}
+              Agendado: {new Date(atendimento.dataAgendamento).toLocaleDateString("pt-BR")} às {atendimento.horaAgendamento}
             </div>
           )}
 
@@ -253,6 +260,7 @@ export default function AtendimentoPage() {
         horaAgendamento: card.scheduledTime,
         observacoes: card.notes || "",
         status: card.status as "novo" | "atendimento" | "agendado" | "finalizado",
+        lastMessageDate: card.lastMessageDate,
       }));
     },
   });

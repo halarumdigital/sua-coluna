@@ -44,10 +44,9 @@ export default defineConfig({
   server: {
     fs: {
       strict: false,
-      allow: [
-        path.resolve(import.meta.dirname, "shared"),
-        path.resolve(import.meta.dirname, "client"),
-      ],
+      allow: ["/"],
     },
+    port: 5173,
+    host: 'localhost',
   },
 });

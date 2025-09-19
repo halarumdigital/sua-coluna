@@ -4412,53 +4412,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/franchise/whatsapp-instances/:instanceId", isAuthenticated, async (req: any, res) => {
     try {
+      console.log(`🚀 DELETE /api/franchise/whatsapp-instances/${req.params.instanceId} iniciado`);
+
       const userId = getCurrentUserId(req);
       if (!userId) {
+        console.log("❌ Usuário não autenticado");
         return res.status(401).json({ message: "Not authenticated" });
       }
-      
+
+      console.log(`👤 Usuário autenticado: ${userId}`);
+
       const user = await storage.getUser(userId);
-      if (user?.role !== 'client') {
+      if (user?.role !== 'franchise') {
+        console.log(`❌ Acesso negado - role: ${user?.role}`);
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       const { instanceId } = req.params;
-      
+      console.log(`🔍 Verificando instância: ${instanceId}`);
+
       // Verify instance belongs to user's franchise
       const instance = await storage.getWhatsappInstance(instanceId);
       if (!instance) {
+        console.log("❌ Instância não encontrada");
         return res.status(404).json({ message: "Instância não encontrada" });
       }
-      
+
+      console.log(`📱 Instância encontrada: ${instance.instanceName}`);
+
       const franchise = await storage.getFranchiseByUserId(userId);
       if (!franchise || instance.franchiseId !== franchise.id) {
+        console.log(`❌ Instância não pertence à franquia do usuário`);
         return res.status(404).json({ message: "Instância não encontrada" });
       }
-      
+
+      console.log(`🏢 Franquia verificada: ${franchise.id}`);
+
+      // Always proceed with database deletion, regardless of Evolution API result
+      let evolutionApiSuccess = false;
+
       // Get admin WhatsApp settings
       const adminSettings = await storage.getWhatsappApiSettings();
       if (adminSettings && adminSettings.evolutionApiUrl && adminSettings.globalToken) {
         try {
+          console.log(`🌐 Tentando excluir da Evolution API: ${instance.instanceKey}`);
           // Try to delete from Evolution API
-          await fetch(`${adminSettings.evolutionApiUrl}/instance/delete/${instance.instanceKey}`, {
+          const response = await fetch(`${adminSettings.evolutionApiUrl}/instance/delete/${instance.instanceKey}`, {
             method: 'DELETE',
             headers: {
               'apikey': adminSettings.globalToken,
               'Content-Type': 'application/json'
             }
           });
+
+          if (response.ok) {
+            console.log(`✅ Excluído da Evolution API com sucesso`);
+            evolutionApiSuccess = true;
+          } else {
+            console.warn(`⚠️ Evolution API retornou status ${response.status} - instância pode não existir mais`);
+          }
         } catch (error) {
-          console.warn("Failed to delete from Evolution API:", error);
+          console.warn("⚠️ Falha ao excluir da Evolution API (instância pode não existir mais):", error);
         }
       }
-      
-      // Delete from database
+
+      // Delete from database - ALWAYS execute this, regardless of Evolution API result
+      console.log(`🗃️ Iniciando exclusão do banco de dados...`);
       await storage.deleteWhatsappInstance(instanceId);
-      
-      res.json({ message: "Instância excluída com sucesso" });
+
+      console.log(`🎉 Instância excluída com sucesso do banco de dados`);
+
+      const message = evolutionApiSuccess
+        ? "Instância excluída com sucesso"
+        : "Instância excluída do banco local (não encontrada na Evolution API)";
+
+      res.json({ message });
     } catch (error) {
-      console.error("Error deleting WhatsApp instance:", error);
-      res.status(500).json({ message: "Erro ao excluir instância" });
+      console.error("❌ Erro ao excluir instância WhatsApp:", error);
+      res.status(500).json({ message: "Falha ao excluir instancia do banco de dados" });
     }
   });
 

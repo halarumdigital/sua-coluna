@@ -4378,10 +4378,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const user = await storage.getUser(userId);
-      if (user?.role !== 'client') {
+      if (user?.role !== 'franchise' && user?.role !== 'client') {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       const { instanceId } = req.params;
       const { status } = req.body;
       
@@ -4501,10 +4501,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const user = await storage.getUser(userId);
-      if (user?.role !== 'client') {
+      if (user?.role !== 'franchise' && user?.role !== 'client') {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       const { instanceKey } = req.params;
       
       // Find instance by key and verify ownership
@@ -4588,10 +4588,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const user = await storage.getUser(userId);
-      if (user?.role !== 'client') {
+      if (user?.role !== 'franchise' && user?.role !== 'client') {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       const { instanceKey } = req.params;
       const settings = req.body;
       

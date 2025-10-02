@@ -210,9 +210,9 @@ export class WhatsAppAIHandler {
       }
 
 
-      // Buscar contexto de conversação (últimas mensagens)
-      const conversationContext = await storage.getAgentContext(conversation.id, activeBinding.agentId, 50);
-      console.log(`📖 Contexto encontrado: ${conversationContext.length} mensagens`);
+      // Buscar contexto de conversação (últimas 20 mensagens) - LIMITADO para evitar exceder limite de tokens
+      const conversationContext = await storage.getAgentContext(conversation.id, activeBinding.agentId, 20);
+      console.log(`📖 Contexto carregado: ${conversationContext.length}/20 mensagens (limitado para evitar exceder tokens)`);
 
       // Obter configurações de AI do sistema
       const aiSettings = await storage.getAISettings();
@@ -222,29 +222,43 @@ export class WhatsAppAIHandler {
       }
 
       // Salvar mensagem do usuário no contexto
-      const nextMessageOrder = conversationContext.length > 0 ? 
+      const nextMessageOrder = conversationContext.length > 0 ?
         Math.max(...conversationContext.map(ctx => ctx.messageOrder)) + 1 : 1;
-      
+
       await storage.addToAgentContext({
         conversationId: conversation.id,
         instanceId: instance.id,
         agentId: activeBinding.agentId,
-        messageText: messageText,
+        messageText: messageText || '[mídia sem texto]',
         messageRole: 'user',
         messageOrder: nextMessageOrder,
         senderPhone: phoneNumber,
         timestamp: new Date()
       });
 
-      // Construir histórico de conversa para o AI
+      // Construir histórico de conversa para o AI com limite de caracteres
       let conversationHistory = '';
       if (conversationContext.length > 0) {
         // Ordenar por ordem crescente (mais antigas primeiro)
         const sortedContext = conversationContext.sort((a, b) => a.messageOrder - b.messageOrder);
-        conversationHistory = '\n\nHistórico da conversa:\n' + 
-          sortedContext.map(ctx => 
-            `${ctx.messageRole === 'user' ? 'Usuário' : 'Assistente'}: ${ctx.messageText}`
-          ).join('\n');
+
+        // Truncar mensagens muito longas para evitar exceder limite de tokens
+        const truncatedContext = sortedContext.map(ctx => {
+          const maxLength = 500; // Limite de caracteres por mensagem
+          const text = ctx.messageText || '';
+          const truncated = text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+          return `${ctx.messageRole === 'user' ? 'Usuário' : 'Assistente'}: ${truncated}`;
+        });
+
+        conversationHistory = '\n\nHistórico da conversa:\n' + truncatedContext.join('\n');
+
+        // Verificar tamanho total e reduzir se necessário
+        const maxHistoryLength = 3000; // ~750 tokens
+        if (conversationHistory.length > maxHistoryLength) {
+          // Pegar apenas as mensagens mais recentes
+          const recentMessages = truncatedContext.slice(-10);
+          conversationHistory = '\n\n[...histórico anterior omitido...]\n\nHistórico recente:\n' + recentMessages.join('\n');
+        }
       }
 
       // Adicionar informação sobre mídia anexada
@@ -269,6 +283,60 @@ Você está respondendo uma mensagem do WhatsApp de ${phoneNumber}.${conversatio
 Nova mensagem recebida: "${messageText || '[Sem texto - apenas mídia]'}";
 
 Responda considerando todo o contexto da conversa acima.`;
+
+      // Verificar tamanho do contexto (aproximadamente 4 caracteres = 1 token)
+      const estimatedTokens = Math.ceil(contextMessage.length / 4);
+      console.log(`📊 Tamanho do contexto: ${contextMessage.length} caracteres (~${estimatedTokens} tokens)`);
+
+      // Se exceder limite, truncar mais agressivamente
+      if (estimatedTokens > 6000) {
+        console.warn(`⚠️ Contexto muito grande (${estimatedTokens} tokens), reduzindo histórico...`);
+        // Reconstruir com histórico mínimo
+        const minimalContext = `${customAgent.systemPrompt}
+
+Você está respondendo uma mensagem do WhatsApp de ${phoneNumber}.${mediaInfo}
+
+Nova mensagem recebida: "${messageText || '[Sem texto - apenas mídia]'}";
+
+Responda de forma clara e objetiva.`;
+
+        console.log('🧠 Gerando resposta com AI (contexto reduzido)...');
+        const aiResponse = await openaiService.chat(minimalContext, {
+          chatGptApiKey: aiSettings.chatGptApiKey,
+          model: aiSettings.model || 'gpt-3.5-turbo',
+          systemPrompt: customAgent.systemPrompt,
+          maxTokens: Number(customAgent.maxTokens) || 1000,
+          temperature: Number(customAgent.temperature) || 0.7
+        });
+
+        if (!aiResponse.success || !aiResponse.response) {
+          console.log('❌ Falha ao gerar resposta com AI:', aiResponse.error);
+          return;
+        }
+
+        const responseText = aiResponse.response.trim();
+        console.log(`🤖 Resposta gerada: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);
+
+        // Salvar resposta do agente no contexto
+        await storage.addToAgentContext({
+          conversationId: conversation.id,
+          instanceId: instance.id,
+          agentId: activeBinding.agentId,
+          messageText: responseText,
+          messageRole: 'assistant',
+          messageOrder: nextMessageOrder + 1,
+          senderPhone: phoneNumber,
+          timestamp: new Date()
+        });
+
+        // Enviar resposta via WhatsApp
+        await whatsappService.sendMessage(instanceKey, phoneNumber, responseText);
+        console.log('✅ Resposta enviada com sucesso');
+
+        // Marcar como resposta recente para evitar loops
+        this.markAsRecentResponse(`${instanceKey}-${phoneNumber}-${messageText}`);
+        return;
+      }
 
       console.log('🧠 Gerando resposta com AI...');
 

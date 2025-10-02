@@ -12,8 +12,8 @@ import { sql } from "drizzle-orm";
 import path from "path";
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
 // Serve static files from public directory
 app.use('/uploads', (req, res, next) => {

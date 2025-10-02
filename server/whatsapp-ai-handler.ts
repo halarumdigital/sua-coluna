@@ -9,7 +9,7 @@ export class WhatsAppAIHandler {
 
   // Cache para evitar processar o mesmo webhook múltiplas vezes
   private processedWebhooks = new Map<string, number>();
-  private readonly WEBHOOK_DEDUP_WINDOW = 60000; // 60 segundos
+  private readonly WEBHOOK_DEDUP_WINDOW = 5000; // 5 segundos (reduzido de 60s)
 
   async handleIncomingMessage(instanceKey: string, messageData: any): Promise<void> {
     try {
@@ -26,6 +26,15 @@ export class WhatsAppAIHandler {
       // Criar ID único para a mensagem usando o messageId da Evolution API
       const messageId = messageObj.key?.id || `${Date.now()}_${Math.random()}`;
       const webhookKey = `${instanceKey}_${messageId}`;
+
+      console.log(`📋 WebhookKey gerado: ${webhookKey}`);
+      console.log(`📋 MessageId: ${messageId}, fromMe: ${messageObj.key?.fromMe}`);
+
+      // Ignorar mensagens enviadas pelo próprio bot
+      if (messageObj.key?.fromMe === true) {
+        console.log('⏭️ Ignorando mensagem enviada pelo bot (fromMe: true)');
+        return;
+      }
 
       // Verificar se já processamos este webhook recentemente
       if (this.isDuplicateWebhook(webhookKey)) {
@@ -344,12 +353,20 @@ Responda considerando todo o contexto da conversa acima.`;
 
   private isDuplicateWebhook(webhookKey: string): boolean {
     const timestamp = this.processedWebhooks.get(webhookKey);
-    if (!timestamp) return false;
-
-    const isDuplicate = (Date.now() - timestamp) < this.WEBHOOK_DEDUP_WINDOW;
-    if (isDuplicate) {
-      console.log(`🚫 Webhook duplicado detectado para ${webhookKey}, ignorando para evitar processamento múltiplo`);
+    if (!timestamp) {
+      console.log(`✅ Webhook não processado anteriormente: ${webhookKey}`);
+      return false;
     }
+
+    const timeSinceLastProcess = Date.now() - timestamp;
+    const isDuplicate = timeSinceLastProcess < this.WEBHOOK_DEDUP_WINDOW;
+
+    if (isDuplicate) {
+      console.log(`🚫 Webhook duplicado detectado para ${webhookKey} (${timeSinceLastProcess}ms atrás), ignorando`);
+    } else {
+      console.log(`✅ Webhook processado há ${timeSinceLastProcess}ms, permitindo reprocessamento`);
+    }
+
     return isDuplicate;
   }
 

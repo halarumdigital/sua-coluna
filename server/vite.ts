@@ -38,10 +38,7 @@ export async function setupVite(app: Express, server: Server) {
     },
     server: {
       ...serverOptions,
-      fs: {
-        strict: false,
-        allow: ["/"]
-      }
+      ...viteConfig.server
     },
     appType: "custom",
   });

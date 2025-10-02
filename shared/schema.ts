@@ -1220,20 +1220,27 @@ export const editFranchiseProfileSchema = z.object({
   // Responsável
   managerName: z.string().min(1, "Nome do responsável é obrigatório"),
   managerPhone: z.string().optional(),
-  managerEmail: z.string().email("Email do responsável inválido").optional().or(z.literal("")),
-  
+  managerEmail: z.union([
+    z.string().email("Email do responsável inválido"),
+    z.literal(""),
+    z.undefined()
+  ]).optional(),
+
   // Campos de senha (opcionais)
   currentPassword: z.string().optional(),
-  newPassword: z.string().min(6, "Nova senha deve ter pelo menos 6 caracteres").optional(),
+  newPassword: z.string().min(6, "Nova senha deve ter pelo menos 6 caracteres").optional().or(z.literal("")),
   confirmPassword: z.string().optional(),
 }).refine((data) => {
-  // Se nova senha foi informada, senha atual é obrigatória
-  if (data.newPassword && !data.currentPassword) {
-    return false;
-  }
-  // Se nova senha foi informada, confirmação deve ser igual
-  if (data.newPassword && data.newPassword !== data.confirmPassword) {
-    return false;
+  // Só valida senha se nova senha foi informada e não for string vazia
+  if (data.newPassword && data.newPassword !== "") {
+    // Se nova senha foi informada, senha atual é obrigatória
+    if (!data.currentPassword) {
+      return false;
+    }
+    // Se nova senha foi informada, confirmação deve ser igual
+    if (data.newPassword !== data.confirmPassword) {
+      return false;
+    }
   }
   return true;
 }, {

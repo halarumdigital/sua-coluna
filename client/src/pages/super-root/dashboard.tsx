@@ -146,7 +146,7 @@ export default function SuperRootDashboard() {
                 </CardDescription>
               </div>
               <Button asChild>
-                <Link href="/super-root/plans/new">
+                <Link href="/super-root/plans">
                   <Plus className="h-4 w-4 mr-2" />
                   Novo Plano
                 </Link>
@@ -199,7 +199,7 @@ export default function SuperRootDashboard() {
                 </CardDescription>
               </div>
               <Button asChild>
-                <Link href="/super-root/franchisors/new">
+                <Link href="/super-root/franchisors">
                   <Plus className="h-4 w-4 mr-2" />
                   Novo Franqueador
                 </Link>

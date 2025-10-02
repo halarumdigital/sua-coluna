@@ -102,6 +102,20 @@ const StatsCard = ({ title, value, subtitle, icon: Icon, trend, trendValue, colo
 export default function MedicalDashboard() {
   const { user } = useAuth();
 
+  // Fetch franchise profile data for company name
+  const { data: profileData } = useQuery({
+    queryKey: ["franchise-profile"],
+    queryFn: async () => {
+      try {
+        const response = await apiRequest("GET", "/api/franchise/profile");
+        return response.json();
+      } catch (error) {
+        console.warn("Error fetching franchise profile:", error);
+        return null;
+      }
+    },
+  });
+
   // Fetch calendar events
   const { data: calendarEvents = [], isLoading: eventsLoading } = useQuery({
     queryKey: ["/api/franchise/calendar-events"],
@@ -201,7 +215,9 @@ export default function MedicalDashboard() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Clínica da Coluna</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              {profileData?.companyName || "Clínica da Coluna"}
+            </h1>
             <p className="text-gray-600">
               Visão geral dos seus atendimentos e performance da clínica
             </p>

@@ -5,6 +5,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Search,
   User,
@@ -234,6 +251,18 @@ const DroppableKanbanColumn = ({
 export default function AtendimentoPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingAtendimento, setEditingAtendimento] = useState<AtendimentoItem | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    clienteName: "",
+    telefone: "",
+    tipo: "",
+    prioridade: "media" as "alta" | "media" | "baixa",
+    dataAgendamento: "",
+    horaAgendamento: "",
+    observacoes: "",
+    status: "novo" as "novo" | "atendimento" | "agendado" | "finalizado",
+  });
 
   // Fetch kanban cards from API
   const { data: atendimentos = [], isLoading, refetch } = useQuery({
@@ -274,8 +303,57 @@ export default function AtendimentoPage() {
   );
 
   const handleEdit = (id: string) => {
-    console.log("Editar atendimento:", id);
-    // TODO: Implementar modal de edição
+    const atendimento = atendimentos.find(item => item.id === id);
+    if (atendimento) {
+      setEditingAtendimento(atendimento);
+      setEditFormData({
+        clienteName: atendimento.clienteName,
+        telefone: atendimento.telefone,
+        tipo: atendimento.tipo,
+        prioridade: atendimento.prioridade,
+        dataAgendamento: atendimento.dataAgendamento || "",
+        horaAgendamento: atendimento.horaAgendamento || "",
+        observacoes: atendimento.observacoes,
+        status: atendimento.status,
+      });
+      setEditModalOpen(true);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingAtendimento) return;
+
+    try {
+      const response = await fetch(`/api/franchise/crm/kanban/${editingAtendimento.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          clientName: editFormData.clienteName,
+          clientPhone: editFormData.telefone,
+          type: editFormData.tipo,
+          priority: editFormData.prioridade,
+          scheduledDate: editFormData.dataAgendamento || null,
+          scheduledTime: editFormData.horaAgendamento || null,
+          notes: editFormData.observacoes,
+          status: editFormData.status,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Falha ao atualizar atendimento");
+      }
+
+      // Refresh the data
+      await refetch();
+      setEditModalOpen(false);
+      setEditingAtendimento(null);
+    } catch (error) {
+      console.error("Erro ao atualizar atendimento:", error);
+      alert("Erro ao atualizar atendimento");
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -463,6 +541,130 @@ export default function AtendimentoPage() {
           </DragOverlay>
         </DndContext>
         )}
+
+        {/* Edit Modal */}
+        <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>Editar Atendimento</DialogTitle>
+              <DialogDescription>
+                Atualize as informações do atendimento
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="clienteName">Nome do Cliente</Label>
+                  <Input
+                    id="clienteName"
+                    value={editFormData.clienteName}
+                    onChange={(e) => setEditFormData({ ...editFormData, clienteName: e.target.value })}
+                    placeholder="Nome completo"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="telefone">Telefone</Label>
+                  <Input
+                    id="telefone"
+                    value={editFormData.telefone}
+                    onChange={(e) => setEditFormData({ ...editFormData, telefone: e.target.value })}
+                    placeholder="(00) 00000-0000"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="tipo">Tipo de Atendimento</Label>
+                  <Input
+                    id="tipo"
+                    value={editFormData.tipo}
+                    onChange={(e) => setEditFormData({ ...editFormData, tipo: e.target.value })}
+                    placeholder="Ex: Consulta, Retorno"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="prioridade">Prioridade</Label>
+                  <Select
+                    value={editFormData.prioridade}
+                    onValueChange={(value: "alta" | "media" | "baixa") =>
+                      setEditFormData({ ...editFormData, prioridade: value })
+                    }
+                  >
+                    <SelectTrigger id="prioridade">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="alta">Alta</SelectItem>
+                      <SelectItem value="media">Média</SelectItem>
+                      <SelectItem value="baixa">Baixa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="dataAgendamento">Data do Agendamento</Label>
+                  <Input
+                    id="dataAgendamento"
+                    type="date"
+                    value={editFormData.dataAgendamento}
+                    onChange={(e) => setEditFormData({ ...editFormData, dataAgendamento: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="horaAgendamento">Hora do Agendamento</Label>
+                  <Input
+                    id="horaAgendamento"
+                    type="time"
+                    value={editFormData.horaAgendamento}
+                    onChange={(e) => setEditFormData({ ...editFormData, horaAgendamento: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <Select
+                  value={editFormData.status}
+                  onValueChange={(value: "novo" | "atendimento" | "agendado" | "finalizado") =>
+                    setEditFormData({ ...editFormData, status: value })
+                  }
+                >
+                  <SelectTrigger id="status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="novo">Novo</SelectItem>
+                    <SelectItem value="atendimento">Em Atendimento</SelectItem>
+                    <SelectItem value="agendado">Agendado</SelectItem>
+                    <SelectItem value="finalizado">Finalizado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="observacoes">Observações</Label>
+                <Textarea
+                  id="observacoes"
+                  value={editFormData.observacoes}
+                  onChange={(e) => setEditFormData({ ...editFormData, observacoes: e.target.value })}
+                  placeholder="Adicione observações sobre o atendimento..."
+                  rows={3}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveEdit}>
+                Salvar Alterações
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );

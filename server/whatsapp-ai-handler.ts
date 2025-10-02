@@ -7,10 +7,14 @@ export class WhatsAppAIHandler {
   private recentResponses = new Map<string, number>();
   private readonly RESPONSE_COOLDOWN = 30000; // 30 segundos
 
+  // Cache para evitar processar o mesmo webhook múltiplas vezes
+  private processedWebhooks = new Map<string, number>();
+  private readonly WEBHOOK_DEDUP_WINDOW = 60000; // 60 segundos
+
   async handleIncomingMessage(instanceKey: string, messageData: any): Promise<void> {
     try {
       console.log('🤖 Processando mensagem recebida para resposta automática...');
-      
+
       // Extrair informações da mensagem
       // messageData já é o objeto com key, message, etc.
       const messageObj = messageData.data || messageData;
@@ -19,8 +23,21 @@ export class WhatsAppAIHandler {
         return;
       }
 
+      // Criar ID único para a mensagem usando o messageId da Evolution API
+      const messageId = messageObj.key?.id || `${Date.now()}_${Math.random()}`;
+      const webhookKey = `${instanceKey}_${messageId}`;
+
+      // Verificar se já processamos este webhook recentemente
+      if (this.isDuplicateWebhook(webhookKey)) {
+        console.log(`⏭️ Webhook duplicado ignorado: ${webhookKey}`);
+        return;
+      }
+
+      // Marcar webhook como processado
+      this.markWebhookAsProcessed(webhookKey);
+
       const phoneNumber = messageObj.key?.remoteJid?.replace('@s.whatsapp.net', '');
-      const messageText = messageObj.message?.conversation || 
+      const messageText = messageObj.message?.conversation ||
                          messageObj.message?.extendedTextMessage?.text ||
                          messageObj.message?.imageMessage?.caption ||
                          '';
@@ -108,7 +125,7 @@ export class WhatsAppAIHandler {
 
       // Buscar/criar conversa antes de usar contexto
       const chatId = messageObj.key?.remoteJid || `${phoneNumber}@s.whatsapp.net`;
-      const messageId = messageObj.key?.id || `msg_${Date.now()}`;
+      const conversationMessageId = messageObj.key?.id || `msg_${Date.now()}`;
       const timestamp = new Date(messageObj.messageTimestamp ? messageObj.messageTimestamp * 1000 : Date.now());
 
       // Sempre verificar e criar cliente se necessário, independente de existir conversa
@@ -227,6 +244,9 @@ Responda considerando todo o contexto da conversa acima.`;
       // Registrar esta resposta no cache para evitar loops
       this.registerResponse(messageKey, responseText);
 
+      // Adicionar um pequeno delay para evitar problemas de timing
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       // Enviar resposta via WhatsApp
       const sendResult = await whatsappService.sendMessage(instanceKey, phoneNumber, responseText);
       
@@ -263,12 +283,40 @@ Responda considerando todo o contexto da conversa acima.`;
   private isRecentResponse(messageKey: string): boolean {
     const timestamp = this.recentResponses.get(messageKey);
     if (!timestamp) return false;
-    
+
     const isRecent = (Date.now() - timestamp) < this.RESPONSE_COOLDOWN;
     if (isRecent) {
       console.log(`🚫 Detectada resposta recente para ${messageKey}, ignorando para evitar loop`);
     }
     return isRecent;
+  }
+
+  private isDuplicateWebhook(webhookKey: string): boolean {
+    const timestamp = this.processedWebhooks.get(webhookKey);
+    if (!timestamp) return false;
+
+    const isDuplicate = (Date.now() - timestamp) < this.WEBHOOK_DEDUP_WINDOW;
+    if (isDuplicate) {
+      console.log(`🚫 Webhook duplicado detectado para ${webhookKey}, ignorando para evitar processamento múltiplo`);
+    }
+    return isDuplicate;
+  }
+
+  private markWebhookAsProcessed(webhookKey: string): void {
+    this.processedWebhooks.set(webhookKey, Date.now());
+
+    // Limpar entradas antigas periodicamente para evitar memory leak
+    if (this.processedWebhooks.size > 1000) {
+      const cutoffTime = Date.now() - this.WEBHOOK_DEDUP_WINDOW;
+      const entries = Array.from(this.processedWebhooks.entries());
+      for (let i = 0; i < entries.length; i++) {
+        const [key, timestamp] = entries[i];
+        if (timestamp < cutoffTime) {
+          this.processedWebhooks.delete(key);
+        }
+      }
+      console.log(`🧹 Cache de webhooks limpo, ${this.processedWebhooks.size} entradas restantes`);
+    }
   }
 
   private registerResponse(messageKey: string, responseText: string): void {
@@ -647,7 +695,7 @@ Responda considerando todo o contexto da conversa acima.`;
       }
 
       const chatId = messageObj.key?.remoteJid || `${phoneNumber}@s.whatsapp.net`;
-      const messageId = messageObj.key?.id || `msg_${Date.now()}`;
+      const convMessageId = messageObj.key?.id || `msg_${Date.now()}`;
       const timestamp = new Date(messageObj.messageTimestamp ? messageObj.messageTimestamp * 1000 : Date.now());
 
       // Verificar se a conversa já existe
@@ -680,7 +728,7 @@ Responda considerando todo o contexto da conversa acima.`;
       // Salvar a mensagem
       await storage.createWhatsappMessage({
         conversationId: conversation.id,
-        messageId: messageId,
+        messageId: convMessageId,
         senderPhone: phoneNumber,
         messageText: messageText,
         messageType: 'text',

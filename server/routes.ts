@@ -5433,18 +5433,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validar dados recebidos usando campos compatíveis
       const updateData = {
         franchiseName: req.body.companyName || req.body.franchiseName || franchise.franchiseName,
-        street: req.body.street || franchise.street,
-        number: req.body.number || franchise.number,
-        complement: req.body.complement || franchise.complement,
-        neighborhood: req.body.neighborhood || franchise.neighborhood,
-        city: req.body.city || franchise.city,
-        state: req.body.state || franchise.state,
-        zipCode: req.body.zipCode || franchise.zipCode,
-        contactPhone: req.body.contactPhone || req.body.whatsapp || franchise.contactPhone,
-        email: req.body.email || franchise.email,
-        managerName: req.body.managerName || franchise.managerName,
-        managerPhone: req.body.managerPhone || franchise.managerPhone,
-        managerEmail: req.body.managerEmail || franchise.managerEmail,
+        street: req.body.street || franchise.street || "",
+        number: req.body.number || franchise.number || "",
+        complement: req.body.complement || franchise.complement || "",
+        neighborhood: req.body.neighborhood || franchise.neighborhood || "",
+        city: req.body.city || franchise.city || "",
+        state: req.body.state || franchise.state || "",
+        zipCode: req.body.zipCode || franchise.zipCode || "",
+        contactPhone: req.body.contactPhone || req.body.whatsapp || franchise.contactPhone || "",
+        email: req.body.email || franchise.email || "",
+        managerName: req.body.managerName || franchise.managerName || franchise.franchiseName || "",
+        managerPhone: req.body.managerPhone || franchise.managerPhone || "",
+        managerEmail: req.body.managerEmail || franchise.managerEmail || req.body.email || "",
         currentPassword: req.body.currentPassword || "",
         newPassword: req.body.newPassword || "",
         confirmPassword: req.body.confirmPassword || "",
@@ -5454,8 +5454,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Validar com schema
         const validatedData = editFranchiseProfileSchema.parse(updateData);
         
-        // Verificar se há alteração de senha
-        if (validatedData.newPassword && validatedData.currentPassword) {
+        // Verificar se há alteração de senha - só altera se nova senha foi preenchida
+        if (validatedData.newPassword && validatedData.newPassword.length > 0 && validatedData.currentPassword) {
           // Verificar senha atual
           const isCurrentPasswordValid = await bcrypt.compare(
             validatedData.currentPassword, 

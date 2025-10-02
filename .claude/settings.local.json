@@ -21,7 +21,8 @@
       "Bash(curl:*)",
       "Bash(env)",
       "Bash(find:*)",
-      "Bash(tasklist:*)"
+      "Bash(tasklist:*)",
+      "Read(//e/Master-Brasil/**)"
     ],
     "deny": [],
     "ask": []

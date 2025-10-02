@@ -247,27 +247,51 @@ export default function ClientAIPage() {
     });
     
     // Carregar PDFs existentes se houver
-    if (agent.pdfFiles && agent.pdfFiles.length > 0) {
-      // Simular arquivos para exibição (não podemos recriar File objects)
-      setPdfFiles(agent.pdfFiles.map((fileName: string) => ({
-        name: fileName,
-        size: 0,
-        type: 'application/pdf'
-      } as File)));
-      setPdfContents(agent.pdfContents || []);
-    } else {
+    try {
+      const pdfFilesArray = typeof agent.pdfFiles === 'string'
+        ? JSON.parse(agent.pdfFiles)
+        : (agent.pdfFiles || []);
+      const pdfContentsArray = typeof agent.pdfContents === 'string'
+        ? JSON.parse(agent.pdfContents)
+        : (agent.pdfContents || []);
+
+      if (Array.isArray(pdfFilesArray) && pdfFilesArray.length > 0) {
+        // Simular arquivos para exibição (não podemos recriar File objects)
+        setPdfFiles(pdfFilesArray.map((fileName: string) => ({
+          name: fileName,
+          size: 0,
+          type: 'application/pdf'
+        } as File)));
+        setPdfContents(pdfContentsArray);
+      } else {
+        clearPDFFiles();
+      }
+    } catch (error) {
+      console.error('Erro ao carregar PDFs:', error);
       clearPDFFiles();
     }
 
     // Carregar Imagens existentes se houver
-    if (agent.imageFiles && agent.imageFiles.length > 0) {
-      setImageFiles(agent.imageFiles.map((fileName: string) => ({
-        name: fileName,
-        size: 0,
-        type: 'image/jpeg'
-      } as File)));
-      setImageDescriptions(agent.imageDescriptions || []);
-    } else {
+    try {
+      const imageFilesArray = typeof agent.imageFiles === 'string'
+        ? JSON.parse(agent.imageFiles)
+        : (agent.imageFiles || []);
+      const imageDescriptionsArray = typeof agent.imageDescriptions === 'string'
+        ? JSON.parse(agent.imageDescriptions)
+        : (agent.imageDescriptions || []);
+
+      if (Array.isArray(imageFilesArray) && imageFilesArray.length > 0) {
+        setImageFiles(imageFilesArray.map((fileName: string) => ({
+          name: fileName,
+          size: 0,
+          type: 'image/jpeg'
+        } as File)));
+        setImageDescriptions(imageDescriptionsArray);
+      } else {
+        clearImageFiles();
+      }
+    } catch (error) {
+      console.error('Erro ao carregar imagens:', error);
       clearImageFiles();
     }
   };

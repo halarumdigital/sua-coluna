@@ -22,7 +22,9 @@
       "Bash(env)",
       "Bash(find:*)",
       "Bash(tasklist:*)",
-      "Read(//e/Master-Brasil/**)"
+      "Read(//e/Master-Brasil/**)",
+      "Bash(cat:*)",
+      "Bash(timeout 15 npx tsx add-columns.ts)"
     ],
     "deny": [],
     "ask": []

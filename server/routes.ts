@@ -1205,7 +1205,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(eq(customAIAgents.userId, userId))
         .orderBy(desc(customAIAgents.createdAt));
 
-      res.json(agents);
+      // Parse JSON fields para garantir que sejam arrays
+      const parsedAgents = agents.map(agent => ({
+        ...agent,
+        pdfFiles: typeof agent.pdfFiles === 'string' ? JSON.parse(agent.pdfFiles) : (agent.pdfFiles || []),
+        pdfContents: typeof agent.pdfContents === 'string' ? JSON.parse(agent.pdfContents) : (agent.pdfContents || []),
+        imageFiles: typeof agent.imageFiles === 'string' ? JSON.parse(agent.imageFiles) : (agent.imageFiles || []),
+        imageDescriptions: typeof agent.imageDescriptions === 'string' ? JSON.parse(agent.imageDescriptions) : (agent.imageDescriptions || []),
+      }));
+
+      res.json(parsedAgents);
     } catch (error) {
       console.error("Error fetching custom AI agents:", error);
       res.status(500).json({ message: "Failed to fetch custom AI agents" });
@@ -1312,7 +1321,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .orderBy(desc(customAIAgents.createdAt))
         .limit(1);
 
-      res.status(201).json(createdAgent[0]);
+      // Parse JSON fields
+      const parsedAgent = {
+        ...createdAgent[0],
+        pdfFiles: typeof createdAgent[0].pdfFiles === 'string' ? JSON.parse(createdAgent[0].pdfFiles) : (createdAgent[0].pdfFiles || []),
+        pdfContents: typeof createdAgent[0].pdfContents === 'string' ? JSON.parse(createdAgent[0].pdfContents) : (createdAgent[0].pdfContents || []),
+        imageFiles: typeof createdAgent[0].imageFiles === 'string' ? JSON.parse(createdAgent[0].imageFiles) : (createdAgent[0].imageFiles || []),
+        imageDescriptions: typeof createdAgent[0].imageDescriptions === 'string' ? JSON.parse(createdAgent[0].imageDescriptions) : (createdAgent[0].imageDescriptions || []),
+      };
+
+      res.status(201).json(parsedAgent);
     } catch (error) {
       console.error("Error creating custom AI agent:", error);
       if (error instanceof z.ZodError) {
@@ -1436,7 +1454,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(eq(customAIAgents.id, id))
         .limit(1);
 
-      res.json(updatedAgent[0]);
+      // Parse JSON fields
+      const parsedAgent = {
+        ...updatedAgent[0],
+        pdfFiles: typeof updatedAgent[0].pdfFiles === 'string' ? JSON.parse(updatedAgent[0].pdfFiles) : (updatedAgent[0].pdfFiles || []),
+        pdfContents: typeof updatedAgent[0].pdfContents === 'string' ? JSON.parse(updatedAgent[0].pdfContents) : (updatedAgent[0].pdfContents || []),
+        imageFiles: typeof updatedAgent[0].imageFiles === 'string' ? JSON.parse(updatedAgent[0].imageFiles) : (updatedAgent[0].imageFiles || []),
+        imageDescriptions: typeof updatedAgent[0].imageDescriptions === 'string' ? JSON.parse(updatedAgent[0].imageDescriptions) : (updatedAgent[0].imageDescriptions || []),
+      };
+
+      res.json(parsedAgent);
     } catch (error) {
       console.error("Error updating custom AI agent:", error);
       if (error instanceof z.ZodError) {

@@ -43,10 +43,12 @@ export default function ClientAIPage() {
   // Estados para gerenciamento de PDFs
   const [pdfFiles, setPdfFiles] = useState<File[]>([]);
   const [pdfContents, setPdfContents] = useState<Array<{fileName: string, content: string}>>([]);
+  const [pdfData, setPdfData] = useState<Array<{fileName: string, base64Data: string}>>([]);
 
   // Estados para gerenciamento de Imagens
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imageDescriptions, setImageDescriptions] = useState<Array<{fileName: string, description: string}>>([]);
+  const [imageData, setImageData] = useState<Array<{fileName: string, base64Data: string}>>([]);
 
   // Determinar se deve executar a query
   const shouldFetchAgents = location === '/franchise/ai' && 
@@ -235,6 +237,8 @@ export default function ClientAIPage() {
   };
 
   const handleEditAgent = (agent: any) => {
+    console.log('📝 Editando agente:', agent);
+
     setEditingAgent(agent);
     setIsCreatingAgent(true);
     setAgentForm({
@@ -245,7 +249,7 @@ export default function ClientAIPage() {
       maxTokens: agent.maxTokens,
       isActive: agent.isActive
     });
-    
+
     // Carregar PDFs existentes se houver
     try {
       const pdfFilesArray = typeof agent.pdfFiles === 'string'
@@ -255,6 +259,8 @@ export default function ClientAIPage() {
         ? JSON.parse(agent.pdfContents)
         : (agent.pdfContents || []);
 
+      console.log('📄 PDFs carregados:', { pdfFilesArray, pdfContentsArray });
+
       if (Array.isArray(pdfFilesArray) && pdfFilesArray.length > 0) {
         // Simular arquivos para exibição (não podemos recriar File objects)
         setPdfFiles(pdfFilesArray.map((fileName: string) => ({
@@ -263,11 +269,13 @@ export default function ClientAIPage() {
           type: 'application/pdf'
         } as File)));
         setPdfContents(pdfContentsArray);
+        console.log(`✅ ${pdfFilesArray.length} PDF(s) carregado(s)`);
       } else {
         clearPDFFiles();
+        console.log('ℹ️  Nenhum PDF para carregar');
       }
     } catch (error) {
-      console.error('Erro ao carregar PDFs:', error);
+      console.error('❌ Erro ao carregar PDFs:', error);
       clearPDFFiles();
     }
 
@@ -280,6 +288,8 @@ export default function ClientAIPage() {
         ? JSON.parse(agent.imageDescriptions)
         : (agent.imageDescriptions || []);
 
+      console.log('🖼️  Imagens carregadas:', { imageFilesArray, imageDescriptionsArray });
+
       if (Array.isArray(imageFilesArray) && imageFilesArray.length > 0) {
         setImageFiles(imageFilesArray.map((fileName: string) => ({
           name: fileName,
@@ -287,11 +297,13 @@ export default function ClientAIPage() {
           type: 'image/jpeg'
         } as File)));
         setImageDescriptions(imageDescriptionsArray);
+        console.log(`✅ ${imageFilesArray.length} imagem(ns) carregada(s)`);
       } else {
         clearImageFiles();
+        console.log('ℹ️  Nenhuma imagem para carregar');
       }
     } catch (error) {
-      console.error('Erro ao carregar imagens:', error);
+      console.error('❌ Erro ao carregar imagens:', error);
       clearImageFiles();
     }
   };
@@ -331,8 +343,10 @@ export default function ClientAIPage() {
       isActive: Boolean(agentForm.isActive),
       pdfFiles: pdfFiles.map(file => file.name), // Salvar nomes dos arquivos PDF
       pdfContents: pdfContents, // Salvar conteúdo dos PDFs
+      pdfData: pdfData, // Enviar dados base64 para o backend processar e salvar
       imageFiles: imageFiles.map(file => file.name), // Salvar nomes dos arquivos de imagem
-      imageDescriptions: imageDescriptions // Salvar descrições das imagens
+      imageDescriptions: imageDescriptions, // Salvar descrições das imagens
+      imageData: imageData // Enviar dados base64 para o backend processar e salvar
     };
     
     // Validação básica antes de enviar
@@ -442,12 +456,14 @@ export default function ClientAIPage() {
   const removePDFFile = (index: number) => {
     setPdfFiles(prev => prev.filter((_, i) => i !== index));
     setPdfContents(prev => prev.filter((_, i) => i !== index));
+    setPdfData(prev => prev.filter((_, i) => i !== index));
   };
 
   const clearPDFFiles = () => {
     setPdfFiles([]);
     setPdfContents([]);
-    
+    setPdfData([]);
+
     // Limpar input
     const input = document.getElementById('pdfFiles') as HTMLInputElement;
     if (input) {
@@ -458,16 +474,19 @@ export default function ClientAIPage() {
   const processPDFFiles = async (files: File[]) => {
     try {
       // Preparar dados para enviar ao backend
-      const pdfData = [];
-      
+      const newPdfData = [];
+
       for (const file of files) {
         const base64Data = await extractPDFContent(file);
-        pdfData.push({
+        newPdfData.push({
           fileName: file.name,
           base64Data: base64Data
         });
       }
-      
+
+      // Armazenar dados base64 para enviar ao salvar
+      setPdfData(prev => [...prev, ...newPdfData]);
+
       // Enviar para o backend para processamento
       const response = await fetch('/api/franchise/process-pdfs', {
         method: 'POST',
@@ -475,27 +494,27 @@ export default function ClientAIPage() {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({ pdfData })
+        body: JSON.stringify({ pdfData: newPdfData })
       });
-      
+
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.message || 'Erro ao processar PDFs');
       }
-      
+
       const result = await response.json();
-      
+
       // Adicionar conteúdos processados
       setPdfContents(prev => [...prev, ...result.processedContents]);
-      
+
       toast({
         title: "Sucesso",
         description: result.message,
         variant: "default",
       });
-      
+
       console.log('✅ PDFs processados:', result.stats);
-      
+
     } catch (error: any) {
       console.error('Erro ao processar PDFs:', error);
       toast({
@@ -579,11 +598,13 @@ export default function ClientAIPage() {
   const removeImageFile = (index: number) => {
     setImageFiles(prev => prev.filter((_, i) => i !== index));
     setImageDescriptions(prev => prev.filter((_, i) => i !== index));
+    setImageData(prev => prev.filter((_, i) => i !== index));
   };
 
   const clearImageFiles = () => {
     setImageFiles([]);
     setImageDescriptions([]);
+    setImageData([]);
 
     // Limpar input
     const input = document.getElementById('imageFiles') as HTMLInputElement;
@@ -595,15 +616,18 @@ export default function ClientAIPage() {
   const processImageFiles = async (files: File[]) => {
     try {
       // Preparar dados para enviar ao backend
-      const imageData = [];
+      const newImageData = [];
 
       for (const file of files) {
         const base64Data = await extractImageContent(file);
-        imageData.push({
+        newImageData.push({
           fileName: file.name,
           base64Data: base64Data
         });
       }
+
+      // Armazenar dados base64 para enviar ao salvar
+      setImageData(prev => [...prev, ...newImageData]);
 
       // Enviar para o backend para processamento com visão computacional
       const response = await fetch('/api/franchise/process-images', {
@@ -612,7 +636,7 @@ export default function ClientAIPage() {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({ imageData })
+        body: JSON.stringify({ imageData: newImageData })
       });
 
       if (!response.ok) {

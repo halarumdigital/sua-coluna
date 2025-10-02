@@ -294,6 +294,14 @@ export class OpenAIService {
    * Analisa uma imagem usando OpenAI Vision API e retorna uma descrição detalhada
    */
   async analyzeImage(base64Image: string, mimeType: string = 'image/jpeg'): Promise<string> {
+    const defaultPrompt = 'Por favor, analise esta imagem em detalhes e forneça uma descrição completa e precisa do que você vê. Inclua informações sobre objetos, pessoas, cores, texto visível, contexto e qualquer detalhe relevante que possa ser útil para treinar um agente de IA.';
+    return this.analyzeImageWithPrompt(base64Image, mimeType, defaultPrompt);
+  }
+
+  /**
+   * Analisa uma imagem com um prompt personalizado
+   */
+  async analyzeImageWithPrompt(base64Image: string, mimeType: string = 'image/jpeg', prompt: string): Promise<string> {
     try {
       const apiKey = await this.getApiKey();
       if (!apiKey) {
@@ -314,7 +322,7 @@ export class OpenAIService {
               content: [
                 {
                   type: 'text',
-                  text: 'Por favor, analise esta imagem em detalhes e forneça uma descrição completa e precisa do que você vê. Inclua informações sobre objetos, pessoas, cores, texto visível, contexto e qualquer detalhe relevante que possa ser útil para treinar um agente de IA.'
+                  text: prompt
                 },
                 {
                   type: 'image_url',
@@ -325,7 +333,7 @@ export class OpenAIService {
               ]
             }
           ],
-          max_tokens: 1000
+          max_tokens: 2000
         }),
       });
 
@@ -335,9 +343,9 @@ export class OpenAIService {
       }
 
       const data = await response.json();
-      const description = data.choices[0]?.message?.content || 'Não foi possível analisar a imagem';
+      const result = data.choices[0]?.message?.content || 'Não foi possível analisar a imagem';
 
-      return description;
+      return result;
     } catch (error: any) {
       console.error('Error analyzing image with OpenAI Vision:', error);
       throw new Error(`Falha ao analisar imagem: ${error.message}`);

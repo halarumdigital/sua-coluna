@@ -3643,6 +3643,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Endpoint para reconhecimento de comprovantes PIX (imagens e PDFs)
+  app.post("/api/franchise/analyze-pix-receipt", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const { imageData, fileType, conversationId } = req.body;
+
+      if (!imageData) {
+        return res.status(400).json({
+          message: "Dados de imagem são obrigatórios",
+          expected: "{ imageData: base64String, fileType: 'image/jpeg' | 'image/png', conversationId?: string }"
+        });
+      }
+
+      console.log(`🔍 Analisando comprovante PIX (${fileType || 'image'})...`);
+
+      try {
+        const { PixOCRService } = await import("./pix-ocr-service");
+
+        // Detectar tipo MIME
+        let mimeType = fileType || 'image/jpeg';
+        if (mimeType.includes('png')) {
+          mimeType = 'image/png';
+        } else if (mimeType.includes('jpg') || mimeType.includes('jpeg')) {
+          mimeType = 'image/jpeg';
+        }
+
+        // Analisar a imagem (passar userId para aprendizado com exemplos anteriores)
+        const pixData = await PixOCRService.analyzeImage(imageData, mimeType, userId);
+
+        // Validar dados extraídos
+        const validation = PixOCRService.validatePixData(pixData);
+
+        // Salvar comprovante se for válido
+        let savedPath = null;
+        if (pixData.isPixReceipt && conversationId) {
+          savedPath = await PixOCRService.savePixReceipt(
+            pixData,
+            userId,
+            conversationId,
+            imageData
+          );
+        }
+
+        // Formatar para exibição
+        const formattedData = PixOCRService.formatPixDataForDisplay(pixData);
+
+        console.log(`✅ Análise concluída - PIX: ${pixData.isPixReceipt}, Confiança: ${pixData.confidence}%`);
+
+        res.json({
+          success: true,
+          pixData,
+          validation,
+          formattedData,
+          savedPath,
+          message: pixData.isPixReceipt
+            ? `Comprovante PIX detectado com ${pixData.confidence}% de confiança`
+            : 'Não é um comprovante PIX'
+        });
+
+      } catch (pixError: any) {
+        console.error('❌ Erro ao analisar comprovante PIX:', pixError);
+        return res.status(400).json({
+          message: "Erro ao processar comprovante PIX",
+          error: pixError.message
+        });
+      }
+
+    } catch (error) {
+      console.error("Error analyzing PIX receipt:", error);
+      res.status(500).json({ message: "Erro interno do servidor" });
+    }
+  });
+
   // Endpoint para processar imagens com visão computacional
   app.post("/api/franchise/process-images", isAuthenticated, async (req: any, res) => {
     try {

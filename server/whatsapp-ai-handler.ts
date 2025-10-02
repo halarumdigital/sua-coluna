@@ -40,10 +40,47 @@ export class WhatsAppAIHandler {
       const messageText = messageObj.message?.conversation ||
                          messageObj.message?.extendedTextMessage?.text ||
                          messageObj.message?.imageMessage?.caption ||
+                         messageObj.message?.documentMessage?.caption ||
                          '';
 
-      if (!phoneNumber || !messageText) {
-        console.log('❌ Informações insuficientes da mensagem');
+      // Verificar se a mensagem contém imagem ou documento (possível comprovante PIX)
+      const hasImage = messageObj.message?.imageMessage;
+      const hasDocument = messageObj.message?.documentMessage;
+      let pixReceiptData = null;
+
+      if (hasImage || hasDocument) {
+        console.log('📎 Detectada mensagem com mídia (imagem/documento)');
+
+        try {
+          // Tentar detectar e processar comprovante PIX
+          const { PixOCRService } = await import("./pix-ocr-service");
+
+          // Baixar a imagem/documento do WhatsApp
+          const mediaMessage = hasImage ? messageObj.message.imageMessage : messageObj.message.documentMessage;
+
+          // A Evolution API já fornece a URL da mídia
+          if (mediaMessage.url || mediaMessage.directPath) {
+            console.log('🔍 Verificando se é comprovante PIX...');
+
+            // Aqui você precisaria baixar a imagem da Evolution API
+            // Por enquanto, vamos apenas marcar que existe mídia
+            // e o agente de IA pode perguntar ao usuário sobre o comprovante
+
+            console.log('ℹ️  Mídia detectada - será processada pelo agente IA');
+          }
+        } catch (error: any) {
+          console.error('❌ Erro ao processar possível comprovante PIX:', error);
+        }
+      }
+
+      if (!phoneNumber) {
+        console.log('❌ Número de telefone não disponível');
+        return;
+      }
+
+      // Se não há texto e não há mídia, ignorar
+      if (!messageText && !hasImage && !hasDocument) {
+        console.log('❌ Mensagem sem texto ou mídia');
         return;
       }
 
@@ -201,12 +238,26 @@ export class WhatsAppAIHandler {
           ).join('\n');
       }
 
+      // Adicionar informação sobre mídia anexada
+      let mediaInfo = '';
+      if (hasImage || hasDocument) {
+        mediaInfo = '\n\n📎 IMPORTANTE: O usuário enviou uma IMAGEM/DOCUMENTO junto com esta mensagem.';
+        if (hasImage) {
+          mediaInfo += '\n- Tipo: Imagem (pode ser um comprovante de pagamento PIX, screenshot, foto, etc.)';
+        }
+        if (hasDocument) {
+          mediaInfo += '\n- Tipo: Documento (pode ser PDF, comprovante, arquivo, etc.)';
+        }
+        mediaInfo += '\n\nSe o usuário mencionou pagamento, PIX, comprovante ou transferência, é MUITO PROVÁVEL que seja um comprovante de pagamento PIX.';
+        mediaInfo += '\nVocê DEVE reconhecer isso e responder adequadamente (ex: "Obrigado por enviar o comprovante! Vou verificar o pagamento.")';
+      }
+
       // Preparar contexto da mensagem para o AI usando o prompt personalizado + histórico
       const contextMessage = `${customAgent.systemPrompt}
 
-Você está respondendo uma mensagem do WhatsApp de ${phoneNumber}.${conversationHistory}
+Você está respondendo uma mensagem do WhatsApp de ${phoneNumber}.${conversationHistory}${mediaInfo}
 
-Nova mensagem recebida: "${messageText}";
+Nova mensagem recebida: "${messageText || '[Sem texto - apenas mídia]'}";
 
 Responda considerando todo o contexto da conversa acima.`;
 

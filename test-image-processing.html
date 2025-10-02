@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste - Agente de IA para Imagens e Comprovantes Pix</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">
+            <i class="fas fa-robot text-blue-600 mr-2"></i>
+            Teste - Agente de IA para Imagens e Comprovantes Pix
+        </h1>
+        <p class="text-gray-600 mb-8">Verificação das funcionalidades de processamento de imagens e reconhecimento de comprovantes Pix</p>
+
+        <!-- Status do Sistema -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">
+                <i class="fas fa-heartbeat text-green-600 mr-2"></i>
+                Status do Sistema
+            </h2>
+            <div id="system-status" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Status será preenchido via JavaScript -->
+            </div>
+        </div>
+
+        <!-- Capacidades Atuais -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">
+                <i class="fas fa-list-check text-blue-600 mr-2"></i>
+                Capacidades Atuais Identificadas
+            </h2>
+            <div id="capabilities" class="space-y-3">
+                <!-- Capacidades serão preenchidas via JavaScript -->
+            </div>
+        </div>
+
+        <!-- Teste de Processamento de Imagens -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">
+                <i class="fas fa-image text-purple-600 mr-2"></i>
+                Teste de Processamento de Imagens
+            </h2>
+            
+            <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+                <div class="cursor-pointer" onclick="document.getElementById('imageInput').click()">
+                    <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
+                    <p class="text-sm text-gray-600 mb-2">
+                        <span class="text-blue-600 font-medium">Clique para selecionar</span> ou arraste uma imagem aqui
+                    </p>
+                    <p class="text-xs text-gray-500">Suporta: JPG, PNG, WebP • Máximo 5MB</p>
+                    <input 
+                        type="file" 
+                        id="imageInput" 
+                        accept="image/*"
+                        class="hidden"
+                        onchange="handleImageUpload(event)"
+                    >
+                </div>
+                
+                <div id="imagePreview" class="hidden mt-4">
+                    <h4 class="text-sm font-medium text-gray-700 mb-2">Imagem selecionada:</h4>
+                    <img id="previewImg" class="max-w-full h-auto max-h-64 mx-auto rounded border">
+                    <div class="mt-3">
+                        <p id="imageInfo" class="text-sm text-gray-600"></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <button 
+                    onclick="testImageProcessing()"
+                    class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors disabled:bg-gray-400"
+                    id="testImageBtn"
+                    disabled
+                >
+                    <i class="fas fa-play mr-2"></i>
+                    Testar Processamento
+                </button>
+            </div>
+
+            <div id="imageTestResult" class="mt-4 hidden">
+                <!-- Resultado do teste será exibido aqui -->
+            </div>
+        </div>
+
+        <!-- Teste de Comprovante Pix -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">
+                <i class="fas fa-qrcode text-green-600 mr-2"></i>
+                Teste de Reconhecimento de Comprovante Pix
+            </h2>
+            
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <h3 class="font-medium text-blue-900 mb-2">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    Como Funcionaria o Reconhecimento de Pix
+                </h3>
+                <div class="text-sm text-blue-800 space-y-2">
+                    <p><strong>1. Extração de Texto (OCR):</strong> Usar modelos como GPT-4 Vision para extrair texto da imagem</p>
+                    <p><strong>2. Padrão de Identificação:</strong> Reconhecer elementos típicos de comprovantes Pix</p>
+                    <p><strong>3. Validação de Dados:</strong> Verificar valores, datas, nomes e transaction IDs</p>
+                    <p><strong>4. Integração com IA:</strong> Usar o contexto extraído para responder perguntas sobre o comprovante</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900 mb-2">
+                        <i class="fas fa-check-circle text-green-600 mr-2"></i>
+                        Capacidades Existentes
+                    </h4>
+                    <ul class="text-sm text-gray-600 space-y-1">
+                        <li>✅ Processamento de PDFs para treinamento</li>
+                        <li>✅ Agentes de IA personalizados</li>
+                        <li>✅ Integração com OpenAI (textuais)</li>
+                        <li>✅ Contexto de conversação</li>
+                        <li>✅ Detecção básica de imageMessage</li>
+                    </ul>
+                </div>
+                
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900 mb-2">
+                        <i class="fas fa-times-circle text-red-600 mr-2"></i>
+                        Capacidades Ausentes
+                    </h4>
+                    <ul class="text-sm text-gray-600 space-y-1">
+                        <li>❌ Processamento de imagens (OCR)</li>
+                        <li>❌ Modelos de visão computacional</li>
+                        <li>❌ Reconhecimento específico de Pix</li>
+                        <li>❌ Extração de dados estruturados</li>
+                        <li>❌ Validação de comprovantes</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recomendações -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">
+                <i class="fas fa-lightbulb text-yellow-600 mr-2"></i>
+                Recomendações para Implementação
+            </h2>
+            <div class="space-y-4">
+                <div class="border-l-4 border-yellow-500 pl-4">
+                    <h3 class="font-medium text-gray-900">1. Implementar Processamento de Imagens</h3>
+                    <p class="text-sm text-gray-600">Adicionar suporte a GPT-4 Vision ou similar para OCR e análise de imagens</p>
+                </div>
+                
+                <div class="border-l-4 border-yellow-500 pl-4">
+                    <h3 class="font-medium text-gray-900">2. Criar Detector de Comprovantes Pix</h3>
+                    <p class="text-sm text-gray-600">Desenvolver módulo específico para identificar e validar comprovantes Pix</p>
+                </div>
+                
+                <div class="border-l-4 border-yellow-500 pl-4">
+                    <h3 class="font-medium text-gray-900">3. Integração com WhatsApp</h3>
+                    <p class="text-sm text-gray-600">Estender o handler do WhatsApp para processar imagens recebidas</p>
+                </div>
+                
+                <div class="border-l-4 border-yellow-500 pl-4">
+                    <h3 class="font-medium text-gray-900">4. Treinamento Específico</h3>
+                    <p class="text-sm text-gray-600">Usar comprovantes de exemplo para treinar o modelo de reconhecimento</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Estado global
+        let selectedImage = null;
+        let systemCapabilities = {};
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', function() {
+            checkSystemStatus();
+            analyzeCapabilities();
+        });
+
+        // Verificar status do sistema
+        async function checkSystemStatus() {
+            const statusDiv = document.getElementById('system-status');
+            
+            // Verificar suporte a APIs necessárias
+            const checks = [
+                {
+                    name: 'File API',
+                    icon: 'fa-file',
+                    status: typeof File !== 'undefined' && typeof FileReader !== 'undefined',
+                    color: 'green'
+                },
+                {
+                    name: 'Canvas API',
+                    icon: 'fa-image',
+                    status: typeof HTMLCanvasElement !== 'undefined',
+                    color: 'blue'
+                },
+                {
+                    name: 'Fetch API',
+                    icon: 'fa-network-wired',
+                    status: typeof fetch !== 'undefined',
+                    color: 'purple'
+                },
+                {
+                    name: 'Base64 Encoding',
+                    icon: 'fa-code',
+                    status: typeof btoa !== 'undefined',
+                    color: 'orange'
+                }
+            ];
+
+            let statusHTML = '';
+            checks.forEach(check => {
+                const statusClass = check.status ? 'text-green-600' : 'text-red-600';
+                const statusIcon = check.status ? 'fa-check-circle' : 'fa-times-circle';
+                const bgColor = check.status ? 'bg-green-50' : 'bg-red-50';
+                
+                statusHTML += `
+                    <div class="p-4 rounded-lg border ${bgColor}">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fas ${check.icon} text-${check.color}-600"></i>
+                                <span class="font-medium text-gray-900">${check.name}</span>
+                            </div>
+                            <i class="fas ${statusIcon} ${statusClass}"></i>
+                        </div>
+                    </div>
+                `;
+            });
+
+            statusDiv.innerHTML = statusHTML;
+        }
+
+        // Analisar capacidades do sistema
+        function analyzeCapabilities() {
+            const capabilitiesDiv = document.getElementById('capabilities');
+            
+            systemCapabilities = {
+                pdfProcessing: {
+                    name: 'Processamento de PDFs',
+                    status: true,
+                    description: 'Sistema pode extrair e usar conteúdo de PDFs para treinamento de agentes',
+                    icon: 'fa-file-pdf',
+                    color: 'green'
+                },
+                customAgents: {
+                    name: 'Agentes Personalizados',
+                    status: true,
+                    description: 'Suporte completo para criação e gerenciamento de agentes de IA personalizados',
+                    icon: 'fa-robot',
+                    color: 'blue'
+                },
+                openaiIntegration: {
+                    name: 'Integração OpenAI',
+                    status: true,
+                    description: 'Conexão com modelos GPT para processamento de linguagem natural',
+                    icon: 'fa-brain',
+                    color: 'purple'
+                },
+                whatsappIntegration: {
+                    name: 'Integração WhatsApp',
+                    status: true,
+                    description: 'Recebimento e processamento automático de mensagens do WhatsApp',
+                    icon: 'fa-whatsapp',
+                    color: 'green'
+                },
+                imageProcessing: {
+                    name: 'Processamento de Imagens',
+                    status: false,
+                    description: 'Não implementado - necessário para OCR e reconhecimento visual',
+                    icon: 'fa-image',
+                    color: 'red'
+                },
+                pixRecognition: {
+                    name: 'Reconhecimento de Pix',
+                    status: false,
+                    description: 'Não implementado - necessário módulo específico para comprovantes',
+                    icon: 'fa-qrcode',
+                    color: 'red'
+                },
+                ocrCapability: {
+                    name: 'OCR (Reconhecimento de Texto)',
+                    status: false,
+                    description: 'Não implementado - essencial para extrair dados de imagens',
+                    icon: 'fa-font',
+                    color: 'red'
+                },
+                visionModels: {
+                    name: 'Modelos de Visão',
+                    status: false,
+                    description: 'Não implementado - necessário para análise de imagens',
+                    icon: 'fa-eye',
+                    color: 'red'
+                }
+            };
+
+            let capabilitiesHTML = '';
+            Object.values(systemCapabilities).forEach(cap => {
+                const statusClass = cap.status ? 'text-green-600' : 'text-red-600';
+                const statusIcon = cap.status ? 'fa-check-circle' : 'fa-times-circle';
+                const bgColor = cap.status ? 'bg-green-50' : 'bg-red-50';
+                
+                capabilitiesHTML += `
+                    <div class="flex items-start gap-3 p-3 rounded-lg border ${bgColor}">
+                        <i class="fas ${cap.icon} text-${cap.color}-600 mt-1"></i>
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="font-medium text-gray-900">${cap.name}</span>
+                                <i class="fas ${statusIcon} ${statusClass} text-sm"></i>
+                            </div>
+                            <p class="text-sm text-gray-600">${cap.description}</p>
+                        </div>
+                    </div>
+                `;
+            });
+
+            capabilitiesDiv.innerHTML = capabilitiesHTML;
+        }
+
+        // Manipular upload de imagem
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Validar arquivo
+            if (!file.type.startsWith('image/')) {
+                showNotification('Por favor, selecione um arquivo de imagem válido', 'error');
+                return;
+            }
+
+            if (file.size > 5 * 1024 * 1024) { // 5MB
+                showNotification('O arquivo não pode exceder 5MB', 'error');
+                return;
+            }
+
+            selectedImage = file;
+
+            // Mostrar preview
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const preview = document.getElementById('imagePreview');
+                const previewImg = document.getElementById('previewImg');
+                const imageInfo = document.getElementById('imageInfo');
+                const testBtn = document.getElementById('testImageBtn');
+
+                previewImg.src = e.target.result;
+                imageInfo.innerHTML = `
+                    <strong>Arquivo:</strong> ${file.name}<br>
+                    <strong>Tamanho:</strong> ${(file.size / 1024).toFixed(2)} KB<br>
+                    <strong>Tipo:</strong> ${file.type}<br>
+                    <strong>Última modificação:</strong> ${new Date(file.lastModified).toLocaleString()}
+                `;
+
+                preview.classList.remove('hidden');
+                testBtn.disabled = false;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Testar processamento de imagem
+        async function testImageProcessing() {
+            if (!selectedImage) {
+                showNotification('Por favor, selecione uma imagem primeiro', 'error');
+                return;
+            }
+
+            const resultDiv = document.getElementById('imageTestResult');
+            const testBtn = document.getElementById('testImageBtn');
+            
+            testBtn.disabled = true;
+            testBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processando...';
+
+            resultDiv.classList.remove('hidden');
+            resultDiv.innerHTML = `
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div class="flex items-center gap-2 text-yellow-700">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span>Analisando imagem...</span>
+                    </div>
+                </div>
+            `;
+
+            // Simular processamento
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Resultado do teste
+            const result = {
+                canProcess: false,
+                hasOCR: false,
+                canDetectPix: false,
+                extractedText: null,
+                detectedElements: [],
+                recommendations: []
+            };
+
+            // Análise simulada
+            if (selectedImage.name.toLowerCase().includes('pix') || 
+                selectedImage.name.toLowerCase().includes('comprovante')) {
+                result.detectedElements.push('Possível comprovante Pix (baseado no nome do arquivo)');
+                result.recommendations.push('Implementar OCR para extrair dados do comprovante');
+            }
+
+            result.recommendations.push('Integrar com modelo de visão (GPT-4 Vision)');
+            result.recommendations.push('Criar detector específico para comprovantes Pix');
+            result.recommendations.push('Implementar validação de dados extraídos');
+
+            // Exibir resultado
+            resultDiv.innerHTML = `
+                <div class="space-y-4">
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                        <h4 class="font-medium text-red-900 mb-2">
+                            <i class="fas fa-exclamation-triangle mr-2"></i>
+                            Processamento de Imagem Não Disponível
+                        </h4>
+                        <p class="text-sm text-red-800">O sistema atual não possui capacidade de processar imagens para OCR ou reconhecimento visual.</p>
+                    </div>
+
+                    ${result.detectedElements.length > 0 ? `
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <h4 class="font-medium text-blue-900 mb-2">
+                                <i class="fas fa-search mr-2"></i>
+                                Elementos Detectados
+                            </h4>
+                            <ul class="text-sm text-blue-800 space-y-1">
+                                ${result.detectedElements.map(el => `<li>• ${el}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <h4 class="font-medium text-yellow-900 mb-2">
+                            <i class="fas fa-lightbulb mr-2"></i>
+                            Recomendações
+                        </h4>
+                        <ul class="text-sm text-yellow-800 space-y-1">
+                            ${result.recommendations.map(rec => `<li>• ${rec}</li>`).join('')}
+                        </ul>
+                    </div>
+
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <h4 class="font-medium text-gray-900 mb-2">
+                            <i class="fas fa-info-circle mr-2"></i>
+                            Próximos Passos
+                        </h4>
+                        <div class="text-sm text-gray-700 space-y-2">
+                            <p><strong>1.</strong> Implementar integração com modelos de visão (GPT-4 Vision)</p>
+                            <p><strong>2.</strong> Desenvolver módulo OCR para extração de texto</p>
+                            <p><strong>3.</strong> Criar padrões de reconhecimento para comprovantes Pix</p>
+                            <p><strong>4.</strong> Integrar com o handler do WhatsApp</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            testBtn.disabled = false;
+            testBtn.innerHTML = '<i class="fas fa-play mr-2"></i>Testar Processamento';
+        }
+
+        // Sistema de notificações
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${
+                type === 'success' ? 'bg-green-500 text-white' :
+                type === 'error' ? 'bg-red-500 text-white' :
+                'bg-blue-500 text-white'
+            }`;
+            
+            notification.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <i class="fas ${
+                        type === 'success' ? 'fa-check-circle' :
+                        type === 'error' ? 'fa-exclamation-circle' :
+                        'fa-info-circle'
+                    }"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                if (notification && notification.parentNode) {
+                    notification.remove();
+                }
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

@@ -44,6 +44,10 @@ export default function ClientAIPage() {
   const [pdfFiles, setPdfFiles] = useState<File[]>([]);
   const [pdfContents, setPdfContents] = useState<Array<{fileName: string, content: string}>>([]);
 
+  // Estados para gerenciamento de Imagens
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imageDescriptions, setImageDescriptions] = useState<Array<{fileName: string, description: string}>>([]);
+
   // Determinar se deve executar a query
   const shouldFetchAgents = location === '/franchise/ai' && 
                            typeof window !== 'undefined' && 
@@ -225,8 +229,9 @@ export default function ClientAIPage() {
       maxTokens: 1000,
       isActive: true
     });
-    // Limpar PDFs ao criar novo agente
+    // Limpar PDFs e imagens ao criar novo agente
     clearPDFFiles();
+    clearImageFiles();
   };
 
   const handleEditAgent = (agent: any) => {
@@ -252,6 +257,18 @@ export default function ClientAIPage() {
       setPdfContents(agent.pdfContents || []);
     } else {
       clearPDFFiles();
+    }
+
+    // Carregar Imagens existentes se houver
+    if (agent.imageFiles && agent.imageFiles.length > 0) {
+      setImageFiles(agent.imageFiles.map((fileName: string) => ({
+        name: fileName,
+        size: 0,
+        type: 'image/jpeg'
+      } as File)));
+      setImageDescriptions(agent.imageDescriptions || []);
+    } else {
+      clearImageFiles();
     }
   };
 
@@ -289,7 +306,9 @@ export default function ClientAIPage() {
       maxTokens: Number(agentForm.maxTokens),
       isActive: Boolean(agentForm.isActive),
       pdfFiles: pdfFiles.map(file => file.name), // Salvar nomes dos arquivos PDF
-      pdfContents: pdfContents // Salvar conteúdo dos PDFs
+      pdfContents: pdfContents, // Salvar conteúdo dos PDFs
+      imageFiles: imageFiles.map(file => file.name), // Salvar nomes dos arquivos de imagem
+      imageDescriptions: imageDescriptions // Salvar descrições das imagens
     };
     
     // Validação básica antes de enviar
@@ -466,28 +485,165 @@ export default function ClientAIPage() {
   const extractPDFContent = async (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      
+
       reader.onload = async function(e) {
         try {
           const arrayBuffer = e.target?.result as ArrayBuffer;
           if (!arrayBuffer) {
             throw new Error('Erro ao ler arquivo');
           }
-          
+
           // Converter para base64 para enviar ao backend
           const base64 = btoa(
             new Uint8Array(arrayBuffer)
               .reduce((data, byte) => data + String.fromCharCode(byte), '')
           );
-          
+
           resolve(base64);
-          
+
         } catch (error) {
           console.error('Erro ao processar PDF:', error);
           reject(error);
         }
       };
-      
+
+      reader.onerror = () => reject(new Error(`Erro ao ler arquivo ${file.name}`));
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
+  // Funções para gerenciamento de Imagens
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+
+    // Validar arquivos
+    const validFiles = files.filter(file => {
+      const validTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+
+      if (!validTypes.includes(file.type)) {
+        toast({
+          title: "Erro",
+          description: `Arquivo "${file.name}" não é uma imagem válida (PNG, JPEG, JPG)`,
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      if (file.size > 5 * 1024 * 1024) { // 5MB
+        toast({
+          title: "Erro",
+          description: `Arquivo "${file.name}" excede o limite de 5MB`,
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      return true;
+    });
+
+    if (validFiles.length === 0) {
+      return;
+    }
+
+    // Adicionar arquivos válidos
+    setImageFiles(prev => [...prev, ...validFiles]);
+
+    // Processar imagens automaticamente
+    processImageFiles(validFiles);
+  };
+
+  const removeImageFile = (index: number) => {
+    setImageFiles(prev => prev.filter((_, i) => i !== index));
+    setImageDescriptions(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const clearImageFiles = () => {
+    setImageFiles([]);
+    setImageDescriptions([]);
+
+    // Limpar input
+    const input = document.getElementById('imageFiles') as HTMLInputElement;
+    if (input) {
+      input.value = '';
+    }
+  };
+
+  const processImageFiles = async (files: File[]) => {
+    try {
+      // Preparar dados para enviar ao backend
+      const imageData = [];
+
+      for (const file of files) {
+        const base64Data = await extractImageContent(file);
+        imageData.push({
+          fileName: file.name,
+          base64Data: base64Data
+        });
+      }
+
+      // Enviar para o backend para processamento com visão computacional
+      const response = await fetch('/api/franchise/process-images', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ imageData })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erro ao processar imagens');
+      }
+
+      const result = await response.json();
+
+      // Adicionar descrições processadas
+      setImageDescriptions(prev => [...prev, ...result.processedImages]);
+
+      toast({
+        title: "Sucesso",
+        description: result.message,
+        variant: "default",
+      });
+
+      console.log('✅ Imagens processadas:', result.processedImages);
+
+    } catch (error: any) {
+      console.error('Erro ao processar imagens:', error);
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao processar arquivos de imagem.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const extractImageContent = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = async function(e) {
+        try {
+          const arrayBuffer = e.target?.result as ArrayBuffer;
+          if (!arrayBuffer) {
+            throw new Error('Erro ao ler arquivo');
+          }
+
+          // Converter para base64 para enviar ao backend
+          const base64 = btoa(
+            new Uint8Array(arrayBuffer)
+              .reduce((data, byte) => data + String.fromCharCode(byte), '')
+          );
+
+          resolve(base64);
+
+        } catch (error) {
+          console.error('Erro ao processar imagem:', error);
+          reject(error);
+        }
+      };
+
       reader.onerror = () => reject(new Error(`Erro ao ler arquivo ${file.name}`));
       reader.readAsArrayBuffer(file);
     });
@@ -663,6 +819,89 @@ export default function ClientAIPage() {
                         >
                           <Trash2 className="w-4 h-4 mr-2" />
                           Limpar Todos
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Seção de Upload de Imagens para Treinamento */}
+                <div className="border-t pt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center">
+                      <svg className="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <Label className="text-base font-medium">Imagens para Treinamento</Label>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Envie imagens (PNG, JPEG, JPG) para treinar o agente com informações visuais.
+                    As imagens serão analisadas automaticamente usando IA de visão computacional.
+                  </p>
+
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors bg-gray-50">
+                    <div className="cursor-pointer" onClick={() => document.getElementById('imageFiles')?.click()}>
+                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2">
+                        <span className="text-blue-600 font-medium">Clique para selecionar</span> ou arraste imagens aqui
+                      </p>
+                      <p className="text-xs text-gray-500">Máximo 5MB por imagem • Formatos: PNG, JPEG, JPG</p>
+                      <input
+                        type="file"
+                        id="imageFiles"
+                        multiple
+                        accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                        className="hidden"
+                        onChange={(e) => handleImageUpload(e)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Preview das imagens */}
+                  {imageFiles.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Imagens selecionadas:</h4>
+                      <div className="space-y-2">
+                        {imageFiles.map((file, index) => (
+                          <div key={index} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 bg-blue-200 rounded-full flex items-center justify-center">
+                                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-700">{file.name}</p>
+                                <p className="text-sm text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeImageFile(index)}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex justify-center">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={clearImageFiles}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Limpar Todas
                         </Button>
                       </div>
                     </div>

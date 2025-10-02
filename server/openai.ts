@@ -283,10 +283,64 @@ export class OpenAIService {
         }
       };
     } catch (error: any) {
-      return { 
-        success: false, 
-        error: error.message || 'Chat request failed' 
+      return {
+        success: false,
+        error: error.message || 'Chat request failed'
       };
+    }
+  }
+
+  /**
+   * Analisa uma imagem usando OpenAI Vision API e retorna uma descrição detalhada
+   */
+  async analyzeImage(base64Image: string, mimeType: string = 'image/jpeg'): Promise<string> {
+    try {
+      const apiKey = await this.getApiKey();
+      if (!apiKey) {
+        throw new Error('OpenAI API key not configured');
+      }
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Por favor, analise esta imagem em detalhes e forneça uma descrição completa e precisa do que você vê. Inclua informações sobre objetos, pessoas, cores, texto visível, contexto e qualquer detalhe relevante que possa ser útil para treinar um agente de IA.'
+                },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:${mimeType};base64,${base64Image}`
+                  }
+                }
+              ]
+            }
+          ],
+          max_tokens: 1000
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error?.message || 'Vision API request failed');
+      }
+
+      const data = await response.json();
+      const description = data.choices[0]?.message?.content || 'Não foi possível analisar a imagem';
+
+      return description;
+    } catch (error: any) {
+      console.error('Error analyzing image with OpenAI Vision:', error);
+      throw new Error(`Falha ao analisar imagem: ${error.message}`);
     }
   }
 

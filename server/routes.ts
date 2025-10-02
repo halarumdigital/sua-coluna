@@ -1229,33 +1229,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const validatedData = createCustomAIAgentSchema.parse(req.body);
-      
+
       // Processar PDFs se houver dados
       let pdfFiles = validatedData.pdfFiles || [];
       let pdfContents = validatedData.pdfContents || [];
-      
+
       if (validatedData.pdfData && validatedData.pdfData.length > 0) {
         console.log(`🔄 Processando ${validatedData.pdfData.length} arquivo(s) PDF...`);
-        
+
         try {
           pdfContents = await PDFProcessor.processPDFContents(validatedData.pdfData);
           pdfFiles = validatedData.pdfData.map(pdf => pdf.fileName);
-          
+
           console.log(`✅ PDFs processados: ${pdfFiles.join(', ')}`);
-        } catch (error) {
+        } catch (error: any) {
           console.error('❌ Erro ao processar PDFs:', error);
-          return res.status(400).json({ 
-            message: "Erro ao processar arquivos PDF", 
-            error: error.message 
+          return res.status(400).json({
+            message: "Erro ao processar arquivos PDF",
+            error: error.message
           });
         }
       }
-      
+
+      // Processar Imagens se houver dados
+      let imageFiles = validatedData.imageFiles || [];
+      let imageDescriptions = validatedData.imageDescriptions || [];
+
+      if (validatedData.imageData && validatedData.imageData.length > 0) {
+        console.log(`🔄 Processando ${validatedData.imageData.length} imagem(ns)...`);
+
+        try {
+          const { ImageProcessor } = await import("./image-processor");
+
+          imageDescriptions = await ImageProcessor.processImageContents(validatedData.imageData);
+          imageFiles = validatedData.imageData.map(img => img.fileName);
+
+          // Salvar imagens localmente
+          await ImageProcessor.saveImageFiles(validatedData.imageData, userId);
+
+          console.log(`✅ Imagens processadas: ${imageFiles.join(', ')}`);
+        } catch (error: any) {
+          console.error('❌ Erro ao processar imagens:', error);
+          return res.status(400).json({
+            message: "Erro ao processar imagens",
+            error: error.message
+          });
+        }
+      }
+
       // Aprimorar prompt com conteúdo dos PDFs
-      const enhancedPrompt = PDFProcessor.enhancePromptWithPDFs(
-        validatedData.systemPrompt, 
+      let enhancedPrompt = PDFProcessor.enhancePromptWithPDFs(
+        validatedData.systemPrompt,
         pdfContents
       );
+
+      // Aprimorar ainda mais com descrições de imagens
+      if (imageDescriptions.length > 0) {
+        const { ImageProcessor } = await import("./image-processor");
+        enhancedPrompt = ImageProcessor.enhancePromptWithImages(
+          enhancedPrompt,
+          imageDescriptions
+        );
+      }
 
       const result = await db
         .insert(customAIAgents)
@@ -1264,6 +1299,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           systemPrompt: enhancedPrompt,
           pdfFiles: JSON.stringify(pdfFiles),
           pdfContents: JSON.stringify(pdfContents),
+          imageFiles: JSON.stringify(imageFiles),
+          imageDescriptions: JSON.stringify(imageDescriptions),
           userId,
         });
 
@@ -1321,29 +1358,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Processar PDFs se houver dados
       let pdfFiles = validatedData.pdfFiles || [];
       let pdfContents = validatedData.pdfContents || [];
-      
+
       if (validatedData.pdfData && validatedData.pdfData.length > 0) {
         console.log(`🔄 Processando ${validatedData.pdfData.length} arquivo(s) PDF para atualização...`);
-        
+
         try {
           pdfContents = await PDFProcessor.processPDFContents(validatedData.pdfData);
           pdfFiles = validatedData.pdfData.map(pdf => pdf.fileName);
-          
+
           console.log(`✅ PDFs processados para atualização: ${pdfFiles.join(', ')}`);
-        } catch (error) {
+        } catch (error: any) {
           console.error('❌ Erro ao processar PDFs:', error);
-          return res.status(400).json({ 
-            message: "Erro ao processar arquivos PDF", 
-            error: error.message 
+          return res.status(400).json({
+            message: "Erro ao processar arquivos PDF",
+            error: error.message
           });
         }
       }
-      
+
+      // Processar Imagens se houver dados
+      let imageFiles = validatedData.imageFiles || [];
+      let imageDescriptions = validatedData.imageDescriptions || [];
+
+      if (validatedData.imageData && validatedData.imageData.length > 0) {
+        console.log(`🔄 Processando ${validatedData.imageData.length} imagem(ns) para atualização...`);
+
+        try {
+          const { ImageProcessor } = await import("./image-processor");
+
+          imageDescriptions = await ImageProcessor.processImageContents(validatedData.imageData);
+          imageFiles = validatedData.imageData.map(img => img.fileName);
+
+          // Salvar imagens localmente
+          await ImageProcessor.saveImageFiles(validatedData.imageData, userId);
+
+          console.log(`✅ Imagens processadas para atualização: ${imageFiles.join(', ')}`);
+        } catch (error: any) {
+          console.error('❌ Erro ao processar imagens:', error);
+          return res.status(400).json({
+            message: "Erro ao processar imagens",
+            error: error.message
+          });
+        }
+      }
+
       // Aprimorar prompt com conteúdo dos PDFs
-      const enhancedPrompt = PDFProcessor.enhancePromptWithPDFs(
-        validatedData.systemPrompt, 
+      let enhancedPrompt = PDFProcessor.enhancePromptWithPDFs(
+        validatedData.systemPrompt,
         pdfContents
       );
+
+      // Aprimorar ainda mais com descrições de imagens
+      if (imageDescriptions.length > 0) {
+        const { ImageProcessor } = await import("./image-processor");
+        enhancedPrompt = ImageProcessor.enhancePromptWithImages(
+          enhancedPrompt,
+          imageDescriptions
+        );
+      }
 
       await db
         .update(customAIAgents)
@@ -1352,6 +1424,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           systemPrompt: enhancedPrompt,
           pdfFiles: JSON.stringify(pdfFiles),
           pdfContents: JSON.stringify(pdfContents),
+          imageFiles: JSON.stringify(imageFiles),
+          imageDescriptions: JSON.stringify(imageDescriptions),
           updatedAt: new Date(),
         })
         .where(eq(customAIAgents.id, id));
@@ -3500,34 +3574,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { pdfData } = req.body;
-      
+
       if (!pdfData || !Array.isArray(pdfData) || pdfData.length === 0) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           message: "Dados de PDF são obrigatórios",
           expected: "Array de objetos com fileName e base64Data"
         });
       }
-      
+
       console.log(`📝 Processando ${pdfData.length} arquivo(s) PDF...`);
-      
+
       try {
         const processedContents = await PDFProcessor.processPDFContents(pdfData);
-        
+
         // Calcular estatísticas
         const stats = processedContents.map(content => ({
           fileName: content.fileName,
           ...PDFProcessor.getContentStats(content.content)
         }));
-        
+
         console.log(`✅ Processamento concluído: ${processedContents.length} arquivos`);
-        
+
         res.json({
           success: true,
           processedContents,
           stats,
           message: `${processedContents.length} arquivo(s) processado(s) com sucesso`
         });
-        
+
       } catch (pdfError) {
         console.error('❌ Erro no processamento de PDF:', pdfError);
         return res.status(400).json({
@@ -3535,9 +3609,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
           error: pdfError.message
         });
       }
-      
+
     } catch (error) {
       console.error("Error processing PDFs:", error);
+      res.status(500).json({ message: "Erro interno do servidor" });
+    }
+  });
+
+  // Endpoint para processar imagens com visão computacional
+  app.post("/api/franchise/process-images", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const { imageData } = req.body;
+
+      if (!imageData || !Array.isArray(imageData) || imageData.length === 0) {
+        return res.status(400).json({
+          message: "Dados de imagem são obrigatórios",
+          expected: "Array de objetos com fileName e base64Data"
+        });
+      }
+
+      console.log(`🖼️  Processando ${imageData.length} imagem(ns)...`);
+
+      try {
+        // Importar ImageProcessor
+        const { ImageProcessor } = await import("./image-processor");
+
+        // Processar imagens para extrair descrições
+        const processedImages = await ImageProcessor.processImageContents(imageData);
+
+        // Salvar arquivos localmente
+        const savedPaths = await ImageProcessor.saveImageFiles(imageData, userId);
+
+        console.log(`✅ Processamento concluído: ${processedImages.length} imagens`);
+
+        res.json({
+          success: true,
+          processedImages,
+          savedPaths,
+          message: `${processedImages.length} imagem(ns) processada(s) com sucesso`
+        });
+
+      } catch (imageError: any) {
+        console.error('❌ Erro no processamento de imagem:', imageError);
+        return res.status(400).json({
+          message: "Erro ao processar imagens",
+          error: imageError.message
+        });
+      }
+
+    } catch (error) {
+      console.error("Error processing images:", error);
       res.status(500).json({ message: "Erro interno do servidor" });
     }
   });

@@ -459,6 +459,9 @@ export const customAIAgents = mysqlTable("custom_ai_agents", {
   // PDF Training fields
   pdfFiles: json("pdf_files").default("[]"), // Array de nomes de arquivos PDF
   pdfContents: json("pdf_contents").default("[]"), // Array de objetos {fileName, content}
+  // Image Training fields
+  imageFiles: json("image_files").default("[]"), // Array de nomes de arquivos de imagem
+  imageDescriptions: json("image_descriptions").default("[]"), // Array de objetos {fileName, description}
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
 }, (table) => [
@@ -859,6 +862,17 @@ export const createCustomAIAgentSchema = z.object({
   })).optional().default([]),
   // Campo para processamento de PDFs no frontend
   pdfData: z.array(z.object({
+    fileName: z.string(),
+    base64Data: z.string()
+  })).optional(),
+  // Image Training fields
+  imageFiles: z.array(z.string()).optional().default([]),
+  imageDescriptions: z.array(z.object({
+    fileName: z.string(),
+    description: z.string()
+  })).optional().default([]),
+  // Campo para processamento de imagens no frontend
+  imageData: z.array(z.object({
     fileName: z.string(),
     base64Data: z.string()
   })).optional(),

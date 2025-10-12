@@ -191,7 +191,17 @@ export default function CalendarPage() {
   };
 
   const handleSaveSettings = () => {
-    updateSettingsMutation.mutate(formData);
+    // Criar cópia dos dados para enviar
+    const dataToSave = { ...formData };
+
+    // Se o clientSecret for a máscara (********), não enviar
+    // O backend vai manter o valor existente
+    if (dataToSave.clientSecret === "********") {
+      // Mantém a máscara para o backend identificar
+      // O backend já tem lógica para não substituir quando vier "********"
+    }
+
+    updateSettingsMutation.mutate(dataToSave);
   };
 
   const handleTestConnection = () => {

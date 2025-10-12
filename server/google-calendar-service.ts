@@ -103,10 +103,12 @@ export class GoogleCalendarService {
         ];
       }
 
-      console.log('📅 Dados do evento:', {
+      console.log('📅 Dados do evento a serem enviados ao Google:', {
         summary: event.summary,
         start: event.start.dateTime,
+        startTimezone: event.start.timeZone,
         end: event.end.dateTime,
+        endTimezone: event.end.timeZone,
         attendees: event.attendees
       });
 
@@ -343,12 +345,26 @@ Retorne APENAS um JSON válido:
       console.log('👤 Nome do paciente identificado:', patientName);
       console.log('⚠️ Nome do PIX NÃO será usado:', pixData.transactionData?.nomePagador);
 
+      // DEBUG: Verificar timezone
+      console.log('🕐 Data/hora extraída:', {
+        iso: extractedData.dateTime.toISOString(),
+        local: extractedData.dateTime.toLocaleString('pt-BR'),
+        timestamp: extractedData.dateTime.getTime(),
+        hours: extractedData.dateTime.getHours(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      });
+
       // Buscar configurações do calendário para duração padrão
       const settings = await storage.getGoogleCalendarSettings(franchiseId);
       const durationMinutes = settings?.defaultEventDuration || 60;
 
       // Calcular data/hora de fim
       const endDateTime = new Date(extractedData.dateTime.getTime() + durationMinutes * 60 * 1000);
+
+      console.log('🕐 Data/hora de fim:', {
+        iso: endDateTime.toISOString(),
+        local: endDateTime.toLocaleString('pt-BR')
+      });
 
       // Buscar cliente para pegar email (se disponível)
       const clients = await storage.getFranchiseClients(franchiseId);

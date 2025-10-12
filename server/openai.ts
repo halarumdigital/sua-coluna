@@ -308,6 +308,31 @@ export class OpenAIService {
         throw new Error('OpenAI API key not configured');
       }
 
+      // Validar e normalizar base64
+      let cleanBase64 = base64Image.trim();
+
+      // Se o base64 já vem com o prefixo data:, remover
+      if (cleanBase64.startsWith('data:')) {
+        const base64Match = cleanBase64.match(/^data:[^;]+;base64,(.+)$/);
+        if (base64Match) {
+          cleanBase64 = base64Match[1];
+        }
+      }
+
+      // Normalizar mimetype para jpeg
+      let normalizedMimeType = mimeType.toLowerCase();
+      if (normalizedMimeType.includes('jpg')) {
+        normalizedMimeType = 'image/jpeg';
+      }
+
+      // Log para debug (sem mostrar base64 completo)
+      console.log('📸 Detalhes da imagem:', {
+        mimeType: normalizedMimeType,
+        base64Length: cleanBase64.length,
+        base64Start: cleanBase64.substring(0, 50),
+        estimatedSizeMB: (cleanBase64.length * 0.75 / 1024 / 1024).toFixed(2)
+      });
+
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -327,7 +352,7 @@ export class OpenAIService {
                 {
                   type: 'image_url',
                   image_url: {
-                    url: `data:${mimeType};base64,${base64Image}`
+                    url: `data:${normalizedMimeType};base64,${cleanBase64}`
                   }
                 }
               ]

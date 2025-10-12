@@ -191,17 +191,7 @@ export default function CalendarPage() {
   };
 
   const handleSaveSettings = () => {
-    // Criar cópia dos dados para enviar
-    const dataToSave = { ...formData };
-
-    // Se o clientSecret for a máscara (********), não enviar
-    // O backend vai manter o valor existente
-    if (dataToSave.clientSecret === "********") {
-      // Mantém a máscara para o backend identificar
-      // O backend já tem lógica para não substituir quando vier "********"
-    }
-
-    updateSettingsMutation.mutate(dataToSave);
+    updateSettingsMutation.mutate(formData);
   };
 
   const handleTestConnection = () => {
@@ -562,11 +552,14 @@ export default function CalendarPage() {
                 <Label htmlFor="clientSecret">Client Secret *</Label>
                 <Input
                   id="clientSecret"
-                  type="password"
+                  type="text"
                   placeholder="Seu Google Client Secret"
                   value={formData.clientSecret}
                   onChange={(e) => handleInputChange("clientSecret", e.target.value)}
                 />
+                <div className="text-xs text-muted-foreground mt-1">
+                  Cole o Client Secret exato do Google Cloud Console
+                </div>
               </div>
 
               <div>

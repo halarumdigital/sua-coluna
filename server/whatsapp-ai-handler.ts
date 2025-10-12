@@ -105,10 +105,39 @@ export class WhatsAppAIHandler {
               const mediaUrl = mediaMessage.url;
 
               if (mediaUrl) {
-                console.log(`📥 Baixando mídia de: ${mediaUrl}`);
-                const response = await fetch(mediaUrl);
-                const arrayBuffer = await response.arrayBuffer();
-                const base64Image = Buffer.from(arrayBuffer).toString('base64');
+                console.log(`📥 Baixando mídia de: ${mediaUrl.substring(0, 100)}...`);
+                console.log(`📋 MimeType original: ${mediaMessage.mimetype}`);
+
+                // Verificar se a URL já é um base64 data URI
+                let base64Image: string;
+
+                if (mediaUrl.startsWith('data:')) {
+                  console.log('📸 URL já é um data URI, extraindo base64...');
+                  // Extrair apenas o base64, removendo o prefixo data:image/...;base64,
+                  const base64Match = mediaUrl.match(/^data:[^;]+;base64,(.+)$/);
+                  if (base64Match) {
+                    base64Image = base64Match[1];
+                    console.log(`✅ Base64 extraído do data URI (primeiros 50 chars): ${base64Image.substring(0, 50)}`);
+                  } else {
+                    throw new Error('Formato de data URI inválido');
+                  }
+                } else {
+                  console.log('📥 Fazendo download da URL...');
+                  const response = await fetch(mediaUrl);
+
+                  if (!response.ok) {
+                    throw new Error(`Falha ao baixar mídia: ${response.status} ${response.statusText}`);
+                  }
+
+                  const arrayBuffer = await response.arrayBuffer();
+                  base64Image = Buffer.from(arrayBuffer).toString('base64');
+                  console.log(`✅ Download concluído (primeiros 50 chars): ${base64Image.substring(0, 50)}`);
+                }
+
+                // Verificar se o base64 parece ser um JPEG válido
+                if (!base64Image.startsWith('/9j/') && !base64Image.startsWith('iVBOR')) {
+                  console.warn(`⚠️ Base64 não parece ser uma imagem válida. Início: ${base64Image.substring(0, 50)}`);
+                }
 
                 // Analisar se é comprovante PIX
                 console.log('🔍 Analisando imagem para detecção de comprovante PIX...');

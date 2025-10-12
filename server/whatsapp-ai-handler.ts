@@ -479,6 +479,79 @@ Responda de forma clara e objetiva.`;
         return;
       }
 
+      // Verificar se o usuário está perguntando sobre horários disponíveis
+      const isAskingForAvailability = this.detectAvailabilityRequest(messageText);
+
+      if (isAskingForAvailability) {
+        console.log('📅 Usuário solicitou horários disponíveis, buscando no Google Calendar...');
+
+        try {
+          const { googleCalendarService } = await import('./google-calendar-service');
+
+          const availabilityResult = await googleCalendarService.getAvailableTimeSlots(
+            instance.franchiseId,
+            60 // 60 minutos de duração padrão
+          );
+
+          if (availabilityResult.success && availabilityResult.slots && availabilityResult.slots.length > 0) {
+            // Formatar mensagem com horários disponíveis
+            let availabilityMessage = '📅 *Horários Disponíveis*\n\n';
+            availabilityMessage += 'Aqui estão 5 opções de horários disponíveis para você:\n\n';
+
+            availabilityResult.slots.forEach((slot, index) => {
+              availabilityMessage += `${index + 1}. ${slot.dateFormatted} às ${slot.time}\n`;
+            });
+
+            availabilityMessage += '\n💬 Para agendar, me informe qual opção você prefere ou sugira outro horário!';
+
+            console.log('✅ Mensagem de disponibilidade gerada:', availabilityMessage);
+
+            // Salvar resposta no contexto
+            await storage.addToAgentContext({
+              conversationId: conversation.id,
+              instanceId: instance.id,
+              agentId: activeBinding.agentId,
+              messageText: availabilityMessage,
+              messageRole: 'assistant',
+              messageOrder: nextMessageOrder + 1,
+              senderPhone: phoneNumber,
+              timestamp: new Date()
+            });
+
+            // Enviar resposta
+            await whatsappService.sendMessage(instanceKey, phoneNumber, availabilityMessage);
+            console.log('✅ Horários disponíveis enviados com sucesso');
+
+            // Marcar como resposta recente
+            this.markAsRecentResponse(`${instanceKey}-${phoneNumber}-${messageText}`);
+
+            // Registrar uso (sem tokens da AI já que não usamos)
+            try {
+              await storage.recordAIUsage({
+                userId: franchise.userId,
+                model: aiSettings.model || 'gpt-3.5-turbo',
+                promptTokens: 0,
+                completionTokens: 0,
+                totalTokens: 0,
+                cost: '0',
+                requestType: 'calendar_availability',
+                success: true
+              });
+            } catch (error) {
+              console.error('❌ Erro ao registrar uso:', error);
+            }
+
+            return;
+          } else {
+            console.log('⚠️ Não foi possível buscar horários disponíveis:', availabilityResult.error);
+            // Continuar com resposta normal da IA informando o erro
+          }
+        } catch (calendarError: any) {
+          console.error('❌ Erro ao buscar horários disponíveis:', calendarError);
+          // Continuar com resposta normal da IA
+        }
+      }
+
       console.log('🧠 Gerando resposta com AI...');
 
       // Gerar resposta usando AI com configurações do agente personalizado
@@ -1017,6 +1090,58 @@ Responda de forma clara e objetiva.`;
     
     console.log('📋 Parâmetros extraídos:', params);
     return params;
+  }
+
+  /**
+   * Detecta se a mensagem do usuário é uma solicitação de horários disponíveis
+   */
+  private detectAvailabilityRequest(messageText: string): boolean {
+    if (!messageText) return false;
+
+    const lowerText = messageText.toLowerCase();
+
+    // Palavras-chave que indicam solicitação de horários
+    const availabilityKeywords = [
+      'horários disponíveis',
+      'horarios disponiveis',
+      'que horas',
+      'quais horários',
+      'quais horarios',
+      'tem vaga',
+      'tem horário',
+      'tem horario',
+      'disponibilidade',
+      'agenda disponível',
+      'agenda disponivel',
+      'horário livre',
+      'horario livre',
+      'vagas disponíveis',
+      'vagas disponiveis',
+      'quando pode',
+      'quando tem',
+      'tem algum horário',
+      'tem algum horario',
+      'opções de horário',
+      'opcoes de horario',
+      'mostrar horários',
+      'mostrar horarios',
+      'ver horários',
+      'ver horarios',
+      'consultar horários',
+      'consultar horarios',
+      'checar disponibilidade',
+      'verificar disponibilidade'
+    ];
+
+    // Verificar se alguma palavra-chave está presente
+    const hasKeyword = availabilityKeywords.some(keyword => lowerText.includes(keyword));
+
+    if (hasKeyword) {
+      console.log(`🔍 Detectada solicitação de horários: "${messageText}"`);
+      return true;
+    }
+
+    return false;
   }
 
   private async saveConversationAndMessage(instanceKey: string, phoneNumber: string, messageText: string, messageObj: any): Promise<void> {

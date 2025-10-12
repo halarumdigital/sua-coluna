@@ -269,7 +269,21 @@ Retorne APENAS um JSON válido:
         };
       }
 
-      const dateTime = new Date(parsedResponse.dateTime);
+      // Parsear a data e garantir que está no timezone correto (America/Sao_Paulo = UTC-3)
+      // Se a IA retornou "2025-10-14T10:00:00", precisamos interpretar como 10:00 horário de Brasília
+      const dateTimeString = parsedResponse.dateTime;
+
+      // Se a string não tem timezone (termina com Z ou +/-), assumir que é horário de Brasília
+      let dateTime: Date;
+      if (dateTimeString.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(dateTimeString)) {
+        // Já tem timezone, usar direto
+        dateTime = new Date(dateTimeString);
+      } else {
+        // Não tem timezone, interpretar como horário de Brasília (UTC-3)
+        // Adicionar -03:00 ao final
+        dateTime = new Date(dateTimeString + '-03:00');
+      }
+
       if (isNaN(dateTime.getTime())) {
         return {
           success: false,
@@ -296,6 +310,158 @@ Retorne APENAS um JSON válido:
       return {
         success: false,
         error: error.message
+      };
+    }
+  }
+
+  /**
+   * Busca horários disponíveis no Google Calendar
+   * Retorna 5 sugestões de horários livres nos próximos dias úteis
+   */
+  async getAvailableTimeSlots(
+    franchiseId: string,
+    preferredDurationMinutes: number = 60
+  ): Promise<{
+    success: boolean;
+    slots?: Array<{
+      date: string;
+      dateFormatted: string;
+      time: string;
+      datetime: Date;
+      dayOfWeek: string;
+    }>;
+    error?: string;
+  }> {
+    try {
+      console.log('📅 Buscando horários disponíveis...');
+
+      // Buscar configurações do Google Calendar
+      const settings = await storage.getGoogleCalendarSettings(franchiseId);
+
+      if (!settings || !settings.isEnabled || !settings.isConnected || !settings.refreshToken) {
+        return {
+          success: false,
+          error: 'Google Calendar não está configurado ou conectado'
+        };
+      }
+
+      // Configurar cliente OAuth2
+      const oauth2Client = new google.auth.OAuth2(
+        settings.clientId,
+        settings.clientSecret,
+        'urn:ietf:wg:oauth:2.0:oob'
+      );
+
+      oauth2Client.setCredentials({
+        refresh_token: settings.refreshToken
+      });
+
+      // Configurar cliente do Calendar
+      const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+      // Definir horário comercial (9h às 18h)
+      const workStartHour = 9;
+      const workEndHour = 18;
+
+      // Buscar eventos dos próximos 14 dias
+      const now = new Date();
+      const twoWeeksLater = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+      console.log('🔍 Buscando eventos entre:', {
+        start: now.toISOString(),
+        end: twoWeeksLater.toISOString()
+      });
+
+      const response = await calendar.events.list({
+        calendarId: settings.calendarId || 'primary',
+        timeMin: now.toISOString(),
+        timeMax: twoWeeksLater.toISOString(),
+        singleEvents: true,
+        orderBy: 'startTime',
+      });
+
+      const busyEvents = response.data.items || [];
+      console.log('📋 Eventos encontrados:', busyEvents.length);
+
+      // Gerar slots de horários disponíveis
+      const availableSlots: Array<{
+        date: string;
+        dateFormatted: string;
+        time: string;
+        datetime: Date;
+        dayOfWeek: string;
+      }> = [];
+
+      // Tentar encontrar 5 horários disponíveis
+      let currentDate = new Date(now);
+      currentDate.setHours(0, 0, 0, 0);
+
+      while (availableSlots.length < 5 && currentDate <= twoWeeksLater) {
+        // Pular finais de semana (0 = domingo, 6 = sábado)
+        const dayOfWeek = currentDate.getDay();
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+          currentDate.setDate(currentDate.getDate() + 1);
+          continue;
+        }
+
+        // Verificar cada horário do dia (de hora em hora)
+        for (let hour = workStartHour; hour < workEndHour && availableSlots.length < 5; hour++) {
+          // Criar datetime para o slot
+          const slotStart = new Date(currentDate);
+          slotStart.setHours(hour, 0, 0, 0);
+
+          // Pular se já passou
+          if (slotStart <= now) {
+            continue;
+          }
+
+          const slotEnd = new Date(slotStart.getTime() + preferredDurationMinutes * 60 * 1000);
+
+          // Verificar se está ocupado
+          const isOccupied = busyEvents.some(event => {
+            if (!event.start?.dateTime || !event.end?.dateTime) return false;
+
+            const eventStart = new Date(event.start.dateTime);
+            const eventEnd = new Date(event.end.dateTime);
+
+            // Verificar sobreposição
+            return (slotStart < eventEnd && slotEnd > eventStart);
+          });
+
+          if (!isOccupied) {
+            // Adicionar slot disponível
+            availableSlots.push({
+              date: slotStart.toISOString().split('T')[0],
+              dateFormatted: slotStart.toLocaleDateString('pt-BR', {
+                weekday: 'long',
+                day: '2-digit',
+                month: '2-digit'
+              }),
+              time: slotStart.toLocaleTimeString('pt-BR', {
+                hour: '2-digit',
+                minute: '2-digit'
+              }),
+              datetime: slotStart,
+              dayOfWeek: slotStart.toLocaleDateString('pt-BR', { weekday: 'long' })
+            });
+          }
+        }
+
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      console.log('✅ Horários disponíveis encontrados:', availableSlots.length);
+
+      return {
+        success: true,
+        slots: availableSlots
+      };
+
+    } catch (error: any) {
+      console.error('❌ Erro ao buscar horários disponíveis:', error);
+      return {
+        success: false,
+        error: error.message || 'Erro ao buscar horários disponíveis'
       };
     }
   }

@@ -4171,6 +4171,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                            `${req.protocol}://${req.get('host')}/api/franchise/calendar-oauth-callback`;
 
         console.log("🔐 OAuth callback URL:", redirectUrl);
+        console.log("📋 Client ID (primeiros 30 chars):", clientId.substring(0, 30));
+        console.log("🔑 Client Secret presente:", !!clientSecret);
 
         // Configurar cliente OAuth2
         const oauth2Client = new google.auth.OAuth2(
@@ -4186,7 +4188,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           prompt: 'consent' // Force consent to get refresh token
         });
 
-        console.log("🔗 Auth URL gerada (primeiros 150 chars):", authUrl.substring(0, 150));
+        console.log("🔗 Auth URL completa:", authUrl);
+        console.log("📍 Extraindo redirect_uri da URL...");
+
+        // Extrair redirect_uri da authUrl para debug
+        try {
+          const urlParams = new URL(authUrl);
+          const redirectUriParam = urlParams.searchParams.get('redirect_uri');
+          console.log("✅ redirect_uri enviado ao Google:", redirectUriParam);
+        } catch (e) {
+          console.log("⚠️ Não foi possível extrair redirect_uri");
+        }
         
         // Store temporary data for callback
         const franchise = await storage.getFranchiseByUserId(userId);

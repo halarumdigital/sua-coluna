@@ -175,32 +175,50 @@ export class GoogleCalendarService {
         };
       }
 
-      const prompt = `Analise a conversa abaixo e extraia APENAS as seguintes informações:
-1. Data e hora do agendamento mencionado pelo paciente
-2. Nome do paciente que ELE MESMO forneceu na conversa
+      // Data atual para referência
+      const now = new Date();
+      const currentDate = now.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      const currentTime = now.toLocaleTimeString('pt-BR');
+
+      const prompt = `Você é um especialista em extrair informações de agendamentos de consultas médicas.
+
+DATA E HORA ATUAL: ${currentDate} às ${currentTime}
+DATA ATUAL ISO: ${now.toISOString()}
 
 CONVERSA:
 ${conversationContext}
 
-${pixData ? `\nCOMPROVANTE PIX RECEBIDO:
+${pixData ? `\nCOMPROVANTE PIX RECEBIDO (NÃO use o nome do pagador):
 - Valor: ${pixData.valor || 'N/A'}
 - Data do pagamento: ${pixData.data || 'N/A'}
-- Hora do pagamento: ${pixData.hora || 'N/A'}
 ` : ''}
 
-INSTRUÇÕES IMPORTANTES:
-- Procure na conversa quando o paciente mencionou a data/hora desejada para o agendamento
-- Se não encontrar data/hora na conversa, retorne null
-- Para o nome do paciente: use APENAS o nome que o PACIENTE forneceu na conversa
-- NUNCA use o nome do pagador do PIX, apenas o nome que o paciente disse na conversa
-- Se o paciente não forneceu o nome, retorne null
-- Use a data ATUAL como referência: ${new Date().toISOString()}
+TAREFA:
+Extraia da conversa ACIMA:
+1. A data e hora que o PACIENTE solicitou para o agendamento
+2. O nome que o PACIENTE forneceu na conversa
 
-Retorne APENAS um JSON no formato:
+REGRAS IMPORTANTES:
+- Procure expressões como "terça", "quarta", "às 10h", "10 horas", "10:00", etc
+- Se o paciente disse "terça às 10h", calcule a PRÓXIMA terça-feira a partir de HOJE
+- Se o paciente disse "amanhã", calcule o dia seguinte
+- Se o paciente disse apenas a hora (ex: "às 10h"), use a data mais próxima mencionada
+- HORÁRIO: Se disse "às 10", use 10:00:00 (formato 24h)
+- NOME: Use APENAS o nome que o paciente disse na conversa
+- NUNCA use o nome do comprovante PIX
+- Se não encontrar, retorne null
+
+EXEMPLOS:
+- "terça às 10h" = próxima terça-feira às 10:00:00
+- "quarta às 15h" = próxima quarta-feira às 15:00:00
+- "amanhã às 9h" = dia seguinte às 09:00:00
+
+Retorne APENAS um JSON válido:
 {
-  "dateTime": "YYYY-MM-DDTHH:MM:SS" ou null,
-  "patientName": "string" ou null,
-  "confidence": 0-100
+  "dateTime": "YYYY-MM-DDTHH:MM:SS",
+  "patientName": "string ou null",
+  "confidence": 0-100,
+  "reasoning": "breve explicação da extração"
 }`;
 
       const response = await openaiService.chat(prompt, {
@@ -254,8 +272,10 @@ Retorne APENAS um JSON no formato:
 
       console.log('✅ Data/hora extraída:', {
         dateTime: dateTime.toISOString(),
+        dateTimePT: dateTime.toLocaleString('pt-BR'),
         patientName: parsedResponse.patientName,
-        confidence: parsedResponse.confidence
+        confidence: parsedResponse.confidence,
+        reasoning: parsedResponse.reasoning
       });
 
       return {

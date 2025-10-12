@@ -58,6 +58,34 @@ export class WhatsAppAIHandler {
       let pixReceiptData = null;
       let isPixReceiptDetected = false;
 
+      if (!phoneNumber) {
+        console.log('❌ Número de telefone não disponível');
+        return;
+      }
+
+      // Se não há texto e não há mídia, ignorar
+      if (!messageText && !hasImage && !hasDocument) {
+        console.log('❌ Mensagem sem texto ou mídia');
+        return;
+      }
+
+      // Verificar se é um comando de edição de cliente
+      if (messageText.toLowerCase().startsWith('/editarcliente')) {
+        console.log('📝 Detectado comando de edição de cliente');
+        await this.handleEditClientCommand(instanceKey, phoneNumber, messageText);
+        return;
+      }
+
+      // Verificar se a instância pertence a um cliente
+      const instances = await storage.getWhatsappInstances();
+      const instance = instances.find(inst => inst.instanceKey === instanceKey);
+
+      if (!instance) {
+        console.log(`❌ Instância ${instanceKey} não encontrada`);
+        return;
+      }
+
+      // AGORA processar comprovante PIX (após ter a instância)
       if (hasImage || hasDocument) {
         console.log('📎 Detectada mensagem com mídia (imagem/documento)');
 
@@ -95,23 +123,13 @@ export class WhatsAppAIHandler {
                   confidence: pixReceiptData.confidence
                 });
 
-                // Se for comprovante PIX com alta confiança, processar agendamento
+                // Se for comprovante PIX com alta confiança, marcar para processar depois
                 if (pixReceiptData.isPixReceipt && pixReceiptData.confidence >= 70) {
                   isPixReceiptDetected = true;
                   console.log('✅ Comprovante PIX detectado com alta confiança!');
 
-                  // Salvar comprovante para auditoria
-                  try {
-                    await PixOCRService.savePixReceipt(
-                      pixReceiptData,
-                      instance.franchiseId,
-                      conversation?.id || 'temp',
-                      base64Image
-                    );
-                    console.log('✅ Comprovante PIX salvo para auditoria');
-                  } catch (saveError) {
-                    console.error('❌ Erro ao salvar comprovante PIX:', saveError);
-                  }
+                  // Salvar base64 para usar depois
+                  (pixReceiptData as any).base64Image = base64Image;
                 }
               }
             } catch (downloadError: any) {
@@ -122,28 +140,6 @@ export class WhatsAppAIHandler {
           console.error('❌ Erro ao processar possível comprovante PIX:', error);
         }
       }
-
-      if (!phoneNumber) {
-        console.log('❌ Número de telefone não disponível');
-        return;
-      }
-
-      // Se não há texto e não há mídia, ignorar
-      if (!messageText && !hasImage && !hasDocument) {
-        console.log('❌ Mensagem sem texto ou mídia');
-        return;
-      }
-
-      // Verificar se é um comando de edição de cliente
-      if (messageText.toLowerCase().startsWith('/editarcliente')) {
-        console.log('📝 Detectado comando de edição de cliente');
-        await this.handleEditClientCommand(instanceKey, phoneNumber, messageText);
-        return;
-      }
-
-      // Verificar se a instância pertence a um cliente
-      const instances = await storage.getWhatsappInstances();
-      const instance = instances.find(inst => inst.instanceKey === instanceKey);
 
       if (!instance) {
         console.log(`❌ Instância ${instanceKey} não encontrada`);
@@ -498,6 +494,25 @@ Responda de forma clara e objetiva.`;
       if (isPixReceiptDetected && pixReceiptData && conversation) {
         console.log('🎯 PIX detectado! Iniciando processo de agendamento automático...');
 
+        // Primeiro, salvar o comprovante para auditoria
+        try {
+          const { PixOCRService } = await import("./pix-ocr-service");
+          const base64Image = (pixReceiptData as any).base64Image;
+
+          if (base64Image) {
+            await PixOCRService.savePixReceipt(
+              pixReceiptData,
+              instance.franchiseId,
+              conversation.id,
+              base64Image
+            );
+            console.log('✅ Comprovante PIX salvo para auditoria');
+          }
+        } catch (saveError) {
+          console.error('❌ Erro ao salvar comprovante PIX:', saveError);
+        }
+
+        // Agora processar o agendamento
         try {
           const { googleCalendarService } = await import('./google-calendar-service');
 

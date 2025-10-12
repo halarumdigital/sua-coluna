@@ -3915,8 +3915,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (existingSettings) {
         // Atualizar configuração existente
         // Manter refreshToken existente se não for fornecido
+        // Manter clientSecret existente se vier mascarado (********)
         const updateData = {
           ...validatedData,
+          clientSecret: validatedData.clientSecret === "********" ? existingSettings.clientSecret : validatedData.clientSecret,
           refreshToken: validatedData.refreshToken || existingSettings.refreshToken,
           updatedAt: new Date()
         };

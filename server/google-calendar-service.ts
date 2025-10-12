@@ -164,6 +164,7 @@ export class GoogleCalendarService {
   }> {
     try {
       console.log('🧠 Extraindo data/hora do contexto da conversa...');
+      console.log('📝 Contexto (primeiros 500 chars):', conversationContext.substring(0, 500));
 
       const { openaiService } = await import('./openai');
       const aiSettings = await storage.getAISettings();
@@ -240,6 +241,8 @@ Retorne APENAS um JSON válido:
       let parsedResponse: any;
       try {
         let cleanedResponse = response.response.trim();
+        console.log('🤖 Resposta bruta da IA:', cleanedResponse);
+
         if (cleanedResponse.startsWith('```json')) {
           cleanedResponse = cleanedResponse.replace(/```json\n?/g, '').replace(/```\n?/g, '');
         } else if (cleanedResponse.startsWith('```')) {
@@ -247,8 +250,10 @@ Retorne APENAS um JSON válido:
         }
 
         parsedResponse = JSON.parse(cleanedResponse);
+        console.log('📊 JSON parseado:', parsedResponse);
       } catch (parseError) {
         console.error('❌ Erro ao parsear resposta da IA:', parseError);
+        console.error('❌ Resposta que falhou:', response.response);
         return {
           success: false,
           error: 'Não foi possível extrair data/hora da conversa'

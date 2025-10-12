@@ -4155,14 +4155,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied: only franchise users can access this route" });
       }
       
-      const { clientId, clientSecret, calendarId } = req.body;
-      
+      let { clientId, clientSecret, calendarId } = req.body;
+
+      // Remover espaços em branco extras
+      clientId = clientId?.trim();
+      clientSecret = clientSecret?.trim();
+
       if (!clientId || !clientSecret) {
-        return res.status(400).json({ 
-          message: "Client ID e Client Secret são obrigatórios" 
+        return res.status(400).json({
+          message: "Client ID e Client Secret são obrigatórios"
         });
       }
-      
+
       try {
         // Determinar URL de callback
         // Se GOOGLE_OAUTH_REDIRECT_URL está definido no .env, usa ele
@@ -4172,6 +4176,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         console.log("🔐 OAuth callback URL:", redirectUrl);
         console.log("📋 Client ID (primeiros 30 chars):", clientId.substring(0, 30));
+        console.log("📋 Client ID tamanho:", clientId.length, "caracteres");
         console.log("🔑 Client Secret presente:", !!clientSecret);
 
         // Configurar cliente OAuth2
@@ -4238,9 +4243,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // OAuth callback for Google Calendar
   app.get("/api/franchise/calendar-oauth-callback", async (req: any, res) => {
     try {
+      console.log("🔄 OAuth callback recebido!");
       const { code, state } = req.query;
-      
+      console.log("📋 Code presente:", !!code);
+      console.log("📋 State:", state);
+
       if (!code) {
+        console.log("❌ Código de autorização não recebido");
         return res.status(400).send(`
           <html>
             <body>
@@ -4251,14 +4260,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           </html>
         `);
       }
-      
+
       // Get temporary OAuth data (in production, use proper session/cache)
       const tempData = global.tempOAuthData || {};
+      console.log("📦 Dados temporários disponíveis:", Object.keys(tempData).length);
       let franchiseData = null;
-      
+
       // Find the franchise data (this is a simple implementation)
       for (const [franchiseId, data] of Object.entries(tempData)) {
         franchiseData = { franchiseId, ...data };
+        console.log("✅ Dados da franquia encontrados:", franchiseId);
         break; // Take the first one for simplicity
       }
       
@@ -4275,13 +4286,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       try {
+        console.log("🔄 Trocando código por tokens...");
+        console.log("📋 Client ID (primeiros 30):", franchiseData.clientId.substring(0, 30));
+        console.log("📋 Client ID tem espaços?", franchiseData.clientId !== franchiseData.clientId.trim());
+
         // Exchange code for tokens
         const { tokens } = await franchiseData.oauth2Client.getToken(code);
-        
+
+        console.log("✅ Tokens obtidos com sucesso!");
+        console.log("📋 Refresh token presente:", !!tokens.refresh_token);
+
         // Save settings with refresh token
         const updateData = {
-          clientId: franchiseData.clientId,
-          clientSecret: franchiseData.clientSecret,
+          clientId: franchiseData.clientId.trim(), // Garantir que não tem espaços
+          clientSecret: franchiseData.clientSecret.trim(),
           calendarId: franchiseData.calendarId,
           refreshToken: tokens.refresh_token,
           isConnected: true,

@@ -236,6 +236,20 @@ export class WhatsAppAIHandler {
         timestamp: new Date()
       });
 
+      // Obter limite de tokens do modelo selecionado
+      const modelLimits: { [key: string]: number } = {
+        'gpt-3.5-turbo': 4096,
+        'gpt-3.5-turbo-16k': 16384,
+        'gpt-4': 8192,
+        'gpt-4-turbo': 128000,
+        'gpt-4o': 128000,
+        'gpt-4o-mini': 128000
+      };
+      const modelLimit = modelLimits[aiSettings.model || 'gpt-3.5-turbo'] || 4096;
+      const maxContextTokens = Math.floor(modelLimit * 0.5); // Usar 50% do limite para contexto (resto para resposta)
+
+      console.log(`📊 Modelo: ${aiSettings.model}, Limite: ${modelLimit} tokens, Max contexto: ${maxContextTokens} tokens`);
+
       // Construir histórico de conversa para o AI com limite de caracteres
       let conversationHistory = '';
       if (conversationContext.length > 0) {
@@ -244,7 +258,7 @@ export class WhatsAppAIHandler {
 
         // Truncar mensagens muito longas para evitar exceder limite de tokens
         const truncatedContext = sortedContext.map(ctx => {
-          const maxLength = 500; // Limite de caracteres por mensagem
+          const maxLength = 300; // Limite de caracteres por mensagem (reduzido de 500)
           const text = ctx.messageText || '';
           const truncated = text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
           return `${ctx.messageRole === 'user' ? 'Usuário' : 'Assistente'}: ${truncated}`;
@@ -252,11 +266,12 @@ export class WhatsAppAIHandler {
 
         conversationHistory = '\n\nHistórico da conversa:\n' + truncatedContext.join('\n');
 
-        // Verificar tamanho total e reduzir se necessário
-        const maxHistoryLength = 3000; // ~750 tokens
+        // Verificar tamanho total e reduzir se necessário baseado no limite do modelo
+        const maxHistoryTokens = Math.floor(maxContextTokens * 0.4); // 40% do contexto para histórico
+        const maxHistoryLength = maxHistoryTokens * 3; // ~3 caracteres por token
         if (conversationHistory.length > maxHistoryLength) {
           // Pegar apenas as mensagens mais recentes
-          const recentMessages = truncatedContext.slice(-10);
+          const recentMessages = truncatedContext.slice(-5); // Reduzido de 10 para 5 mensagens
           conversationHistory = '\n\n[...histórico anterior omitido...]\n\nHistórico recente:\n' + recentMessages.join('\n');
         }
       }
@@ -275,8 +290,17 @@ export class WhatsAppAIHandler {
         mediaInfo += '\nVocê DEVE reconhecer isso e responder adequadamente (ex: "Obrigado por enviar o comprovante! Vou verificar o pagamento.")';
       }
 
+      // Truncar systemPrompt se necessário para evitar exceder limite
+      const maxPromptTokens = Math.floor(maxContextTokens * 0.4); // 40% para o prompt
+      const maxPromptLength = maxPromptTokens * 3; // ~3 caracteres por token
+      let truncatedSystemPrompt = customAgent.systemPrompt;
+      if (customAgent.systemPrompt.length > maxPromptLength) {
+        truncatedSystemPrompt = customAgent.systemPrompt.substring(0, maxPromptLength) + '\n\n[...prompt truncado para evitar exceder limite de tokens...]';
+        console.log(`⚠️ System prompt truncado de ${customAgent.systemPrompt.length} para ${truncatedSystemPrompt.length} caracteres`);
+      }
+
       // Preparar contexto da mensagem para o AI usando o prompt personalizado + histórico
-      const contextMessage = `${customAgent.systemPrompt}
+      const contextMessage = `${truncatedSystemPrompt}
 
 Você está respondendo uma mensagem do WhatsApp de ${phoneNumber}.${conversationHistory}${mediaInfo}
 
@@ -284,15 +308,21 @@ Nova mensagem recebida: "${messageText || '[Sem texto - apenas mídia]'}";
 
 Responda considerando todo o contexto da conversa acima.`;
 
-      // Verificar tamanho do contexto (aproximadamente 4 caracteres = 1 token)
-      const estimatedTokens = Math.ceil(contextMessage.length / 4);
+      // Verificar tamanho do contexto (aproximadamente 3 caracteres = 1 token, mais conservador)
+      const estimatedTokens = Math.ceil(contextMessage.length / 3);
       console.log(`📊 Tamanho do contexto: ${contextMessage.length} caracteres (~${estimatedTokens} tokens)`);
 
       // Se exceder limite, truncar mais agressivamente
-      if (estimatedTokens > 6000) {
-        console.warn(`⚠️ Contexto muito grande (${estimatedTokens} tokens), reduzindo histórico...`);
-        // Reconstruir com histórico mínimo
-        const minimalContext = `${customAgent.systemPrompt}
+      if (estimatedTokens > maxContextTokens) {
+        console.warn(`⚠️ Contexto muito grande (${estimatedTokens} tokens > ${maxContextTokens} max), reduzindo mais...`);
+
+        // Reconstruir com histórico mínimo e prompt ainda mais curto
+        const ultraMinimalPromptLength = Math.floor(maxContextTokens * 0.3) * 3; // 30% para prompt
+        const ultraMinimalPrompt = truncatedSystemPrompt.length > ultraMinimalPromptLength
+          ? truncatedSystemPrompt.substring(0, ultraMinimalPromptLength) + '...'
+          : truncatedSystemPrompt;
+
+        const minimalContext = `${ultraMinimalPrompt}
 
 Você está respondendo uma mensagem do WhatsApp de ${phoneNumber}.${mediaInfo}
 
@@ -300,11 +330,14 @@ Nova mensagem recebida: "${messageText || '[Sem texto - apenas mídia]'}";
 
 Responda de forma clara e objetiva.`;
 
+        const minimalEstimatedTokens = Math.ceil(minimalContext.length / 3);
+        console.log(`📊 Contexto reduzido: ${minimalContext.length} caracteres (~${minimalEstimatedTokens} tokens)`);
+
         console.log('🧠 Gerando resposta com AI (contexto reduzido)...');
         const aiResponse = await openaiService.chat(minimalContext, {
           chatGptApiKey: aiSettings.chatGptApiKey,
           model: aiSettings.model || 'gpt-3.5-turbo',
-          systemPrompt: customAgent.systemPrompt,
+          systemPrompt: ultraMinimalPrompt,
           maxTokens: Number(customAgent.maxTokens) || 1000,
           temperature: Number(customAgent.temperature) || 0.7
         });
@@ -335,6 +368,23 @@ Responda de forma clara e objetiva.`;
 
         // Marcar como resposta recente para evitar loops
         this.markAsRecentResponse(`${instanceKey}-${phoneNumber}-${messageText}`);
+
+        // Registrar uso da AI
+        try {
+          await storage.recordAIUsage({
+            userId: franchise.userId,
+            model: aiSettings.model || 'gpt-3.5-turbo',
+            promptTokens: aiResponse.usage?.promptTokens || 0,
+            completionTokens: aiResponse.usage?.completionTokens || 0,
+            totalTokens: aiResponse.usage?.totalTokens || 0,
+            cost: String(aiResponse.usage?.cost || 0),
+            requestType: 'whatsapp_auto_reply',
+            success: true
+          });
+        } catch (error) {
+          console.error('❌ Erro ao registrar uso da AI:', error);
+        }
+
         return;
       }
 
@@ -344,7 +394,7 @@ Responda de forma clara e objetiva.`;
       const aiResponse = await openaiService.chat(contextMessage, {
         chatGptApiKey: aiSettings.chatGptApiKey,
         model: aiSettings.model || 'gpt-3.5-turbo',
-        systemPrompt: customAgent.systemPrompt,
+        systemPrompt: truncatedSystemPrompt,
         maxTokens: Number(customAgent.maxTokens) || 1000,
         temperature: Number(customAgent.temperature) || 0.7
       });

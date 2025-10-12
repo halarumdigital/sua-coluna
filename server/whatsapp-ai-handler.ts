@@ -56,6 +56,7 @@ export class WhatsAppAIHandler {
       const hasImage = messageObj.message?.imageMessage;
       const hasDocument = messageObj.message?.documentMessage;
       let pixReceiptData = null;
+      let isPixReceiptDetected = false;
 
       if (hasImage || hasDocument) {
         console.log('📎 Detectada mensagem com mídia (imagem/documento)');
@@ -71,11 +72,51 @@ export class WhatsAppAIHandler {
           if (mediaMessage.url || mediaMessage.directPath) {
             console.log('🔍 Verificando se é comprovante PIX...');
 
-            // Aqui você precisaria baixar a imagem da Evolution API
-            // Por enquanto, vamos apenas marcar que existe mídia
-            // e o agente de IA pode perguntar ao usuário sobre o comprovante
+            try {
+              // Baixar a imagem da Evolution API
+              const mediaUrl = mediaMessage.url;
 
-            console.log('ℹ️  Mídia detectada - será processada pelo agente IA');
+              if (mediaUrl) {
+                console.log(`📥 Baixando mídia de: ${mediaUrl}`);
+                const response = await fetch(mediaUrl);
+                const arrayBuffer = await response.arrayBuffer();
+                const base64Image = Buffer.from(arrayBuffer).toString('base64');
+
+                // Analisar se é comprovante PIX
+                console.log('🔍 Analisando imagem para detecção de comprovante PIX...');
+                pixReceiptData = await PixOCRService.analyzeImage(
+                  base64Image,
+                  mediaMessage.mimetype || 'image/jpeg',
+                  instance.franchiseId
+                );
+
+                console.log('📊 Resultado da análise PIX:', {
+                  isPixReceipt: pixReceiptData.isPixReceipt,
+                  confidence: pixReceiptData.confidence
+                });
+
+                // Se for comprovante PIX com alta confiança, processar agendamento
+                if (pixReceiptData.isPixReceipt && pixReceiptData.confidence >= 70) {
+                  isPixReceiptDetected = true;
+                  console.log('✅ Comprovante PIX detectado com alta confiança!');
+
+                  // Salvar comprovante para auditoria
+                  try {
+                    await PixOCRService.savePixReceipt(
+                      pixReceiptData,
+                      instance.franchiseId,
+                      conversation?.id || 'temp',
+                      base64Image
+                    );
+                    console.log('✅ Comprovante PIX salvo para auditoria');
+                  } catch (saveError) {
+                    console.error('❌ Erro ao salvar comprovante PIX:', saveError);
+                  }
+                }
+              }
+            } catch (downloadError: any) {
+              console.error('❌ Erro ao baixar/processar mídia:', downloadError);
+            }
           }
         } catch (error: any) {
           console.error('❌ Erro ao processar possível comprovante PIX:', error);
@@ -452,6 +493,46 @@ Responda de forma clara e objetiva.`;
 
       // Salvar mensagem no sistema tradicional também (para compatibilidade)
       await this.saveConversationAndMessage(instanceKey, phoneNumber, messageText, messageObj);
+
+      // Se PIX foi detectado, processar agendamento automaticamente
+      if (isPixReceiptDetected && pixReceiptData && conversation) {
+        console.log('🎯 PIX detectado! Iniciando processo de agendamento automático...');
+
+        try {
+          const { googleCalendarService } = await import('./google-calendar-service');
+
+          const scheduleResult = await googleCalendarService.processPixAndSchedule(
+            instance.franchiseId,
+            conversation.id,
+            pixReceiptData,
+            phoneNumber
+          );
+
+          if (scheduleResult.success && scheduleResult.message) {
+            // Enviar mensagem de confirmação do agendamento
+            console.log('✅ Agendamento criado automaticamente!');
+            await whatsappService.sendMessage(instanceKey, phoneNumber, scheduleResult.message);
+
+            // Salvar mensagem de confirmação no contexto
+            await storage.addToAgentContext({
+              conversationId: conversation.id,
+              instanceId: instance.id,
+              agentId: activeBinding.agentId,
+              messageText: scheduleResult.message,
+              messageRole: 'assistant',
+              messageOrder: nextMessageOrder + 2,
+              senderPhone: phoneNumber,
+              timestamp: new Date()
+            });
+
+            console.log('✅ Mensagem de confirmação do agendamento enviada');
+          } else {
+            console.log('⚠️ Não foi possível criar agendamento automático:', scheduleResult.error);
+          }
+        } catch (scheduleError: any) {
+          console.error('❌ Erro ao processar agendamento automático:', scheduleError);
+        }
+      }
 
     } catch (error: any) {
       console.error('❌ Erro ao processar mensagem recebida:', error);

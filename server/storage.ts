@@ -267,7 +267,7 @@ export interface IStorage {
 
   // Agent Conversation Context operations
   addToAgentContext(context: InsertAgentConversationContext): Promise<void>;
-  getAgentContext(conversationId: string, agentId: string, limit?: number): Promise<AgentConversationContext[]>;
+  getAgentContext(conversationId: string, agentId: string | null, limit?: number): Promise<AgentConversationContext[]>;
   cleanupAgentContext(conversationId: string, agentId: string, maxMessages?: number): Promise<void>;
 
   // Global Prompts operations
@@ -2488,16 +2488,18 @@ export class DatabaseStorage implements IStorage {
     await this.cleanupAgentContext(context.conversationId, context.agentId, 100);
   }
 
-  async getAgentContext(conversationId: string, agentId: string, limit: number = 100): Promise<AgentConversationContext[]> {
-    return await db
-      .select()
-      .from(agentConversationContext)
-      .where(
-        and(
+  async getAgentContext(conversationId: string, agentId: string | null, limit: number = 100): Promise<AgentConversationContext[]> {
+    const whereConditions = agentId
+      ? and(
           eq(agentConversationContext.conversationId, conversationId),
           eq(agentConversationContext.agentId, agentId)
         )
-      )
+      : eq(agentConversationContext.conversationId, conversationId);
+
+    return await db
+      .select()
+      .from(agentConversationContext)
+      .where(whereConditions)
       .orderBy(desc(agentConversationContext.messageOrder))
       .limit(limit);
   }

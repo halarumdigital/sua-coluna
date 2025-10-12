@@ -71,6 +71,7 @@ export default function CalendarPage() {
       }
       return data;
     },
+    refetchInterval: formData.isConnected ? false : 5000, // Auto-refresh every 5s when not connected
   });
 
   // Update settings mutation
@@ -271,7 +272,7 @@ export default function CalendarPage() {
         </div>
 
         {/* Status Card */}
-        <Card>
+        <Card className={formData.isConnected && formData.isEnabled ? "border-green-200 bg-green-50/30" : ""}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Settings className="w-5 h-5" />
@@ -280,26 +281,30 @@ export default function CalendarPage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
-                <div className="p-2 bg-blue-100 rounded-full">
-                  <Calendar className="w-4 h-4 text-blue-600" />
+              <div className={`flex items-center gap-3 p-3 rounded-lg ${formData.isEnabled ? 'bg-blue-50 border-2 border-blue-200' : 'bg-gray-50'}`}>
+                <div className={`p-2 rounded-full ${formData.isEnabled ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                  <Calendar className={`w-4 h-4 ${formData.isEnabled ? 'text-blue-600' : 'text-gray-400'}`} />
                 </div>
                 <div>
-                  <div className="font-medium text-blue-900">Integração</div>
-                  <div className="text-sm text-blue-600">
-                    {formData.isEnabled ? "Ativada" : "Desativada"}
+                  <div className={`font-medium ${formData.isEnabled ? 'text-blue-900' : 'text-gray-900'}`}>Integração</div>
+                  <div className={`text-sm font-semibold ${formData.isEnabled ? 'text-blue-600' : 'text-gray-500'}`}>
+                    {formData.isEnabled ? "✓ Ativada" : "✗ Desativada"}
                   </div>
                 </div>
               </div>
-              
-              <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
-                <div className="p-2 bg-green-100 rounded-full">
-                  <Check className="w-4 h-4 text-green-600" />
+
+              <div className={`flex items-center gap-3 p-3 rounded-lg ${formData.isConnected ? 'bg-green-50 border-2 border-green-200' : 'bg-red-50 border-2 border-red-200'}`}>
+                <div className={`p-2 rounded-full ${formData.isConnected ? 'bg-green-100' : 'bg-red-100'}`}>
+                  {formData.isConnected ? (
+                    <Check className="w-4 h-4 text-green-600" />
+                  ) : (
+                    <X className="w-4 h-4 text-red-600" />
+                  )}
                 </div>
                 <div>
-                  <div className="font-medium text-green-900">Status</div>
-                  <div className="text-sm text-green-600">
-                    {formData.isConnected ? "Conectado" : "Não conectado"}
+                  <div className={`font-medium ${formData.isConnected ? 'text-green-900' : 'text-red-900'}`}>Status</div>
+                  <div className={`text-sm font-semibold ${formData.isConnected ? 'text-green-600' : 'text-red-600'}`}>
+                    {formData.isConnected ? "✓ Conectado" : "✗ Não conectado"}
                   </div>
                 </div>
               </div>
@@ -316,6 +321,61 @@ export default function CalendarPage() {
                 </div>
               </div>
             </div>
+
+            {/* Status Summary */}
+            {formData.isConnected && formData.isEnabled && (
+              <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-green-100 rounded-full">
+                    <Check className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-green-900 mb-1">
+                      Tudo Pronto! 🎉
+                    </h4>
+                    <p className="text-sm text-green-700">
+                      Google Calendar conectado e ativo. Agendamentos serão criados automaticamente após confirmação de PIX.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {formData.isConnected && !formData.isEnabled && (
+              <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-100 rounded-full">
+                    <AlertCircle className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-amber-900 mb-1">
+                      Integração Desativada
+                    </h4>
+                    <p className="text-sm text-amber-700">
+                      Você está conectado, mas a integração está desativada. Ative nas "Configurações do Evento" abaixo para começar a criar agendamentos automaticamente.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!formData.isConnected && (
+              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-full">
+                    <AlertCircle className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-blue-900 mb-1">
+                      Conecte sua Conta Google
+                    </h4>
+                    <p className="text-sm text-blue-700">
+                      Para ativar os agendamentos automáticos, conecte sua conta do Google Calendar na seção abaixo.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -331,31 +391,85 @@ export default function CalendarPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {settings?.isConnected ? (
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-green-100 rounded-full">
-                    <Check className="w-5 h-5 text-green-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-green-900">Google Calendar Conectado</h4>
-                    <p className="text-sm text-green-700">
-                      Eventos serão criados automaticamente após confirmação do PIX
-                    </p>
+            {formData.isConnected || settings?.isConnected ? (
+              <div className="space-y-4">
+                <div className="p-6 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg">
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 bg-green-100 rounded-full">
+                      <Check className="w-6 h-6 text-green-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-green-900 text-lg mb-2">
+                        ✓ Google Calendar Conectado com Sucesso!
+                      </h4>
+                      <p className="text-sm text-green-700 mb-4">
+                        Sua conta está autenticada e pronta para criar eventos automaticamente.
+                        Após o cliente enviar o comprovante de PIX, o agendamento será feito automaticamente no seu calendário.
+                      </p>
+
+                      {/* Connection Details */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                        <div className="bg-white/50 rounded p-3 border border-green-100">
+                          <div className="text-xs font-medium text-green-800 mb-1">Calendar ID</div>
+                          <div className="text-sm text-green-900 font-mono">
+                            {formData.calendarId || settings?.calendarId || 'primary'}
+                          </div>
+                        </div>
+                        <div className="bg-white/50 rounded p-3 border border-green-100">
+                          <div className="text-xs font-medium text-green-800 mb-1">Status da Conexão</div>
+                          <div className="text-sm text-green-900 font-semibold flex items-center gap-1">
+                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                            Ativo e Funcionando
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Connection Info */}
+                      <div className="bg-white/70 rounded-lg p-3 border border-green-100">
+                        <div className="flex items-start gap-2 text-xs text-green-700">
+                          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <strong>Refresh Token Ativo:</strong> Sua conexão é permanente e não expira.
+                            O sistema pode criar eventos a qualquer momento sem precisar de nova autorização.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className="mt-4 flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={handleOAuthConnect}>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleOAuthConnect}
+                    className="flex items-center gap-2"
+                  >
+                    <ExternalLink className="w-4 h-4" />
                     Reconectar
                   </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="text-red-600 hover:text-red-700"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
                     onClick={handleDisconnect}
                   >
+                    <X className="w-4 h-4 mr-1" />
                     Desconectar
                   </Button>
+
+                  <div className="ml-auto">
+                    <a
+                      href="https://calendar.google.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                    >
+                      Abrir Google Calendar
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
                 </div>
               </div>
             ) : (

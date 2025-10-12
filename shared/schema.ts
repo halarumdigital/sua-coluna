@@ -1335,6 +1335,7 @@ export const googleCalendarSettingsSchema = z.object({
   eventTitle: z.string().min(1, "Título do evento é obrigatório").default("Consulta Agendada"),
   eventDescription: z.string().default("Consulta agendada via WhatsApp"),
   eventLocation: z.string().optional(),
+  isConnected: z.boolean().optional(),
 });
 
 export const insertGoogleCalendarSettingsSchema = createInsertSchema(googleCalendarSettings);

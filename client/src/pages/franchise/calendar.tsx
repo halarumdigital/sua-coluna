@@ -552,7 +552,7 @@ export default function CalendarPage() {
                 <Label htmlFor="clientSecret">Client Secret *</Label>
                 <Input
                   id="clientSecret"
-                  type="password"
+                  type="text"
                   placeholder="Seu Google Client Secret"
                   value={formData.clientSecret}
                   onChange={(e) => handleInputChange("clientSecret", e.target.value)}

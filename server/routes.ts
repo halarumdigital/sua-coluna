@@ -4164,19 +4164,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       try {
+        // Determinar URL de callback
+        // Se GOOGLE_OAUTH_REDIRECT_URL está definido no .env, usa ele
+        // Caso contrário, gera dinamicamente
+        const redirectUrl = process.env.GOOGLE_OAUTH_REDIRECT_URL ||
+                           `${req.protocol}://${req.get('host')}/api/franchise/calendar-oauth-callback`;
+
+        console.log("🔐 OAuth callback URL:", redirectUrl);
+
         // Configurar cliente OAuth2
         const oauth2Client = new google.auth.OAuth2(
           clientId,
           clientSecret,
-          `${req.protocol}://${req.get('host')}/api/franchise/calendar-oauth-callback`
+          redirectUrl
         );
-        
+
         // Gerar URL de autorização
         const authUrl = oauth2Client.generateAuthUrl({
           access_type: 'offline',
           scope: ['https://www.googleapis.com/auth/calendar'],
           prompt: 'consent' // Force consent to get refresh token
         });
+
+        console.log("🔗 Auth URL gerada (primeiros 150 chars):", authUrl.substring(0, 150));
         
         // Store temporary data for callback
         const franchise = await storage.getFranchiseByUserId(userId);

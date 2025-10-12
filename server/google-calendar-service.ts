@@ -69,7 +69,7 @@ export class GoogleCalendarService {
       // Configurar cliente do Calendar
       const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-      // Preparar dados do evento
+      // Preparar dados do evento (SEM Google Meet)
       const event: any = {
         summary: eventData.title || settings.eventTitle,
         description: eventData.description || settings.eventDescription,
@@ -89,6 +89,8 @@ export class GoogleCalendarService {
             { method: 'popup', minutes: 60 }, // 1 hora antes
           ],
         },
+        // Desabilitar Google Meet
+        conferenceData: null,
       };
 
       // Adicionar participante se fornecido
@@ -175,22 +177,23 @@ export class GoogleCalendarService {
 
       const prompt = `Analise a conversa abaixo e extraia APENAS as seguintes informações:
 1. Data e hora do agendamento mencionado pelo paciente
-2. Nome do paciente
+2. Nome do paciente que ELE MESMO forneceu na conversa
 
 CONVERSA:
 ${conversationContext}
 
-${pixData ? `\nCOMPROVANTE PIX DETECTADO:
-- Pagador: ${pixData.nomePagador || 'N/A'}
+${pixData ? `\nCOMPROVANTE PIX RECEBIDO:
 - Valor: ${pixData.valor || 'N/A'}
 - Data do pagamento: ${pixData.data || 'N/A'}
 - Hora do pagamento: ${pixData.hora || 'N/A'}
 ` : ''}
 
-INSTRUÇÕES:
+INSTRUÇÕES IMPORTANTES:
 - Procure na conversa quando o paciente mencionou a data/hora desejada para o agendamento
 - Se não encontrar data/hora na conversa, retorne null
-- O nome do paciente pode estar na conversa ou no comprovante PIX
+- Para o nome do paciente: use APENAS o nome que o PACIENTE forneceu na conversa
+- NUNCA use o nome do pagador do PIX, apenas o nome que o paciente disse na conversa
+- Se o paciente não forneceu o nome, retorne null
 - Use a data ATUAL como referência: ${new Date().toISOString()}
 
 Retorne APENAS um JSON no formato:
@@ -308,10 +311,12 @@ Retorne APENAS um JSON no formato:
         };
       }
 
-      // Nome do paciente: priorizar do PIX, depois da extração, depois do telefone
-      const patientName = pixData.transactionData?.nomePagador ||
-                         extractedData.patientName ||
+      // Nome do paciente: PRIORIZAR o nome da conversa, NÃO usar o nome do PIX
+      const patientName = extractedData.patientName ||
                          `Paciente ${phoneNumber}`;
+
+      console.log('👤 Nome do paciente identificado:', patientName);
+      console.log('⚠️ Nome do PIX NÃO será usado:', pixData.transactionData?.nomePagador);
 
       // Buscar configurações do calendário para duração padrão
       const settings = await storage.getGoogleCalendarSettings(franchiseId);
@@ -340,7 +345,8 @@ Retorne APENAS um JSON no formato:
           success: true,
           eventId: result.eventId,
           eventLink: result.eventLink,
-          message: `✅ Agendamento criado com sucesso!\n\n📅 Data: ${extractedData.dateTime.toLocaleDateString('pt-BR')}\n🕐 Horário: ${extractedData.dateTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n👤 Paciente: ${patientName}\n\n${result.eventLink ? `🔗 Link: ${result.eventLink}` : ''}`
+          // Mensagem SEM link do Google Meet
+          message: `✅ Agendamento criado com sucesso!\n\n📅 Data: ${extractedData.dateTime.toLocaleDateString('pt-BR')}\n🕐 Horário: ${extractedData.dateTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n👤 Paciente: ${patientName}`
         };
       }
 

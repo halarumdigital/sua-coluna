@@ -71,7 +71,10 @@ export default function CalendarPage() {
       }
       return data;
     },
-    refetchInterval: (settings?.isConnected || formData.isConnected) ? false : 5000, // Auto-refresh every 5s when not connected
+    refetchInterval: (query) => {
+      // Only auto-refresh if not connected
+      return (query.state.data?.isConnected || formData.isConnected) ? false : 5000;
+    },
   });
 
   // Update formData when settings change

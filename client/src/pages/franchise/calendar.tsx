@@ -71,8 +71,15 @@ export default function CalendarPage() {
       }
       return data;
     },
-    refetchInterval: formData.isConnected ? false : 5000, // Auto-refresh every 5s when not connected
+    refetchInterval: (settings?.isConnected || formData.isConnected) ? false : 5000, // Auto-refresh every 5s when not connected
   });
+
+  // Update formData when settings change
+  React.useEffect(() => {
+    if (settings) {
+      setFormData(settings);
+    }
+  }, [settings]);
 
   // Update settings mutation
   const updateSettingsMutation = useMutation({

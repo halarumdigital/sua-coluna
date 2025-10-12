@@ -115,8 +115,8 @@ export class WhatsAppAIHandler {
                   throw new Error('WhatsApp API settings not configured');
                 }
 
-                // Usar o endpoint da Evolution API para baixar mídia
-                const downloadUrl = `${apiSettings.evolutionApiUrl}/message/downloadMedia/${instanceKey}`;
+                // Usar o endpoint correto da Evolution API para baixar mídia
+                const downloadUrl = `${apiSettings.evolutionApiUrl}/chat/getBase64FromMediaMessage/${instanceKey}`;
 
                 console.log(`🔗 URL de download: ${downloadUrl}`);
 
@@ -127,7 +127,10 @@ export class WhatsAppAIHandler {
                     'Content-Type': 'application/json'
                   },
                   body: JSON.stringify({
-                    message: messageObj.key // Enviar a key completa
+                    message: {
+                      key: messageObj.key
+                    },
+                    convertToMp4: false
                   })
                 });
 

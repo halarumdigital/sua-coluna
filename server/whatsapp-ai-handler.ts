@@ -101,37 +101,55 @@ export class WhatsAppAIHandler {
             console.log('🔍 Verificando se é comprovante PIX...');
 
             try {
-              // Baixar a imagem da Evolution API
-              const mediaUrl = mediaMessage.url;
+              // Usar Evolution API para baixar mídia descriptografada
+              console.log(`📥 Baixando mídia via Evolution API...`);
+              console.log(`📋 MimeType original: ${mediaMessage.mimetype}`);
+              console.log(`📋 Message Key:`, JSON.stringify(messageObj.key));
 
-              if (mediaUrl) {
-                console.log(`📥 Baixando mídia de: ${mediaUrl.substring(0, 100)}...`);
-                console.log(`📋 MimeType original: ${mediaMessage.mimetype}`);
+              let base64Image: string;
 
-                // Verificar se a URL já é um base64 data URI
-                let base64Image: string;
+              try {
+                // Buscar settings da Evolution API
+                const apiSettings = await storage.getWhatsappApiSettings();
+                if (!apiSettings || !apiSettings.isActive) {
+                  throw new Error('WhatsApp API settings not configured');
+                }
 
-                if (mediaUrl.startsWith('data:')) {
-                  console.log('📸 URL já é um data URI, extraindo base64...');
-                  // Extrair apenas o base64, removendo o prefixo data:image/...;base64,
-                  const base64Match = mediaUrl.match(/^data:[^;]+;base64,(.+)$/);
-                  if (base64Match) {
-                    base64Image = base64Match[1];
-                    console.log(`✅ Base64 extraído do data URI (primeiros 50 chars): ${base64Image.substring(0, 50)}`);
-                  } else {
-                    throw new Error('Formato de data URI inválido');
-                  }
+                // Usar o endpoint da Evolution API para baixar mídia
+                const downloadUrl = `${apiSettings.evolutionApiUrl}/message/downloadMedia/${instanceKey}`;
+
+                console.log(`🔗 URL de download: ${downloadUrl}`);
+
+                const downloadResponse = await fetch(downloadUrl, {
+                  method: 'POST',
+                  headers: {
+                    'apikey': apiSettings.globalToken,
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    message: messageObj.key // Enviar a key completa
+                  })
+                });
+
+                if (!downloadResponse.ok) {
+                  const errorText = await downloadResponse.text();
+                  console.error(`❌ Erro ao baixar mídia via Evolution API: ${downloadResponse.status} - ${errorText}`);
+                  throw new Error(`Evolution API download failed: ${downloadResponse.status}`);
+                }
+
+                const downloadResult = await downloadResponse.json();
+                console.log(`📦 Resposta da Evolution API:`, {
+                  hasBase64: !!downloadResult.base64,
+                  hasMimetype: !!downloadResult.mimetype,
+                  base64Start: downloadResult.base64 ? downloadResult.base64.substring(0, 50) : 'N/A'
+                });
+
+                // A Evolution API retorna { base64: "...", mimetype: "..." }
+                if (downloadResult.base64) {
+                  base64Image = downloadResult.base64;
+                  console.log(`✅ Mídia baixada via Evolution API (primeiros 50 chars): ${base64Image.substring(0, 50)}`);
                 } else {
-                  console.log('📥 Fazendo download da URL...');
-                  const response = await fetch(mediaUrl);
-
-                  if (!response.ok) {
-                    throw new Error(`Falha ao baixar mídia: ${response.status} ${response.statusText}`);
-                  }
-
-                  const arrayBuffer = await response.arrayBuffer();
-                  base64Image = Buffer.from(arrayBuffer).toString('base64');
-                  console.log(`✅ Download concluído (primeiros 50 chars): ${base64Image.substring(0, 50)}`);
+                  throw new Error('Evolution API não retornou base64');
                 }
 
                 // Verificar se o base64 parece ser um JPEG válido
@@ -143,7 +161,7 @@ export class WhatsAppAIHandler {
                 console.log('🔍 Analisando imagem para detecção de comprovante PIX...');
                 pixReceiptData = await PixOCRService.analyzeImage(
                   base64Image,
-                  mediaMessage.mimetype || 'image/jpeg',
+                  downloadResult.mimetype || mediaMessage.mimetype || 'image/jpeg',
                   instance.franchiseId
                 );
 
@@ -160,6 +178,10 @@ export class WhatsAppAIHandler {
                   // Salvar base64 para usar depois
                   (pixReceiptData as any).base64Image = base64Image;
                 }
+              } catch (evolutionApiError: any) {
+                console.error('❌ Erro ao baixar via Evolution API:', evolutionApiError);
+                // Se falhar com Evolution API, não tentar métodos alternativos pois a imagem está criptografada
+                throw new Error(`Falha ao baixar mídia: ${evolutionApiError.message}`);
               }
             } catch (downloadError: any) {
               console.error('❌ Erro ao baixar/processar mídia:', downloadError);

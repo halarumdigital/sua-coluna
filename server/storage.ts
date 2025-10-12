@@ -29,6 +29,7 @@ import {
   agentConversationContext,
   franchiseClients,
   crmKanbanCards,
+  googleCalendarSettings,
   type User,
   type UpsertUser,
   // TIPOS REMOVIDOS - TABELAS NÃO MAIS UTILIZADAS
@@ -97,6 +98,8 @@ import {
   type InsertCrmKanbanCard,
   type CreateCrmKanbanCard,
   type UpdateCrmKanbanCard,
+  type GoogleCalendarSettings,
+  type InsertGoogleCalendarSettings,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, count, sum, sql, like, gte, lte, or, between, asc } from "drizzle-orm";
@@ -3378,6 +3381,43 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCrmKanbanCard(id: string): Promise<void> {
     await db.delete(crmKanbanCards).where(eq(crmKanbanCards.id, id));
+  }
+
+  // Google Calendar Settings operations
+  async getGoogleCalendarSettings(franchiseId: string): Promise<GoogleCalendarSettings | undefined> {
+    const [settings] = await db
+      .select()
+      .from(googleCalendarSettings)
+      .where(eq(googleCalendarSettings.franchiseId, franchiseId));
+    return settings;
+  }
+
+  async upsertGoogleCalendarSettings(
+    franchiseId: string,
+    settingsData: Partial<InsertGoogleCalendarSettings>
+  ): Promise<GoogleCalendarSettings> {
+    // Check if settings exist
+    const existing = await this.getGoogleCalendarSettings(franchiseId);
+
+    if (existing) {
+      // Update existing settings
+      await db
+        .update(googleCalendarSettings)
+        .set({
+          ...settingsData,
+          updatedAt: new Date(),
+        })
+        .where(eq(googleCalendarSettings.franchiseId, franchiseId));
+    } else {
+      // Insert new settings
+      await db.insert(googleCalendarSettings).values({
+        franchiseId,
+        ...settingsData,
+      });
+    }
+
+    // Return updated settings
+    return (await this.getGoogleCalendarSettings(franchiseId)) as GoogleCalendarSettings;
   }
 
   private async ensureClientWhatsappInstanceAgentBindingsTable(): Promise<void> {

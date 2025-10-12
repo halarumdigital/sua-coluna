@@ -3874,11 +3874,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(defaultSettings);
       }
       
-      // Retornar todas as configurações (incluindo clientSecret visível)
-      // Nota: refreshToken não é retornado por segurança
-      const { refreshToken, ...publicSettings } = settings;
+      // Remover dados sensíveis da resposta
+      const { clientSecret, refreshToken, ...publicSettings } = settings;
       res.json({
         ...publicSettings,
+        clientSecret: clientSecret ? "********" : "", // Mascarar secret
         hasRefreshToken: !!refreshToken
       });
     } catch (error) {
@@ -3915,8 +3915,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (existingSettings) {
         // Atualizar configuração existente
         // Manter refreshToken existente se não for fornecido
+        // Manter clientSecret existente se vier mascarado (********)
         const updateData = {
           ...validatedData,
+          clientSecret: validatedData.clientSecret === "********" ? existingSettings.clientSecret : validatedData.clientSecret,
           refreshToken: validatedData.refreshToken || existingSettings.refreshToken,
           updatedAt: new Date()
         };

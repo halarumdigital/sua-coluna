@@ -14,8 +14,8 @@ const agent = new https.Agent({
 async function configureWebhookEvents() {
   const evolutionApiUrl = 'https://apizap.halarum.com.br';
   const globalToken = '94eff8b9da7b6c86e50b5c43334f6f69'; // From your logs
-  const instanceKey = 'deploy-gilliard';
-  const webhookUrl = 'https://suacoluna.gilliard.dev.br/api/franchise/whatsapp-webhook/deploy-gilliard';
+  const instanceKey = 'halarum-principal';  // Usando a instância correta
+  const webhookUrl = 'https://suacoluna.gilliard.dev.br/api/franchise/whatsapp-webhook/halarum-principal';
 
   console.log('🔧 Configurando webhook para receber eventos de mensagem e chat...\n');
 
@@ -26,15 +26,10 @@ async function configureWebhookEvents() {
         enabled: true,
         url: webhookUrl,
         events: [
-          'MESSAGES_UPSERT',
-          'MESSAGES_UPDATE',
-          'SEND_MESSAGE',
-          'CHATS_UPSERT',
-          'CHATS_UPDATE',
-          'CHATS_SET'
+          'MESSAGES_UPSERT'  // Apenas MESSAGES_UPSERT para evitar webhooks duplicados
         ],
         webhookByEvents: true,
-        webhookBase64: false
+        webhookBase64: true  // IMPORTANTE: true para incluir base64 de áudios/imagens no webhook
       }
     };
 

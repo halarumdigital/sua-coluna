@@ -46,6 +46,11 @@ export class WhatsAppAIHandler {
       this.markWebhookAsProcessed(webhookKey);
 
       const phoneNumber = messageObj.key?.remoteJid?.replace('@s.whatsapp.net', '');
+      if (!phoneNumber) {
+        console.log('❌ Número de telefone não disponível');
+        return;
+      }
+
       let messageText = messageObj.message?.conversation ||
                          messageObj.message?.extendedTextMessage?.text ||
                          messageObj.message?.imageMessage?.caption ||
@@ -62,39 +67,31 @@ export class WhatsAppAIHandler {
       let pixReceiptData = null;
       let isPixReceiptDetected = false;
 
-      if (!phoneNumber) {
-        console.log('❌ Número de telefone não disponível');
-        return;
-      }
-
       // Processar áudio se houver
       if (hasAudio) {
         console.log('🎤 Detectada mensagem de áudio');
 
         try {
           const audioMessage = messageObj.message.audioMessage;
-
-          // O base64 está no campo 'base64' do objeto message raiz (não no audioMessage)
           const base64Audio = messageObj.message.base64;
           const audioMimeType = audioMessage.mimetype || 'audio/ogg';
 
-          console.log('🎤 Detalhes do audioMessage:', {
-            hasUrl: !!audioMessage.url,
-            hasDirectPath: !!audioMessage.directPath,
-            hasBase64InMessageRoot: !!messageObj.message.base64,
+          console.log('🎤 Detalhes do áudio:', {
+            hasMimetype: !!audioMessage.mimetype,
             mimetype: audioMimeType,
+            hasBase64: !!base64Audio,
             base64Length: base64Audio?.length || 0
           });
 
           if (!base64Audio) {
-            console.error('❌ Base64 do áudio não encontrado no webhook (campo message.base64)');
-            throw new Error('Audio base64 not found in message.base64');
+            console.error('❌ Base64 do áudio não encontrado no webhook');
+            throw new Error('Audio base64 not found in message');
           }
 
           // Converter base64 para Buffer
           const audioBuffer = Buffer.from(base64Audio, 'base64');
 
-          console.log('🎤 Transcrevendo áudio...', {
+          console.log('🎤 Transcrevendo áudio com Whisper API...', {
             mimeType: audioMimeType,
             bufferSize: audioBuffer.length,
             estimatedSizeMB: (audioBuffer.length / 1024 / 1024).toFixed(2)
@@ -105,15 +102,13 @@ export class WhatsAppAIHandler {
 
           if (transcriptionResult.success && transcriptionResult.transcription) {
             audioTranscription = transcriptionResult.transcription;
-            messageText = audioTranscription; // Usar a transcrição como texto da mensagem
+            messageText = audioTranscription;
             console.log('✅ Áudio transcrito com sucesso:', audioTranscription);
           } else {
             console.error('❌ Erro ao transcrever áudio:', transcriptionResult.error);
-            // Continuar sem transcrição
           }
         } catch (audioError: any) {
           console.error('❌ Erro ao processar áudio:', audioError);
-          // Continuar sem transcrição - mas seguir o fluxo para responder normalmente
         }
       }
 

@@ -342,25 +342,29 @@ export class OpenAIService {
       formData.append('language', 'pt'); // Português
       formData.append('response_format', 'json');
 
-      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          ...formData.getHeaders(),
-        },
-        body: formData as any,
-      });
+      // Usar axios em vez de fetch para melhor suporte a FormData
+      const axios = (await import('axios')).default;
+      const response = await axios.post(
+        'https://api.openai.com/v1/audio/transcriptions',
+        formData,
+        {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            ...formData.getHeaders(),
+          },
+          validateStatus: () => true, // Não lançar erro em status >= 400
+        }
+      );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('❌ Erro na API Whisper:', errorData);
+      if (response.status !== 200) {
+        console.error('❌ Erro na API Whisper:', response.data);
         return {
           success: false,
-          error: errorData.error?.message || 'Transcription failed'
+          error: response.data?.error?.message || 'Transcription failed'
         };
       }
 
-      const data = await response.json();
+      const data = response.data;
       const transcription = data.text || '';
 
       console.log('✅ Áudio transcrito com sucesso:', {

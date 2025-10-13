@@ -342,29 +342,36 @@ export class OpenAIService {
       formData.append('language', 'pt'); // Português
       formData.append('response_format', 'json');
 
-      // Usar axios em vez de fetch para melhor suporte a FormData
-      const axios = (await import('axios')).default;
-      const response = await axios.post(
-        'https://api.openai.com/v1/audio/transcriptions',
-        formData,
-        {
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            ...formData.getHeaders(),
-          },
-          validateStatus: () => true, // Não lançar erro em status >= 400
-        }
-      );
+      console.log('📤 Enviando áudio para Whisper API...');
 
-      if (response.status !== 200) {
-        console.error('❌ Erro na API Whisper:', response.data);
+      // Fazer requisição usando fetch com o FormData corretamente
+      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          ...formData.getHeaders(),
+        },
+        body: formData.getBuffer(),
+      });
+
+      console.log('📥 Resposta recebida da Whisper API:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: { message: errorText } };
+        }
+        console.error('❌ Erro na API Whisper:', errorData);
         return {
           success: false,
-          error: response.data?.error?.message || 'Transcription failed'
+          error: errorData?.error?.message || 'Transcription failed'
         };
       }
 
-      const data = response.data;
+      const data = await response.json();
       const transcription = data.text || '';
 
       console.log('✅ Áudio transcrito com sucesso:', {

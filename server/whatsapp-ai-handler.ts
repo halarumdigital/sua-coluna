@@ -74,22 +74,21 @@ export class WhatsAppAIHandler {
         try {
           const audioMessage = messageObj.message.audioMessage;
 
-          // Verificar se o base64 já está no objeto message (Evolution API já envia)
-          const base64Audio = messageObj.message.base64 || audioMessage.base64;
+          // O base64 está no campo 'base64' do objeto message raiz (não no audioMessage)
+          const base64Audio = messageObj.message.base64;
           const audioMimeType = audioMessage.mimetype || 'audio/ogg';
 
           console.log('🎤 Detalhes do audioMessage:', {
             hasUrl: !!audioMessage.url,
             hasDirectPath: !!audioMessage.directPath,
-            hasBase64InMessage: !!messageObj.message.base64,
-            hasBase64InAudio: !!audioMessage.base64,
+            hasBase64InMessageRoot: !!messageObj.message.base64,
             mimetype: audioMimeType,
             base64Length: base64Audio?.length || 0
           });
 
           if (!base64Audio) {
-            console.error('❌ Base64 do áudio não encontrado no webhook');
-            throw new Error('Audio base64 not found in webhook');
+            console.error('❌ Base64 do áudio não encontrado no webhook (campo message.base64)');
+            throw new Error('Audio base64 not found in message.base64');
           }
 
           // Converter base64 para Buffer

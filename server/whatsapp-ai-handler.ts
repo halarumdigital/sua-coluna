@@ -9,7 +9,7 @@ export class WhatsAppAIHandler {
 
   // Cache para evitar processar o mesmo webhook múltiplas vezes
   private processedWebhooks = new Map<string, number>();
-  private readonly WEBHOOK_DEDUP_WINDOW = 5000; // 5 segundos (reduzido de 60s)
+  private readonly WEBHOOK_DEDUP_WINDOW = 1000; // 1 segundo (reduzido para permitir reprocessamento mais rápido)
 
   async handleIncomingMessage(instanceKey: string, messageData: any): Promise<void> {
     try {
@@ -46,11 +46,15 @@ export class WhatsAppAIHandler {
       this.markWebhookAsProcessed(webhookKey);
 
       const phoneNumber = messageObj.key?.remoteJid?.replace('@s.whatsapp.net', '');
-      const messageText = messageObj.message?.conversation ||
+      let messageText = messageObj.message?.conversation ||
                          messageObj.message?.extendedTextMessage?.text ||
                          messageObj.message?.imageMessage?.caption ||
                          messageObj.message?.documentMessage?.caption ||
                          '';
+
+      // Verificar se a mensagem contém áudio
+      const hasAudio = messageObj.message?.audioMessage;
+      let audioTranscription = '';
 
       // Verificar se a mensagem contém imagem ou documento (possível comprovante PIX)
       const hasImage = messageObj.message?.imageMessage;
@@ -63,10 +67,68 @@ export class WhatsAppAIHandler {
         return;
       }
 
+      // Processar áudio se houver
+      if (hasAudio) {
+        console.log('🎤 Detectada mensagem de áudio');
+
+        try {
+          const audioMessage = messageObj.message.audioMessage;
+
+          // Verificar se o base64 já está no objeto message (Evolution API já envia)
+          const base64Audio = messageObj.message.base64 || audioMessage.base64;
+          const audioMimeType = audioMessage.mimetype || 'audio/ogg';
+
+          console.log('🎤 Detalhes do audioMessage:', {
+            hasUrl: !!audioMessage.url,
+            hasDirectPath: !!audioMessage.directPath,
+            hasBase64InMessage: !!messageObj.message.base64,
+            hasBase64InAudio: !!audioMessage.base64,
+            mimetype: audioMimeType,
+            base64Length: base64Audio?.length || 0
+          });
+
+          if (!base64Audio) {
+            console.error('❌ Base64 do áudio não encontrado no webhook');
+            throw new Error('Audio base64 not found in webhook');
+          }
+
+          // Converter base64 para Buffer
+          const audioBuffer = Buffer.from(base64Audio, 'base64');
+
+          console.log('🎤 Transcrevendo áudio...', {
+            mimeType: audioMimeType,
+            bufferSize: audioBuffer.length,
+            estimatedSizeMB: (audioBuffer.length / 1024 / 1024).toFixed(2)
+          });
+
+          // Transcrever áudio usando OpenAI Whisper
+          const transcriptionResult = await openaiService.transcribeAudio(audioBuffer, audioMimeType);
+
+          if (transcriptionResult.success && transcriptionResult.transcription) {
+            audioTranscription = transcriptionResult.transcription;
+            messageText = audioTranscription; // Usar a transcrição como texto da mensagem
+            console.log('✅ Áudio transcrito com sucesso:', audioTranscription);
+          } else {
+            console.error('❌ Erro ao transcrever áudio:', transcriptionResult.error);
+            // Continuar sem transcrição
+          }
+        } catch (audioError: any) {
+          console.error('❌ Erro ao processar áudio:', audioError);
+          // Continuar sem transcrição - mas seguir o fluxo para responder normalmente
+        }
+      }
+
       // Se não há texto e não há mídia, ignorar
-      if (!messageText && !hasImage && !hasDocument) {
+      // IMPORTANTE: Se tem áudio mas não conseguiu transcrever, permitir continuar para o agente responder
+      if (!messageText && !hasImage && !hasDocument && !hasAudio) {
         console.log('❌ Mensagem sem texto ou mídia');
         return;
+      }
+
+      // Se tem áudio mas não conseguiu transcrever, criar uma mensagem padrão
+      if (hasAudio && !messageText) {
+        messageText = '[Usuário enviou um áudio mas não foi possível transcrever]';
+        console.log('⚠️ Usando mensagem padrão para áudio não transcrito');
       }
 
       // Verificar se é um comando de edição de cliente
@@ -379,6 +441,13 @@ export class WhatsAppAIHandler {
         }
         mediaInfo += '\n\nSe o usuário mencionou pagamento, PIX, comprovante ou transferência, é MUITO PROVÁVEL que seja um comprovante de pagamento PIX.';
         mediaInfo += '\nVocê DEVE reconhecer isso e responder adequadamente (ex: "Obrigado por enviar o comprovante! Vou verificar o pagamento.")';
+      }
+
+      // Adicionar informação sobre áudio transcrito
+      if (hasAudio && audioTranscription) {
+        mediaInfo += '\n\n🎤 IMPORTANTE: O usuário enviou uma MENSAGEM DE ÁUDIO que foi transcrita automaticamente.';
+        mediaInfo += '\n- A transcrição pode não ser 100% precisa, mas representa o que o usuário disse.';
+        mediaInfo += '\nVocê DEVE responder naturalmente como se tivesse ouvido o áudio.';
       }
 
       // Truncar systemPrompt se necessário para evitar exceder limite

@@ -210,7 +210,7 @@ export default function MedicalDashboard() {
   };
 
   return (
-    <Layout title="Dashboard Clínica">
+    <Layout title="Dashboard Administrativo">
       <div className="space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">

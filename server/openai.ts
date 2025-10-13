@@ -299,6 +299,89 @@ export class OpenAIService {
   }
 
   /**
+   * Transcreve áudio usando Whisper API da OpenAI
+   */
+  async transcribeAudio(audioBuffer: Buffer, mimeType: string = 'audio/ogg'): Promise<{
+    success: boolean;
+    transcription?: string;
+    error?: string;
+  }> {
+    try {
+      const apiKey = await this.getApiKey();
+      if (!apiKey) {
+        return { success: false, error: 'OpenAI API key not configured' };
+      }
+
+      console.log('🎤 Iniciando transcrição de áudio...', {
+        mimeType,
+        bufferSize: audioBuffer.length,
+        estimatedSizeMB: (audioBuffer.length / 1024 / 1024).toFixed(2)
+      });
+
+      // Determinar a extensão do arquivo baseado no mimeType
+      let fileExtension = 'ogg';
+      if (mimeType.includes('mpeg') || mimeType.includes('mp3')) {
+        fileExtension = 'mp3';
+      } else if (mimeType.includes('mp4') || mimeType.includes('m4a')) {
+        fileExtension = 'm4a';
+      } else if (mimeType.includes('wav')) {
+        fileExtension = 'wav';
+      } else if (mimeType.includes('webm')) {
+        fileExtension = 'webm';
+      }
+
+      // Criar FormData para enviar o áudio
+      const FormData = (await import('form-data')).default;
+      const formData = new FormData();
+
+      formData.append('file', audioBuffer, {
+        filename: `audio.${fileExtension}`,
+        contentType: mimeType,
+      });
+      formData.append('model', 'whisper-1');
+      formData.append('language', 'pt'); // Português
+      formData.append('response_format', 'json');
+
+      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          ...formData.getHeaders(),
+        },
+        body: formData as any,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('❌ Erro na API Whisper:', errorData);
+        return {
+          success: false,
+          error: errorData.error?.message || 'Transcription failed'
+        };
+      }
+
+      const data = await response.json();
+      const transcription = data.text || '';
+
+      console.log('✅ Áudio transcrito com sucesso:', {
+        transcriptionLength: transcription.length,
+        preview: transcription.substring(0, 100)
+      });
+
+      return {
+        success: true,
+        transcription
+      };
+    } catch (error: any) {
+      console.error('❌ Erro ao transcrever áudio:', error);
+      return {
+        success: false,
+        error: error.message || 'Transcription failed'
+      };
+    }
+  }
+
+  /**
    * Analisa uma imagem com um prompt personalizado
    */
   async analyzeImageWithPrompt(base64Image: string, mimeType: string = 'image/jpeg', prompt: string): Promise<string> {

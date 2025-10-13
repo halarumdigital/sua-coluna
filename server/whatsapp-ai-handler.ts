@@ -9,7 +9,7 @@ export class WhatsAppAIHandler {
 
   // Cache para evitar processar o mesmo webhook múltiplas vezes
   private processedWebhooks = new Map<string, number>();
-  private readonly WEBHOOK_DEDUP_WINDOW = 1000; // 1 segundo (reduzido para permitir reprocessamento mais rápido)
+  private readonly WEBHOOK_DEDUP_WINDOW = 500; // 500ms - tempo mínimo para detectar duplicatas reais
 
   async handleIncomingMessage(instanceKey: string, messageData: any): Promise<void> {
     try {
@@ -988,46 +988,63 @@ Responda de forma clara e objetiva.`;
   private async fetchAndProcessRecentMessages(instanceKey: string, remoteJid: string): Promise<void> {
     try {
       console.log(`🔍 Buscando mensagens recentes para ${remoteJid}...`);
-      
+
       // Buscar mensagens usando o serviço do WhatsApp
       const messagesResult = await whatsappService.findMessages(instanceKey, remoteJid, 1, 20);
-      
+
       if (messagesResult.success && messagesResult.data && Array.isArray(messagesResult.data)) {
         const messages = messagesResult.data;
         console.log(`📨 Encontradas ${messages.length} mensagens recentes para ${remoteJid}`);
-        
+
         // Log detalhado das mensagens encontradas para depuração
         console.log(`🔍 Detalhamento das mensagens encontradas:`);
         messages.forEach((msg, index) => {
           console.log(`  ${index + 1}. fromMe: ${msg.key?.fromMe}, hasMessage: ${!!msg.message}, text: ${msg.message?.conversation?.substring(0, 50) || 'N/A'}...`);
         });
-        
+
         // Processar apenas mensagens de entrada (não enviadas por nós)
-        const incomingMessages = messages.filter(msg => !msg.key?.fromMe && msg.message);
-        
+        // IMPORTANTE: Filtrar mensagens de áudio pois o findMessages não retorna base64
+        const incomingMessages = messages.filter(msg => {
+          if (msg.key?.fromMe || !msg.message) return false;
+
+          // Ignorar mensagens de áudio vindas de findMessages (não tem base64)
+          if (msg.message?.audioMessage) {
+            console.log(`⏭️ Ignorando áudio de findMessages (sem base64): ${msg.key?.id}`);
+            return false;
+          }
+
+          return true;
+        });
+
         console.log(`📨 ${incomingMessages.length} mensagens de entrada encontradas após filtro`);
-        
+
         if (incomingMessages.length === 0) {
           console.log(`⚠️ Nenhuma mensagem de entrada encontrada. Isso pode indicar que:`);
           console.log(`   1. A mensagem mais recente ainda não foi indexada pela API`);
           console.log(`   2. Todas as mensagens recentes são do sistema`);
           console.log(`   3. O webhook foi disparado antes da mensagem ser salva`);
-          
+          console.log(`   4. Apenas mensagens de áudio (que não podem ser reprocessadas)`);
+
           // Tentar buscar mensagens mais antigas ou usar abordagem alternativa
           console.log(`🔄 Tentando buscar mensagens de páginas anteriores...`);
-          
+
           // Buscar mais algumas páginas para encontrar mensagens de entrada
           for (let page = 2; page <= 5; page++) {
             console.log(`🔍 Buscando página ${page}...`);
             const olderMessagesResult = await whatsappService.findMessages(instanceKey, remoteJid, page, 10);
-            
+
             if (olderMessagesResult.success && olderMessagesResult.data && Array.isArray(olderMessagesResult.data)) {
               const olderMessages = olderMessagesResult.data;
-              const olderIncomingMessages = olderMessages.filter(msg => !msg.key?.fromMe && msg.message);
-              
+              const olderIncomingMessages = olderMessages.filter(msg => {
+                if (msg.key?.fromMe || !msg.message) return false;
+                // Ignorar áudios
+                if (msg.message?.audioMessage) return false;
+                return true;
+              });
+
               if (olderIncomingMessages.length > 0) {
                 console.log(`✅ Encontradas ${olderIncomingMessages.length} mensagens de entrada na página ${page}`);
-                
+
                 // Processar a mensagem mais recente de entrada encontrada
                 const mostRecentIncoming = olderIncomingMessages[0]; // Assume que já está ordenada
                 console.log(`✅ Processando mensagem mais recente de entrada encontrada`);
@@ -1039,16 +1056,16 @@ Responda de forma clara e objetiva.`;
               break;
             }
           }
-          
+
           console.log(`❌ Nenhuma mensagem de entrada encontrada em nenhuma página`);
           return;
         }
-        
+
         // Processar a mensagem mais recente de entrada
         const mostRecentIncoming = incomingMessages[0]; // Assume que já está ordenada por timestamp
-        console.log(`✅ Processando mensagem mais recente de entrada`);
+        console.log(`✅ Processando mensagem mais recente de entrada encontrada`);
         await this.handleIncomingMessage(instanceKey, mostRecentIncoming);
-        
+
       } else {
         console.log(`⚠️ Não foi possível buscar mensagens para ${remoteJid}:`, messagesResult.error);
       }
